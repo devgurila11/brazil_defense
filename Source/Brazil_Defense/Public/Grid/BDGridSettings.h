@@ -121,6 +121,32 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Debug|Coords", meta = (ClampMin = "0", UIMin = "0"))
 	int32 MaxCoordLabelsPerView = 400;
 
+	//~ Debug path -----------------------------------------------------------
+
+	/** Color of the line joining the cells of the last path found. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Path")
+	FColor PathLineColor = FColor(255, 255, 0, 255);
+
+	/** Color of the start and goal markers of the last path found. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Path")
+	FColor PathEndpointColor = FColor(255, 0, 255, 255);
+
+	/** Thickness of the path line. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Path", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float PathLineThickness = 8.0f;
+
+	/** Radius of the start and goal markers. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Path", meta = (ClampMin = "1.0", UIMin = "1.0", ForceUnits = "cm"))
+	float PathEndpointRadius = 60.0f;
+
+	/** Segment count of the start and goal marker spheres. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Path", meta = (ClampMin = "3", UIMin = "3"))
+	int32 PathEndpointSegments = 12;
+
+	/** Height the path is drawn at, above the grid plane. Sits over the cell fills. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Path", meta = (ForceUnits = "cm"))
+	float PathDrawHeightOffset = 30.0f;
+
 	//~ Debug platforms ------------------------------------------------------
 
 	/** Draw a marker on every platform slot, colored by free or occupied. */

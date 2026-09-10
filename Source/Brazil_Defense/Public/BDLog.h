@@ -7,3 +7,6 @@
 
 /** Grid, platforms and everything placed on the battle area. */
 DECLARE_LOG_CATEGORY_EXTERN(LogBDGrid, Log, All);
+
+/** Pathfinding and blocking validation. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDPath, Log, All);

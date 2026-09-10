@@ -55,6 +55,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Grid")
 	int32 GetCellCount() const { return Cells.Num(); }
 
+	/**
+	 * Bumped on every change to a cell state or to the layout.
+	 * Lets a caller tell whether an answer it cached about this grid went stale,
+	 * without having to compare the cells themselves.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Grid")
+	int32 GetVersion() const { return Version; }
+
 	/** Rereads the settings and, when the layout changed, resets every cell to Free. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Grid")
 	void RebuildFromSettings();
@@ -141,6 +149,9 @@ private:
 
 	/** Row major matrix of cell states, indexed by Y * SizeX + X. */
 	TArray<EBDCellState> Cells;
+
+	/** See GetVersion. Starts at 1 so a cached version of 0 never looks current. */
+	int32 Version = 1;
 
 	int32 SizeX = 0;
 	int32 SizeY = 0;

@@ -3,3 +3,4 @@
 #include "BDLog.h"
 
 DEFINE_LOG_CATEGORY(LogBDGrid);
+DEFINE_LOG_CATEGORY(LogBDPath);

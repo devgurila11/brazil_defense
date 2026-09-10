@@ -50,6 +50,7 @@ void UBDGridSubsystem::RebuildFromSettings()
 
 	if (ApplyLayout(Settings))
 	{
+		++Version;
 		OnGridRebuilt.Broadcast();
 	}
 }
@@ -85,6 +86,7 @@ void UBDGridSubsystem::ResetAllCells()
 		Cell = EBDCellState::Free;
 	}
 
+	++Version;
 	OnGridRebuilt.Broadcast();
 }
 
@@ -114,6 +116,7 @@ bool UBDGridSubsystem::SetCellState(const FBDCellCoord& Coord, const EBDCellStat
 	}
 
 	Cell = NewState;
+	++Version;
 	OnCellStateChanged.Broadcast(Coord, NewState);
 	return true;
 }
