@@ -1,4 +1,4 @@
-// Brazil Defense. Debug visualization of the logical gameplay grid.
+// Brazil Defense. Debug visualization of the logical gameplay grid, in the editor.
 
 #pragma once
 
@@ -7,14 +7,17 @@
 #include "BDGridVisualizer.generated.h"
 
 class APlayerController;
-class UBDGridSettings;
-class UBDGridSubsystem;
 class UCanvas;
 
 /**
  * Draws the logical grid owned by UBDGridSubsystem so the layout can be checked
  * against the level art. Purely a debug view: it holds no grid data and changes
  * no state. Drop one instance in the level and toggle it from Project Settings.
+ *
+ * Editor worlds only. A level actor cannot be trusted to draw a running game: the
+ * maps are World Partition, so this one is streamed out as soon as the camera moves
+ * away from it. UBDGridDebugDrawer, a world subsystem, covers the game worlds, and
+ * both share the drawing in BDGridDebug.
  *
  * Lines and cell fills are drawn with the debug line batcher, coordinate labels
  * are drawn on the viewport canvas so they stay readable at any distance.
@@ -40,22 +43,15 @@ public:
 	bool bDrawGrid = true;
 
 private:
-	/** True when the current world and the settings both allow drawing. */
+	/** True when this actor is the one responsible for drawing its world. */
 	bool ShouldDraw() const;
 
-	/** Returns the grid of this actor world, or null when it is not available. */
-	const UBDGridSubsystem* GetGrid() const;
-
-	void DrawGridLines(const UBDGridSubsystem& Grid, const UBDGridSettings& Settings) const;
-	void DrawCellStates(const UBDGridSubsystem& Grid, const UBDGridSettings& Settings) const;
-	void DrawOriginMarker(const UBDGridSubsystem& Grid, const UBDGridSettings& Settings) const;
-
-	/** Canvas pass: draws the coordinate label of the cells around the camera. */
+	/** Canvas pass: forwards to the shared drawing, which filters by world. */
 	void DrawCoordLabels(UCanvas* Canvas, APlayerController* PlayerController);
 
 	void RegisterCanvasDraw();
 	void UnregisterCanvasDraw();
 
-	/** Handles of the canvas draw delegate, one per observed engine show flag. */
-	TArray<FDelegateHandle> CanvasDrawHandles;
+	/** Handle of the canvas draw delegate on the editor show flag. */
+	FDelegateHandle CanvasDrawHandle;
 };

@@ -16,6 +16,9 @@ DECLARE_MULTICAST_DELEGATE(FBDOnGridRebuilt);
 /** Broadcast whenever a single cell changes state. */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnCellStateChanged, const FBDCellCoord& /*Coord*/, EBDCellState /*NewState*/);
 
+/** Broadcast whenever an edge is blocked or freed. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnEdgeBlockedChanged, const FBDEdgeCoord& /*Edge*/, bool /*bBlocked*/);
+
 /**
  * Owns the logical grid for the current world.
  * Holds no geometry and does no drawing: it is the pure data layer every other
@@ -56,7 +59,7 @@ public:
 	int32 GetCellCount() const { return Cells.Num(); }
 
 	/**
-	 * Bumped on every change to a cell state or to the layout.
+	 * Bumped on every change to a cell state, to an edge or to the layout.
 	 * Lets a caller tell whether an answer it cached about this grid went stale,
 	 * without having to compare the cells themselves.
 	 */
@@ -67,9 +70,27 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Grid")
 	void RebuildFromSettings();
 
-	/** Sets every cell back to Free without touching the layout. */
+	/** Sets every cell back to Free and frees every edge, without touching the layout. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Grid")
 	void ResetAllCells();
+
+	/**
+	 * Writes an authored layout onto the cells. This is how the level reaches the grid:
+	 * every world starts with all cells Free, so Spawn, Goal and permanent scenery only
+	 * exist here because ABDGridLayoutActor put them here.
+	 *
+	 * Only the listed cells are touched. The layout is not treated as the whole truth of
+	 * the board, so applying it does not erase what other systems own: platform
+	 * footprints and generated obstacles keep their cells.
+	 *
+	 * @return number of cells that actually changed state.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Grid")
+	int32 ApplyAuthoredLayout(const TMap<FBDCellCoord, EBDCellState>& Layout);
+
+	/** Blocks an authored set of edges. Same contract as ApplyAuthoredLayout. @return number of edges that changed. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Grid")
+	int32 ApplyAuthoredEdges(const TArray<FBDEdgeCoord>& Edges);
 
 	//~ Cell access ----------------------------------------------------------
 
@@ -95,6 +116,44 @@ public:
 	/** This cell holds something the player put there, so it can be removed and refunded. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Grid")
 	bool IsPlayerPlaced(const FBDCellCoord& Coord) const;
+
+	//~ Edge access ----------------------------------------------------------
+	// Edges are a second layer over the cells. A cell state says whether a unit may
+	// stand there; a blocked edge says it may not cross between two cells that are
+	// both perfectly standable. Dividers live here and never write a cell.
+
+	/** Whether a unit may not step from one cell straight into the other. False for cells that are not adjacent. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Grid")
+	bool IsEdgeBlocked(const FBDCellCoord& From, const FBDCellCoord& To) const;
+
+	bool IsEdgeBlockedAt(const FBDEdgeCoord& Edge) const;
+
+	/**
+	 * An edge can only be blocked when it separates two cells of the grid. The outer
+	 * border has nothing on the other side, so blocking it would be meaningless.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Grid")
+	bool CanBlockEdge(const FBDEdgeCoord& Edge) const;
+
+	/** @return false when the edge cannot be blocked or its state did not change. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Grid")
+	bool SetEdgeBlocked(const FBDEdgeCoord& Edge, bool bBlocked);
+
+	/**
+	 * The edges of a straight run of fence: Length edges of the same direction, one per
+	 * cell along the line they form. +X edges line up along Y and +Y edges along X.
+	 * Edges outside the grid are returned as well; CanBlockEdge is what refuses them.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Grid")
+	TArray<FBDEdgeCoord> GetEdgesForSegment(const FBDCellCoord& Start, int32 Length, uint8 Direction) const;
+
+	/** Every edge currently blocked, for drawing and for capturing the layout. */
+	void GetBlockedEdges(TArray<FBDEdgeCoord>& OutEdges) const;
+
+	/** Flat index of an edge in the edge bit array, or INDEX_NONE when its cell is outside the grid. */
+	int32 EdgeToIndex(const FBDEdgeCoord& Edge) const;
+
+	int32 GetEdgeCount() const { return BlockedEdges.Num(); }
 
 	//~ State rules ----------------------------------------------------------
 	// Single place where the meaning of each state lives. Everything else asks these.
@@ -128,10 +187,18 @@ public:
 	/** Same as WorldToCell but keeps coordinates outside the grid, without validating them. */
 	FBDCellCoord WorldToCellUnclamped(const FVector& WorldLocation) const;
 
+	/** World location of the middle of an edge: halfway between the centers of the two cells it separates. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Grid")
+	FVector EdgeToWorld(const FBDEdgeCoord& Edge) const;
+
+	/** The two ends of an edge on the grid plane, for drawing it as a line. */
+	void EdgeEndpointsToWorld(const FBDEdgeCoord& Edge, FVector& OutStart, FVector& OutEnd) const;
+
 	//~ Notifications --------------------------------------------------------
 
 	FBDOnGridRebuilt OnGridRebuilt;
 	FBDOnCellStateChanged OnCellStateChanged;
+	FBDOnEdgeBlockedChanged OnEdgeBlockedChanged;
 
 private:
 	/** Flat index of a coordinate. Assumes the coordinate is valid. */
@@ -149,6 +216,9 @@ private:
 
 	/** Row major matrix of cell states, indexed by Y * SizeX + X. */
 	TArray<EBDCellState> Cells;
+
+	/** Two bits per cell, its +X and +Y edges, indexed by CoordToIndex * 2 + Direction. */
+	TBitArray<> BlockedEdges;
 
 	/** See GetVersion. Starts at 1 so a cached version of 0 never looks current. */
 	int32 Version = 1;

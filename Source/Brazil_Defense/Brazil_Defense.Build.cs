@@ -11,7 +11,8 @@ public class Brazil_Defense : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "DeveloperSettings" });
 
 		// RenderCore and RHI are pulled in by SceneView.h, used by the grid debug canvas pass.
-		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI" });
+		// AssetRegistry lets the placement console command find a data asset by bare name.
+		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI", "AssetRegistry" });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

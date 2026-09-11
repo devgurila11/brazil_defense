@@ -47,7 +47,7 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Debug|Visibility")
 	bool bDrawInEditor = true;
 
-	/** Draw the grid while playing. */
+	/** Draw the grid while playing. Needs nothing placed in the level: see UBDGridDebugDrawer. */
 	UPROPERTY(config, EditAnywhere, Category = "Debug|Visibility")
 	bool bDrawInGame = true;
 
@@ -102,6 +102,14 @@ public:
 	/** Fill color used for each cell state. States missing from the map are not filled. */
 	UPROPERTY(config, EditAnywhere, Category = "Debug|Color")
 	TMap<EBDCellState, FColor> CellStateColors;
+
+	/** Color of a blocked edge, drawn as a line on the boundary. Kept apart from every cell fill so a fence reads as a fence. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Color")
+	FColor BlockedEdgeColor = FColor(0, 200, 255, 255);
+
+	/** Thickness of a blocked edge line. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Geometry", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float BlockedEdgeThickness = 12.0f;
 
 	//~ Debug coordinate labels ----------------------------------------------
 

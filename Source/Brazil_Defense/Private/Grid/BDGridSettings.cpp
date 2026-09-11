@@ -9,7 +9,6 @@ UBDGridSettings::UBDGridSettings()
 
 	// Free cells are intentionally left out of the map: they only show the grid lines.
 	CellStateColors.Add(EBDCellState::Tower, FColor(255, 200, 0, 120));
-	CellStateColors.Add(EBDCellState::Divider, FColor(0, 160, 255, 120));
 	CellStateColors.Add(EBDCellState::Platform, FColor(160, 80, 255, 120));
 	CellStateColors.Add(EBDCellState::Blocked, FColor(120, 120, 120, 120));
 	CellStateColors.Add(EBDCellState::Spawn, FColor(255, 60, 60, 120));

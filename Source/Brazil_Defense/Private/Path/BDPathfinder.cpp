@@ -106,7 +106,7 @@ bool UBDPathfinder::FindPath(const UBDGridSubsystem* Grid, const FBDCellCoord St
 	}
 
 	const double SearchStart = FPlatformTime::Seconds();
-	const bool bFound = RunSearch(*Grid, Start, Goal, nullptr, &OutPath);
+	const bool bFound = RunSearch(*Grid, Start, Goal, nullptr, nullptr, &OutPath);
 	LastSearchMicroseconds = (FPlatformTime::Seconds() - SearchStart) * 1000000.0;
 
 	LastPath = OutPath;
@@ -121,7 +121,7 @@ bool UBDPathfinder::HasAnyPath(const UBDGridSubsystem* Grid, const FBDCellCoord 
 	}
 
 	const double SearchStart = FPlatformTime::Seconds();
-	const bool bFound = RunSearch(*Grid, Start, Goal, nullptr, nullptr);
+	const bool bFound = RunSearch(*Grid, Start, Goal, nullptr, nullptr, nullptr);
 	LastSearchMicroseconds = (FPlatformTime::Seconds() - SearchStart) * 1000000.0;
 
 	return bFound;
@@ -157,30 +157,11 @@ bool UBDPathfinder::WouldBlockPath(const UBDGridSubsystem* Grid, const FBDCellCo
 	bLastBlockCheckWasCached = false;
 
 	TArray<FBDCellCoord> Spawns;
-	TArray<FBDCellCoord> Goals;
-	GatherCellsWithState(*Grid, EBDCellState::Spawn, Spawns);
-	GatherCellsWithState(*Grid, EBDCellState::Goal, Goals);
-
-	if (Spawns.Num() == 0 || Goals.Num() == 0)
+	FBDCellCoord GoalCoord;
+	if (!GatherSpawnsAndGoal(*Grid, Spawns, GoalCoord))
 	{
-		// Nothing to cut off yet. Worth saying out loud: on a finished map this means
-		// the Spawn and Goal cells were never marked.
-		UE_LOG(LogBDPath, Warning,
-			TEXT("WouldBlockPath called on a grid with %d spawn(s) and %d goal(s). Cannot evaluate blocking."),
-			Spawns.Num(), Goals.Num());
 		return false;
 	}
-
-	if (Goals.Num() > 1)
-	{
-		// There is one urn in the game. More than one Goal on the board is a setup
-		// mistake, so say so and keep going deterministically with the first.
-		UE_LOG(LogBDPath, Warning,
-			TEXT("WouldBlockPath found %d goal cells. The game has a single goal; using %s and ignoring the rest."),
-			Goals.Num(), *Goals[0].ToString());
-	}
-
-	const FBDCellCoord GoalCoord = Goals[0];
 
 	// The footprint is only blocked inside this check. The grid is never written to,
 	// so a rejected placement cannot leave the board in a wrong state.
@@ -212,16 +193,104 @@ bool UBDPathfinder::WouldBlockPath(const UBDGridSubsystem* Grid, const FBDCellCo
 		}
 	}
 
-	// Every spawn has to keep a way to the goal.
-	for (const FBDCellCoord& Spawn : Spawns)
+	return CacheBlockResult(Grid, Origin, Footprint, AnySpawnCutOff(*Grid, Spawns, GoalCoord, &BlockedOverride, nullptr));
+}
+
+bool UBDPathfinder::WouldBlockPathEdges(const UBDGridSubsystem* Grid, const TArray<FBDEdgeCoord>& Candidate) const
+{
+	if (Grid == nullptr || Grid->GetCellCount() <= 0)
 	{
-		if (!RunSearch(*Grid, Spawn, GoalCoord, &BlockedOverride, nullptr))
+		return false;
+	}
+
+	if (bHasCachedEdgeBlockResult
+		&& CachedEdgeBlockGrid.Get() == Grid
+		&& CachedEdgeBlockGridVersion == Grid->GetVersion()
+		&& CachedEdgeBlockCandidate == Candidate)
+	{
+		bLastBlockCheckWasCached = true;
+		return bCachedEdgeBlockResult;
+	}
+
+	bLastBlockCheckWasCached = false;
+
+	TArray<FBDCellCoord> Spawns;
+	FBDCellCoord GoalCoord;
+	if (!GatherSpawnsAndGoal(*Grid, Spawns, GoalCoord))
+	{
+		return false;
+	}
+
+	// Overlaid, never written: a refused fence leaves the board exactly as it was.
+	TBitArray<> BlockedEdgeOverride;
+	BlockedEdgeOverride.Init(false, Grid->GetEdgeCount());
+
+	for (const FBDEdgeCoord& Edge : Candidate)
+	{
+		const int32 Index = Grid->EdgeToIndex(Edge);
+		if (Index != INDEX_NONE && BlockedEdgeOverride.IsValidIndex(Index))
 		{
-			return CacheBlockResult(Grid, Origin, Footprint, true);
+			BlockedEdgeOverride[Index] = true;
 		}
 	}
 
-	return CacheBlockResult(Grid, Origin, Footprint, false);
+	return CacheEdgeBlockResult(Grid, Candidate, AnySpawnCutOff(*Grid, Spawns, GoalCoord, nullptr, &BlockedEdgeOverride));
+}
+
+bool UBDPathfinder::GatherSpawnsAndGoal(const UBDGridSubsystem& Grid, TArray<FBDCellCoord>& OutSpawns, FBDCellCoord& OutGoal)
+{
+	TArray<FBDCellCoord> Goals;
+	GatherCellsWithState(Grid, EBDCellState::Spawn, OutSpawns);
+	GatherCellsWithState(Grid, EBDCellState::Goal, Goals);
+
+	if (OutSpawns.Num() == 0 || Goals.Num() == 0)
+	{
+		// Not a soft case: without a spawn and a goal there is no premise to validate
+		// against, and every placement would silently look legal.
+		UE_LOG(LogBDPath, Error,
+			TEXT("Blocking check called on a grid with %d spawn(s) and %d goal(s). Mark them on the map: ")
+			TEXT("blocking cannot be evaluated and every placement will pass."),
+			OutSpawns.Num(), Goals.Num());
+		return false;
+	}
+
+	if (Goals.Num() > 1)
+	{
+		// There is one urn in the game. More than one Goal breaks that premise, so this
+		// is an error, not a note. Row-major order keeps the fallback deterministic.
+		UE_LOG(LogBDPath, Error,
+			TEXT("Blocking check found %d goal cells. The game has a single goal; using %s and ignoring the rest."),
+			Goals.Num(), *Goals[0].ToString());
+	}
+
+	OutGoal = Goals[0];
+	return true;
+}
+
+bool UBDPathfinder::AnySpawnCutOff(const UBDGridSubsystem& Grid, const TArray<FBDCellCoord>& Spawns, const FBDCellCoord& Goal,
+	const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride) const
+{
+	// Every spawn has to keep a way to the goal.
+	for (const FBDCellCoord& Spawn : Spawns)
+	{
+		if (!RunSearch(Grid, Spawn, Goal, BlockedOverride, BlockedEdgeOverride, nullptr))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool UBDPathfinder::CacheEdgeBlockResult(const UBDGridSubsystem* Grid, const TArray<FBDEdgeCoord>& Candidate, const bool bResult) const
+{
+	CachedEdgeBlockGrid = Grid;
+	CachedEdgeBlockGridVersion = Grid != nullptr ? Grid->GetVersion() : 0;
+	CachedEdgeBlockCandidate = Candidate;
+	bCachedEdgeBlockResult = bResult;
+	bHasCachedEdgeBlockResult = true;
+
+	return bResult;
 }
 
 bool UBDPathfinder::CacheBlockResult(const UBDGridSubsystem* Grid, const FBDCellCoord& Origin,
@@ -240,7 +309,7 @@ bool UBDPathfinder::CacheBlockResult(const UBDGridSubsystem* Grid, const FBDCell
 //~ The search -----------------------------------------------------------------
 
 bool UBDPathfinder::RunSearch(const UBDGridSubsystem& Grid, const FBDCellCoord& Start, const FBDCellCoord& Goal,
-	const TBitArray<>* BlockedOverride, TArray<FBDCellCoord>* OutPath) const
+	const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride, TArray<FBDCellCoord>* OutPath) const
 {
 	using namespace BDPathfinderPrivate;
 
@@ -261,6 +330,23 @@ bool UBDPathfinder::RunSearch(const UBDGridSubsystem& Grid, const FBDCellCoord& 
 		}
 
 		return Grid.IsWalkable(Coord);
+	};
+
+	// A crossing is refused by the real edge state or by the overlay. The cells on both
+	// sides may be perfectly walkable: this is the fence, not the ground.
+	const auto IsCrossable = [&Grid, BlockedEdgeOverride](const FBDCellCoord& From, const FBDCellCoord& To) -> bool
+	{
+		if (BlockedEdgeOverride != nullptr)
+		{
+			bool bAdjacent = false;
+			const int32 EdgeIndex = Grid.EdgeToIndex(FBDEdgeCoord::Between(From, To, bAdjacent));
+			if (EdgeIndex != INDEX_NONE && BlockedEdgeOverride->IsValidIndex(EdgeIndex) && (*BlockedEdgeOverride)[EdgeIndex])
+			{
+				return false;
+			}
+		}
+
+		return !Grid.IsEdgeBlocked(From, To);
 	};
 
 	const int32 StartIndex = Start.Y * SizeX + Start.X;
@@ -338,7 +424,8 @@ bool UBDPathfinder::RunSearch(const UBDGridSubsystem& Grid, const FBDCellCoord& 
 			}
 
 			const int32 NeighbourIndex = NeighbourCoord.Y * SizeX + NeighbourCoord.X;
-			if (Closed[NeighbourIndex] || !IsPassable(NeighbourCoord, NeighbourIndex))
+			if (Closed[NeighbourIndex] || !IsPassable(NeighbourCoord, NeighbourIndex)
+				|| !IsCrossable(CurrentCoord, NeighbourCoord))
 			{
 				continue;
 			}
@@ -500,6 +587,43 @@ namespace BDPathfinderPrivate
 			Pathfinder->WasLastBlockCheckCached() ? TEXT("cached") : TEXT("recomputed"),
 			Grid->GetVersion());
 	}
+
+	static constexpr int32 ArgCountWouldBlockEdges = 4;
+
+	/** Asks the edge validation whether a fence segment here would cut the creeps off. */
+	static void ExecWouldBlockEdges(const TArray<FString>& Args, UWorld* World)
+	{
+		if (World == nullptr || Args.Num() != ArgCountWouldBlockEdges)
+		{
+			UE_LOG(LogBDPath, Error, TEXT("Usage: BD.Path.WouldBlockEdges <x> <y> <dir: 0=+X 1=+Y> <length>"));
+			return;
+		}
+
+		const UBDGridSubsystem* Grid = World->GetSubsystem<UBDGridSubsystem>();
+		const UBDPathfinder* Pathfinder = World->GetSubsystem<UBDPathfinder>();
+		if (Grid == nullptr || Pathfinder == nullptr)
+		{
+			UE_LOG(LogBDPath, Error, TEXT("BD.Path.WouldBlockEdges: grid or pathfinder subsystem missing in this world."));
+			return;
+		}
+
+		const FBDCellCoord Origin(FCString::Atoi(*Args[0]), FCString::Atoi(*Args[1]));
+		const uint8 Direction = static_cast<uint8>(FMath::Clamp(FCString::Atoi(*Args[2]), 0, FBDEdgeCoord::DirectionCount - 1));
+		const int32 Length = FMath::Max(1, FCString::Atoi(*Args[3]));
+
+		const TArray<FBDEdgeCoord> Candidate = Grid->GetEdgesForSegment(Origin, Length, Direction);
+		const bool bWouldBlock = Pathfinder->WouldBlockPathEdges(Grid, Candidate);
+		UE_LOG(LogBDPath, Log, TEXT("BD.Path.WouldBlockEdges from %s, %d edge(s): %s [%s, grid version %d]."),
+			*Candidate[0].ToString(), Candidate.Num(),
+			bWouldBlock ? TEXT("BLOCKS, placement must be rejected") : TEXT("does not block, placement allowed"),
+			Pathfinder->WasLastBlockCheckCached() ? TEXT("cached") : TEXT("recomputed"),
+			Grid->GetVersion());
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdWouldBlockEdges(
+		TEXT("BD.Path.WouldBlockEdges"),
+		TEXT("BD.Path.WouldBlockEdges <x> <y> <dir: 0=+X 1=+Y> <length>: tests the fence blocking validation."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecWouldBlockEdges));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdWouldBlock(
 		TEXT("BD.Path.WouldBlock"),

@@ -10,3 +10,9 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBDGrid, Log, All);
 
 /** Pathfinding and blocking validation. */
 DECLARE_LOG_CATEGORY_EXTERN(LogBDPath, Log, All);
+
+/** Obstacle generation and the layouts it rejects. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDObstacle, Log, All);
+
+/** Match phases, waves, budgets and game speed. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDMatch, Log, All);
