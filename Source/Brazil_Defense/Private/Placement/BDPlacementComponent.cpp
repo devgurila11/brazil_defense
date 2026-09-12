@@ -769,6 +769,12 @@ FString UBDPlacementComponent::DescribeCurrentRefusal() const
 {
 	FString Text = StaticEnum<EBDPlacementRefusal>()->GetNameStringByValue(static_cast<int64>(CurrentRefusal));
 
+	if (CurrentRefusal == EBDPlacementRefusal::NoBudgetLeft && CurrentSelection != nullptr)
+	{
+		Text += FString::Printf(TEXT(" (no %s left)"),
+			*StaticEnum<EBDPieceKind>()->GetNameStringByValue(static_cast<int64>(CurrentSelection->GetPieceKind())));
+	}
+
 	// The match is the one refusal with a cause outside this component, so it says why.
 	if (CurrentRefusal == EBDPlacementRefusal::MatchRefused)
 	{
@@ -864,6 +870,11 @@ void UBDPlacementComponent::EvaluatePlacement()
 		else if (!bMoving && bObjectiveMissing)
 		{
 			CurrentRefusal = EBDPlacementRefusal::ObjectiveMissing;
+		}
+		else if (!bMoving && Match != nullptr && Match->GetBudgetRemaining(CurrentSelection->GetPieceKind()) <= 0)
+		{
+			// Out of pieces is not a phase problem, and it must not read like one.
+			CurrentRefusal = EBDPlacementRefusal::NoBudgetLeft;
 		}
 		else if (!bMoving && Match != nullptr && !Match->CanPlace(CurrentSelection->GetPieceKind()))
 		{

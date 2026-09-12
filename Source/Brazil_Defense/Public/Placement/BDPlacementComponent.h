@@ -70,8 +70,10 @@ enum class EBDPlacementRefusal : uint8
 	NoSelection,
 	/** The cursor is not over the grid plane, or the board has no grid. */
 	NotHoveringGrid,
-	/** The match will not take this kind of piece now: no budget left, or the phase forbids it. */
+	/** The match will not take this kind of piece in this phase. */
 	MatchRefused,
+	/** The player has nothing of this kind left to place. The log names the kind. */
+	NoBudgetLeft,
 	/** Part of the footprint or the segment lies outside the grid. */
 	OffGrid,
 	/** A cell of the footprint is not Free. */
