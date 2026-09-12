@@ -30,8 +30,12 @@ namespace BDPathfinderPrivate
 	static constexpr int32 NeighbourOffsetY[] = { 0, 0, 1, -1 };
 	static constexpr int32 NeighbourCount = UE_ARRAY_COUNT(NeighbourOffsetX);
 
-	/** Uniform step cost, which is what makes the Manhattan heuristic admissible. */
-	static constexpr int32 StepCost = 1;
+	/**
+	 * Cost of the uniform step. Scores are integers, so a route cost multiplier is applied
+	 * in thousandths of a step: the multiplier is never below 1, hence no step is ever
+	 * cheaper than this, which is what keeps the Manhattan heuristic admissible.
+	 */
+	static constexpr int32 StepCost = 1000;
 
 	static constexpr int32 ArgCountPathTest = 4;
 
@@ -97,7 +101,7 @@ UBDPathfinder* UBDPathfinder::Get(const UObject* WorldContextObject)
 //~ Public queries -------------------------------------------------------------
 
 bool UBDPathfinder::FindPath(const UBDGridSubsystem* Grid, const FBDCellCoord Start, const FBDCellCoord Goal,
-	TArray<FBDCellCoord>& OutPath) const
+	TArray<FBDCellCoord>& OutPath, const FBDRouteCost* Cost) const
 {
 	OutPath.Reset();
 	if (Grid == nullptr)
@@ -106,7 +110,7 @@ bool UBDPathfinder::FindPath(const UBDGridSubsystem* Grid, const FBDCellCoord St
 	}
 
 	const double SearchStart = FPlatformTime::Seconds();
-	const bool bFound = RunSearch(*Grid, Start, Goal, nullptr, nullptr, &OutPath);
+	const bool bFound = RunSearch(*Grid, Start, Goal, nullptr, nullptr, &OutPath, Cost);
 	LastSearchMicroseconds = (FPlatformTime::Seconds() - SearchStart) * 1000000.0;
 
 	LastPath = OutPath;
@@ -350,11 +354,18 @@ bool UBDPathfinder::CacheBlockResult(const UBDGridSubsystem* Grid, const FBDCell
 //~ The search -----------------------------------------------------------------
 
 bool UBDPathfinder::RunSearch(const UBDGridSubsystem& Grid, const FBDCellCoord& Start, const FBDCellCoord& Goal,
-	const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride, TArray<FBDCellCoord>* OutPath) const
+	const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride, TArray<FBDCellCoord>* OutPath,
+	const FBDRouteCost* Cost) const
 {
 	using namespace BDPathfinderPrivate;
 
 	LastVisitedCount = 0;
+
+	// A uniform map is the plain search; only a map with some variance is consulted per cell.
+	if (Cost != nullptr && Cost->IsUniform())
+	{
+		Cost = nullptr;
+	}
 
 	const int32 SizeX = Grid.GetSizeX();
 	const int32 CellCount = Grid.GetCellCount();
@@ -421,7 +432,7 @@ bool UBDPathfinder::RunSearch(const UBDGridSubsystem& Grid, const FBDCellCoord& 
 	Open.Reserve(CellCount);
 
 	GScore[StartIndex] = 0;
-	Open.HeapPush(FOpenNode{ StartIndex, ManhattanDistance(Start, Goal) }, FOpenNodeCompare());
+	Open.HeapPush(FOpenNode{ StartIndex, ManhattanDistance(Start, Goal) * StepCost }, FOpenNodeCompare());
 
 	while (Open.Num() > 0)
 	{
@@ -471,7 +482,11 @@ bool UBDPathfinder::RunSearch(const UBDGridSubsystem& Grid, const FBDCellCoord& 
 				continue;
 			}
 
-			const int32 TentativeG = GScore[Current.CellIndex] + StepCost;
+			const int32 EnterCost = Cost != nullptr
+				? FMath::Max(StepCost, FMath::RoundToInt(StepCost * Cost->MultiplierAt(NeighbourIndex)))
+				: StepCost;
+
+			const int32 TentativeG = GScore[Current.CellIndex] + EnterCost;
 			if (TentativeG >= GScore[NeighbourIndex])
 			{
 				continue;
@@ -479,7 +494,7 @@ bool UBDPathfinder::RunSearch(const UBDGridSubsystem& Grid, const FBDCellCoord& 
 
 			GScore[NeighbourIndex] = TentativeG;
 			CameFrom[NeighbourIndex] = Current.CellIndex;
-			Open.HeapPush(FOpenNode{ NeighbourIndex, TentativeG + ManhattanDistance(NeighbourCoord, Goal) }, FOpenNodeCompare());
+			Open.HeapPush(FOpenNode{ NeighbourIndex, TentativeG + ManhattanDistance(NeighbourCoord, Goal) * StepCost }, FOpenNodeCompare());
 		}
 	}
 

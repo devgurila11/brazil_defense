@@ -27,7 +27,7 @@ namespace BDWavePrivate
 	static FAutoConsoleVariableRef CVarShowRoutes(
 		TEXT("BD.Path.ShowRoutes"),
 		GShowRoutes,
-		TEXT("1 draws the route from every spawn point to the urn, one color per point. 0 to hide."),
+		TEXT("1 draws, per mouth of the current wave, the shortest route to the urn thin and the route every living creep is actually walking thick, one color per mouth. Every mouth before the first wave. 0 to hide."),
 		ECVF_Cheat);
 
 	/**
@@ -220,6 +220,11 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 	const int32 PointCount = GetSpawnPointCount();
 	const int32 PerPoint = UBDGameBalanceSettings::Get().GetCreepsPerSpawnPoint(Wave);
 
+	// Which mouths open is drawn per wave; how many creeps come out is not. The total
+	// stays PerPoint x every mouth of the board, so a wave out of two mouths is the same
+	// horde as a wave out of six, arriving in a thicker stream.
+	DrawActiveSpawnPoints(Wave);
+
 	WaveEnemyData = Data;
 	WaveSpawnsRemaining = PerPoint * PointCount;
 	WaveSpawnCursor = 0;
@@ -237,10 +242,62 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 	WaveShotsFired = 0;
 	WaveDamageDealt = 0.0f;
 	WaveTotalHealth = 0.0f;
+	WaveRouteHashes.Reset();
 
-	UE_LOG(LogBDWave, Log, TEXT("Wave %d: %d x %s (%d per spawn point x %d points) at x%.2f health, one every %.2fs."),
+	FString Mouths;
+	for (const int32 Index : ActiveSpawnPoints)
+	{
+		Mouths += Mouths.IsEmpty() ? FString::FromInt(Index) : FString::Printf(TEXT(", %d"), Index);
+	}
+
+	UE_LOG(LogBDWave, Log, TEXT("Wave %d: %d x %s (%d per spawn point x %d points) at x%.2f health, one every %.2fs, out of %d mouth(s) [%s]."),
 		Wave, WaveSpawnsRemaining, *Data->GetName(), PerPoint, PointCount,
-		UBDGameBalanceSettings::Get().GetHealthScale(Wave), WaveSpawnInterval);
+		UBDGameBalanceSettings::Get().GetHealthScale(Wave), WaveSpawnInterval,
+		ActiveSpawnPoints.Num(), *Mouths);
+}
+
+void UBDWaveSubsystem::DrawActiveSpawnPoints(const int32 Wave)
+{
+	ActiveSpawnPoints.Reset();
+
+	// Only mouths that can actually send a creep out are drawn from: one the player
+	// walled off is not a mouth this wave can use.
+	TArray<int32> Usable;
+	const TArray<FBDSpawnPoint>& Points = GetSpawnPoints();
+	for (int32 Index = 0; Index < Points.Num(); ++Index)
+	{
+		if (Points[Index].Route.Num() > 0)
+		{
+			Usable.Add(Index);
+		}
+	}
+
+	if (Usable.Num() == 0)
+	{
+		return;
+	}
+
+	// Seed of the match mixed with the wave number: the same board played again opens the
+	// same mouths in the same order, and no two waves of a match draw alike.
+	const ABDMatchManager* Match = GetMatch();
+	const int32 Seed = Match != nullptr ? Match->ObstacleSeed : 0;
+	FRandomStream Stream(static_cast<int32>(HashCombine(::GetTypeHash(Seed), ::GetTypeHash(Wave))));
+
+	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	const int32 Fewest = FMath::Clamp(Balance.MinActiveSpawnPoints, 1, Usable.Num());
+	const int32 Most = FMath::Clamp(
+		Balance.MaxActiveSpawnPoints > 0 ? Balance.MaxActiveSpawnPoints : Usable.Num(),
+		Fewest, Usable.Num());
+
+	const int32 Count = Stream.RandRange(Fewest, Most);
+	for (int32 Index = Usable.Num() - 1; Index > 0; --Index)
+	{
+		Usable.Swap(Index, Stream.RandRange(0, Index));
+	}
+
+	ActiveSpawnPoints.Append(Usable.GetData(), Count);
+	// Back into board order: the draw picked which, not in what order they are dealt.
+	ActiveSpawnPoints.Sort();
 }
 
 void UBDWaveSubsystem::HandlePhaseChanged(const EBDMatchPhase NewPhase)
@@ -263,20 +320,43 @@ void UBDWaveSubsystem::SpawnNextOfWave()
 		return;
 	}
 
-	// Round robin over the points; a point with no route is skipped, not retried forever.
-	for (int32 Attempt = 0; Attempt < PointCount; ++Attempt)
+	const auto Accept = [this](const int32 Index)
 	{
-		const int32 Index = WaveSpawnCursor % PointCount;
-		++WaveSpawnCursor;
-		if (SpawnEnemy(WaveEnemyData, Index) != nullptr)
+		if (SpawnEnemy(WaveEnemyData, Index) == nullptr)
 		{
-			--WaveSpawnsRemaining;
-			++WaveSpawnedTotal;
-			WavePeakAlive = FMath::Max(WavePeakAlive, LivingEnemies.Num());
-			if (LivingEnemies.Num() > 0 && LivingEnemies.Last() != nullptr)
-			{
-				WaveTotalHealth += LivingEnemies.Last()->GetMaxHealth();
-			}
+			return false;
+		}
+
+		--WaveSpawnsRemaining;
+		++WaveSpawnedTotal;
+		WavePeakAlive = FMath::Max(WavePeakAlive, LivingEnemies.Num());
+		if (LivingEnemies.Num() > 0 && LivingEnemies.Last() != nullptr)
+		{
+			WaveTotalHealth += LivingEnemies.Last()->GetMaxHealth();
+		}
+		return true;
+	};
+
+	// Round robin over the mouths this wave drew open; one that refuses is skipped, not
+	// retried forever.
+	for (int32 Attempt = 0; Attempt < ActiveSpawnPoints.Num(); ++Attempt)
+	{
+		const int32 Index = ActiveSpawnPoints[WaveSpawnCursor % ActiveSpawnPoints.Num()];
+		++WaveSpawnCursor;
+		if (Accept(Index))
+		{
+			return;
+		}
+	}
+
+	// Every mouth the wave drew has been closed since it opened: the player fenced them
+	// off mid wave. What is left comes out of whatever mouth still works rather than
+	// being dropped.
+	for (int32 Index = 0; Index < PointCount; ++Index)
+	{
+		if (Accept(Index))
+		{
+			UE_LOG(LogBDWave, Warning, TEXT("Every mouth drawn for this wave is blocked; creep sent out of spawn point %d instead."), Index);
 			return;
 		}
 	}
@@ -494,7 +574,7 @@ bool UBDWaveSubsystem::GetObjectiveLocation(FVector& OutLocation)
 	return true;
 }
 
-bool UBDWaveSubsystem::FindRouteToGoal(const FBDCellCoord& From, TArray<FBDCellCoord>& OutRoute) const
+bool UBDWaveSubsystem::FindRouteToGoal(const FBDCellCoord& From, TArray<FBDCellCoord>& OutRoute, const FBDRouteCost* Cost) const
 {
 	OutRoute.Reset();
 
@@ -507,16 +587,69 @@ bool UBDWaveSubsystem::FindRouteToGoal(const FBDCellCoord& From, TArray<FBDCellC
 
 	// The urn is a few cells wide. A search per goal cell is a handful of searches of a
 	// few dozen microseconds, and it lets each spawn end at the near side of the urn.
+	// Over a cost map the goal cells are compared by what they cost, not by how many
+	// cells away they are: that is the whole question the map is asking.
+	const auto CostOf = [Grid, Cost](const TArray<FBDCellCoord>& Route) -> float
+	{
+		if (Cost == nullptr || Cost->IsUniform())
+		{
+			return static_cast<float>(Route.Num());
+		}
+
+		float Total = 0.0f;
+		for (int32 Step = 1; Step < Route.Num(); ++Step)
+		{
+			Total += Cost->MultiplierAt(Route[Step].Y * Grid->GetSizeX() + Route[Step].X);
+		}
+		return Total;
+	};
+
 	TArray<FBDCellCoord> Candidate;
+	float BestCost = 0.0f;
 	for (const FBDCellCoord& Goal : GoalCells)
 	{
-		if (Pathfinder->FindPath(Grid, From, Goal, Candidate) && (OutRoute.Num() == 0 || Candidate.Num() < OutRoute.Num()))
+		if (!Pathfinder->FindPath(Grid, From, Goal, Candidate, Cost))
+		{
+			continue;
+		}
+
+		const float CandidateCost = CostOf(Candidate);
+		if (OutRoute.Num() == 0 || CandidateCost < BestCost)
 		{
 			OutRoute = Candidate;
+			BestCost = CandidateCost;
 		}
 	}
 
 	return OutRoute.Num() > 0;
+}
+
+FBDRouteCost UBDWaveSubsystem::DrawRouteCost(const int32 SpawnPointIndex)
+{
+	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
+
+	FBDRouteCost Cost;
+	Cost.Variance = FMath::Max(1.0f, Settings.RouteCostVariance);
+	if (Cost.IsUniform())
+	{
+		return Cost;
+	}
+
+	// Same ingredients as the draw of the open mouths, so a seed reproduces the whole
+	// wave: which mouths, and which way out of each. Per creep, the running count is what
+	// tells two creeps of the same mouth apart; per mouth and wave, it is left out and
+	// every creep of the mouth lands on the same map.
+	const ABDMatchManager* Match = GetMatch();
+	uint32 Hash = HashCombine(::GetTypeHash(Match != nullptr ? Match->ObstacleSeed : 0), ::GetTypeHash(WaveNumber));
+	Hash = HashCombine(Hash, ::GetTypeHash(SpawnPointIndex));
+	if (Settings.RouteVarianceMode == EBDRouteVarianceMode::PerCreep)
+	{
+		Hash = HashCombine(Hash, ::GetTypeHash(RouteCostDraws));
+	}
+	++RouteCostDraws;
+
+	Cost.Seed = static_cast<int32>(Hash);
+	return Cost;
 }
 
 void UBDWaveSubsystem::RerouteLivingEnemies()
@@ -535,7 +668,7 @@ void UBDWaveSubsystem::RerouteLivingEnemies()
 		// From the cell it is heading to: the crossing under way is finished first, so
 		// the creep never reverses in the middle of an edge.
 		const FBDCellCoord Heading = Enemy->GetHeadingCell();
-		if (FindRouteToGoal(Heading, Route))
+		if (FindRouteToGoal(Heading, Route, &Enemy->RouteCost))
 		{
 			const int32 CellsLeftBefore = Enemy->GetPath().Num() - Enemy->GetCurrentPathIndex();
 			Enemy->SetPath(Route);
@@ -608,18 +741,41 @@ ABDEnemyBase* UBDWaveSubsystem::SpawnEnemy(const UBDEnemyData* Data, const int32
 		return nullptr;
 	}
 
-	// The route goes in before the creep ticks once: SpawnActor returns before the first tick.
+	// The route goes in before the creep ticks once: SpawnActor returns before the first
+	// tick. It is the creep's own, searched over its cost map; the mouth's shortest route
+	// is the fallback, which the same graph should never need.
 	Enemy->SpawnPointIndex = SpawnPointIndex;
+	Enemy->RouteCost = DrawRouteCost(SpawnPointIndex);
+
+	TArray<FBDCellCoord> OwnRoute;
+	if (Enemy->RouteCost.IsUniform() || !FindRouteToGoal(Point.ExitCell, OwnRoute, &Enemy->RouteCost))
+	{
+		OwnRoute = Point.Route;
+	}
+
 	const ABDMatchManager* Match = GetMatch();
-	Enemy->InitializeEnemy(Data, Point.Route, Match != nullptr ? Match->GetHealthScale() : 1.0f);
+	Enemy->InitializeEnemy(Data, OwnRoute, Match != nullptr ? Match->GetHealthScale() : 1.0f);
 	LivingEnemies.Add(Enemy);
 
+	// The spread of the wave is how many different routes it was dealt; the wave summary
+	// reports it, and the route itself is there for whoever wants to see where they split.
+	uint32 RouteHash = 0;
+	FString RouteText;
+	for (const FBDCellCoord& Cell : OwnRoute)
+	{
+		RouteHash = HashCombine(RouteHash, ::GetTypeHash(Cell.Y * 4096 + Cell.X));
+		RouteText += Cell.ToString() + TEXT(" ");
+	}
+	WaveRouteHashes.Add(RouteHash);
+	UE_LOG(LogBDWave, VeryVerbose, TEXT("%s route (seed %d, variance %.2f): %s"),
+		*Enemy->GetName(), Enemy->RouteCost.Seed, Enemy->RouteCost.Variance, *RouteText);
+
 	// Under the spawn loop this is the line that would flood the log; the loop summarizes instead.
-	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s (%s) out of spawn point %d at %s, %d cells to the urn. %d creep(s) on the board."),
+	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s (%s) out of spawn point %d at %s, %d cells to the urn (shortest %d). %d creep(s) on the board."),
 		*Enemy->GetName(), *Data->GetName(), SpawnPointIndex, *Point.ExitCell.ToString(),
-		Point.Route.Num(), LivingEnemies.Num());
-	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s (%s) out of spawn point %d, %d cells to the urn."),
-		*Enemy->GetName(), *Data->GetName(), SpawnPointIndex, Point.Route.Num());
+		OwnRoute.Num(), Point.Route.Num(), LivingEnemies.Num());
+	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s (%s) out of spawn point %d, %d cells to the urn (shortest %d)."),
+		*Enemy->GetName(), *Data->GetName(), SpawnPointIndex, OwnRoute.Num(), Point.Route.Num());
 
 	return Enemy;
 }
@@ -765,8 +921,8 @@ void UBDWaveSubsystem::ForgetEnemy(ABDEnemyBase* Enemy)
 	{
 		// The peak is the number to watch: a wave whose creeps pile up faster than they die
 		// is the wave the balance got wrong, whatever the kill count says.
-		UE_LOG(LogBDWave, Log, TEXT("Wave %d done: %d sent, peak %d alive at once, %d killed, %d reached the urn | %d shot(s), %.0f of %.0f health dealt, %.0f wasted (%d lost on dead creeps)."),
-			WaveNumber, WaveSpawnedTotal, WavePeakAlive, WaveKilled, WaveArrived,
+		UE_LOG(LogBDWave, Log, TEXT("Wave %d done: %d sent over %d distinct route(s), peak %d alive at once, %d killed, %d reached the urn | %d shot(s), %.0f of %.0f health dealt, %.0f wasted (%d lost on dead creeps)."),
+			WaveNumber, WaveSpawnedTotal, WaveRouteHashes.Num(), WavePeakAlive, WaveKilled, WaveArrived,
 			WaveShotsFired, WaveDamageDealt, WaveTotalHealth, WaveWastedDamage, WaveLostShots);
 		Match->OnWaveCleared();
 	}
@@ -787,10 +943,39 @@ void UBDWaveSubsystem::DrawRoutes() const
 	const UBDGridSettings& GridSettings = UBDGridSettings::Get();
 	const FVector HeightOffset(0.0f, 0.0f, Settings.RouteDrawHeightOffset);
 
-	for (int32 Index = 0; Index < SpawnPoints.Num(); ++Index)
+	const auto DrawRoute = [World, Grid, &HeightOffset](const TArray<FBDCellCoord>& Route, const int32 FromStep,
+		const FColor& Color, const float Thickness, const float Height)
 	{
-		const FBDSpawnPoint& Point = SpawnPoints[Index];
+		const FVector Offset = HeightOffset + FVector(0.0f, 0.0f, Height);
+		for (int32 Step = FMath::Max(0, FromStep); Step < Route.Num() - 1; ++Step)
+		{
+			DrawDebugLine(World,
+				Grid->CellToWorld(Route[Step]) + Offset,
+				Grid->CellToWorld(Route[Step + 1]) + Offset,
+				Color, BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime,
+				BDGridDebug::DepthPriority, Thickness);
+		}
+	};
 
+	// The mouths of the current wave, or every mouth while no wave has drawn yet: before
+	// the first wave the question is whether the board routes at all.
+	TArray<int32> Mouths = ActiveSpawnPoints;
+	if (Mouths.Num() == 0)
+	{
+		for (int32 Index = 0; Index < SpawnPoints.Num(); ++Index)
+		{
+			Mouths.Add(Index);
+		}
+	}
+
+	for (const int32 Index : Mouths)
+	{
+		if (!SpawnPoints.IsValidIndex(Index))
+		{
+			continue;
+		}
+
+		const FBDSpawnPoint& Point = SpawnPoints[Index];
 		if (Point.Route.Num() == 0)
 		{
 			DrawDebugSphere(World, Grid->CellToWorld(Point.ExitCell) + HeightOffset,
@@ -799,14 +984,21 @@ void UBDWaveSubsystem::DrawRoutes() const
 			continue;
 		}
 
-		const FColor Color = Settings.GetRouteColor(Index);
-		for (int32 Step = 0; Step < Point.Route.Num() - 1; ++Step)
+		DrawRoute(Point.Route, 0, Settings.GetRouteColor(Index), Settings.RouteLineThickness, 0.0f);
+	}
+
+	// What is left of every living creep's own route, thick, a little under the shortest
+	// line so that one stays visible on top. Where the horde spread, the thick lines fan
+	// out of the thin one; where every creep drew the same map, they pile into one.
+	const float CreepHeight = -Settings.RouteDrawHeightOffset * 0.25f;
+	for (const ABDEnemyBase* Enemy : LivingEnemies)
+	{
+		if (Enemy == nullptr || Enemy->HasArrived())
 		{
-			DrawDebugLine(World,
-				Grid->CellToWorld(Point.Route[Step]) + HeightOffset,
-				Grid->CellToWorld(Point.Route[Step + 1]) + HeightOffset,
-				Color, BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime,
-				BDGridDebug::DepthPriority, Settings.RouteLineThickness);
+			continue;
 		}
+
+		DrawRoute(Enemy->GetPath(), Enemy->GetCurrentPathIndex() - 1,
+			Settings.GetRouteColor(Enemy->SpawnPointIndex), Settings.CreepRouteLineThickness, CreepHeight);
 	}
 }

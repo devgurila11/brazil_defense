@@ -23,7 +23,11 @@ struct FRandomStream;
  * BD.Debug.AutoSetup.Seed.
  *
  * Spread matters more than cleverness: the routes are cut into stretches and each piece
- * goes to its own stretch, because a defense heaped around the urn tests nothing.
+ * goes to its own stretch, because a defense heaped around the urn tests nothing. On top
+ * of that the board is split into regions and the pieces are dealt round robin over them,
+ * the platform slots are filled a slot at a time across every platform rather than one
+ * platform at a time, and any route left without a defender in range gets the next one:
+ * the setup does not have to be optimal, it has to look like somebody thought about it.
  *
  * The same setup runs in headless test sessions, so numbers reported from them come
  * from the board the tester sees on screen.
@@ -65,6 +69,21 @@ private:
 	int32 FillSlots(UBDPlacementComponent& Placement, FRandomStream& Stream);
 	int32 PlaceTowers(UBDPlacementComponent& Placement, FRandomStream& Stream);
 	int32 PlaceFences(UBDPlacementComponent& Placement, FRandomStream& Stream);
+
+	/**
+	 * Puts whatever ground budget is left on the routes no defender covers. The spread
+	 * passes deal by region and by route, but a piece that found no legal cell leaves its
+	 * route open, and an open route is a free lane for the whole match.
+	 */
+	int32 CoverUncoveredRoutes(UBDPlacementComponent& Placement, FRandomStream& Stream);
+
+	/**
+	 * Logs how the finished defense is actually spread: defenders per region of the
+	 * board, slots filled per platform, and how many routes have a defender in range.
+	 * Counting the pieces says nothing about where they went, and where they went is the
+	 * whole point of this setup - this is the line a headless session is read from.
+	 */
+	void LogDistribution() const;
 
 	/**
 	 * Spots to try for the next batch of cell pieces: one per piece, each on its own

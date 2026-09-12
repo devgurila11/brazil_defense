@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Grid/BDGridTypes.h"
 #include "Match/BDMatchTypes.h"
+#include "Path/BDRouteCost.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "BDWaveSubsystem.generated.h"
 
@@ -51,6 +52,12 @@ struct FBDSpawnPoint
  * the top and from the bottom of the board enter the urn from their own side and still
  * converge on the same point.
  *
+ * The route kept on a spawn point is the uniform cost one: the shortest, what the debug
+ * draws thin and what tells whether the mouth is open at all. The route a creep is
+ * handed is searched again over a cost map of its own, drawn from the seed of the match
+ * (see FBDRouteCost and UBDWaveSettings::RouteVarianceMode), so one wave spreads over
+ * the corridors that are nearly as short instead of filing down one line.
+ *
  * This is the seam ABDMatchManager was waiting for: a wave going out spawns its creeps
  * here, one every balance interval round robin over the spawn points, as many as the
  * balance says for that wave and as tough as the wave's health scale; arrivals and
@@ -88,6 +95,12 @@ public:
 
 	/** Forces the spawn points and routes to be read again from the grid. */
 	void RefreshRoutes();
+
+	/**
+	 * Indices into the spawn points of the mouths the current wave came out of. Empty
+	 * before the first wave. Kept after the wave clears until the next one draws.
+	 */
+	const TArray<int32>& GetActiveSpawnPoints() const { return ActiveSpawnPoints; }
 
 	/**
 	 * Where the creeps converge once their route is walked: the ABDObjective actor of the
@@ -166,8 +179,19 @@ private:
 	/** Reads the runs of Spawn cells off the grid and pathfinds each to the closest Goal cell. */
 	void BuildSpawnPoints();
 
-	/** Shortest route from a cell to any Goal cell. @return false when no Goal is reachable. */
-	bool FindRouteToGoal(const FBDCellCoord& From, TArray<FBDCellCoord>& OutRoute) const;
+	/**
+	 * Route from a cell to any Goal cell: the shortest, or the cheapest over a cost map.
+	 * @param Cost the creep's own map, or null for the uniform cost the spawn points keep.
+	 * @return false when no Goal is reachable.
+	 */
+	bool FindRouteToGoal(const FBDCellCoord& From, TArray<FBDCellCoord>& OutRoute, const FBDRouteCost* Cost = nullptr) const;
+
+	/**
+	 * The cost map of the next creep out of a mouth, per the variance mode of the wave
+	 * settings. Seeded off the match, the wave and the mouth, plus a running count of
+	 * the creeps sent when every creep draws its own: one seed reproduces the spread.
+	 */
+	FBDRouteCost DrawRouteCost(int32 SpawnPointIndex);
 
 	/** Hands every creep still walking a fresh route from the cell it is heading to. */
 	void RerouteLivingEnemies();
@@ -182,8 +206,14 @@ private:
 	void HandleWaveStarted(int32 Wave);
 	void HandlePhaseChanged(EBDMatchPhase NewPhase);
 
-	/** Sends the next creep of the wave out of the next spawn point in turn. */
+	/** Sends the next creep of the wave out of the next open mouth in turn. */
 	void SpawnNextOfWave();
+
+	/**
+	 * Draws which mouths this wave comes out of, from the seed of the match and the wave
+	 * number, among those that have a route. Leaves the list empty when none has one.
+	 */
+	void DrawActiveSpawnPoints(int32 Wave);
 
 	/** Grid change handlers: the spawn point routes go stale and every creep out is rerouted. */
 	void MarkBoardChanged();
@@ -212,6 +242,16 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ABDEnemyBase>> LivingEnemies;
 
+	/**
+	 * Indices into SpawnPoints of the mouths the current wave comes out of, drawn when it
+	 * opens. The creeps are dealt round robin over these, and their number does not
+	 * depend on how many were drawn.
+	 */
+	TArray<int32> ActiveSpawnPoints;
+
+	/** How many creeps have drawn a route cost map since the world began. Part of the per creep seed. */
+	int32 RouteCostDraws = 0;
+
 	/** The wave being sent out. */
 	int32 WaveSpawnsRemaining = 0;
 	int32 WaveSpawnCursor = 0;
@@ -229,6 +269,9 @@ private:
 	int32 WaveShotsFired = 0;
 	float WaveDamageDealt = 0.0f;
 	float WaveTotalHealth = 0.0f;
+
+	/** Hash of every distinct route handed out this wave. How many there are is the measure of the spread. */
+	TSet<uint32> WaveRouteHashes;
 
 	UPROPERTY(Transient)
 	TObjectPtr<const UBDEnemyData> WaveEnemyData;

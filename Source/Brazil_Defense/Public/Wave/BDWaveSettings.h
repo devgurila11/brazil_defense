@@ -10,6 +10,17 @@
 
 class UBDEnemyData;
 
+/** Who draws a route cost map: see UBDWaveSettings::RouteVarianceMode. */
+UENUM(BlueprintType)
+enum class EBDRouteVarianceMode : uint8
+{
+	/** Every creep draws its own map. The creeps of one mouth split over the corridors of the same wave. */
+	PerCreep UMETA(DisplayName = "Per Creep"),
+
+	/** One map per mouth per wave. The creeps of a mouth walk together; the next wave takes another way. */
+	PerSpawnPointPerWave UMETA(DisplayName = "Per Spawn Point Per Wave")
+};
+
 /**
  * Everything about the creeps that is not the creep itself, kept out of the code so it
  * can be tuned without a recompile. Edited in Project Settings > Game > Brazil Defense - Waves.
@@ -64,6 +75,89 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Movement", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float TurnRate = 540.0f;
 
+	//~ Organic movement -----------------------------------------------------
+	// A route is a line of cell centers, and a horde walking it exactly is a queue
+	// turning ninety degrees on the spot. These three take it apart: the corners are cut
+	// where there is room, and every creep draws a lane and a pace of its own at spawn.
+	// All three are fractions of a cell, so they hold whatever the grid is scaled to.
+
+	/**
+	 * How far before a corner a creep starts turning, as a fraction of a cell. 0 keeps
+	 * the square turns.
+	 *
+	 * Only corners in open ground are cut: a turn forced by a fence, a platform or
+	 * scenery in the cells around it is walked into and taken square, flush with the
+	 * barrier. Half a cell is the hard ceiling whatever is set here, so the curve can
+	 * never leave the cell the route turns on.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Movement|Organic", meta = (ClampMin = "0.0", ClampMax = "0.5", UIMin = "0.0", UIMax = "0.5"))
+	float CornerSmoothRadius = 0.35f;
+
+	/**
+	 * Widest lane a creep may take beside the middle of its route, as a fraction of a
+	 * cell, drawn per creep and kept for the whole trip. 0.4 spreads a horde over most of
+	 * a corridor; 0 puts every creep back on the same line.
+	 *
+	 * Cut back on the sides where a barrier stands, down to whatever room is left for the
+	 * body of the creep: a one cell corridor files the horde into a line, which is the
+	 * point. Where the horde spreads there is space, where it queues the player closed
+	 * something.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Movement|Organic", meta = (ClampMin = "0.0", ClampMax = "0.45", UIMin = "0.0", UIMax = "0.45"))
+	float LateralOffsetMax = 0.4f;
+
+	/**
+	 * How much of its lane a creep drifts across on the way, as a fraction of
+	 * LateralOffsetMax. 0 holds the lane it drew and the horde walks parallel lines, like
+	 * ants; 0.6 has each one wandering across most of the corridor on its own wavelength
+	 * and its own phase, so the file keeps rearranging itself instead of holding formation.
+	 *
+	 * The drift is bounded by LateralOffsetMax and by the same barrier check as the lane
+	 * itself, so wandering can never walk a creep into a fence.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Movement|Organic", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float LaneWander = 0.6f;
+
+	/**
+	 * How much creeps differ in how tightly they take a corner, as a fraction of
+	 * CornerSmoothRadius. 0.4 has some hugging the inside and others swinging wide; 0 cuts
+	 * every corner identically, which reads as one creep repeated.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Movement|Organic", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float CornerRadiusVariance = 0.4f;
+
+	/**
+	 * Spread of the creep speeds around the one on the data asset, as a fraction of it.
+	 * 0.1 is plus or minus ten percent. It works twice: once as the pace a creep draws at
+	 * spawn, and again, at half the amplitude, as a slow breath around that pace, so a
+	 * queue keeps opening and closing gaps instead of holding its spacing forever.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Movement|Organic", meta = (ClampMin = "0.0", ClampMax = "0.5", UIMin = "0.0", UIMax = "0.5"))
+	float SpeedVariance = 0.1f;
+
+	//~ Route variance ---------------------------------------------------------
+	// The A* answers the shortest path, and the shortest path is the same for every creep
+	// until the maze changes: the whole horde on one line, wave after wave, and a player
+	// who got it right once never has to touch the board again. So the route is per creep,
+	// searched over a cost map of its own where every walkable cell weighs between 1 and
+	// RouteCostVariance. Corridors nearly as short as the shortest split the horde; a
+	// corridor the player closed is closed in every map. See FBDRouteCost.
+	//
+	// The blocking validation keeps the uniform cost: it asks whether a path exists, not
+	// which, and a seeded answer would accept a fence in one match and refuse it in another.
+
+	/**
+	 * Highest cost a cell may draw, as a multiple of the uniform step. 1 puts every creep
+	 * back on the shortest path; 1.3 lets a corridor up to thirty percent longer win some
+	 * of the creeps. Drawn from the seed of the match, so a seed reproduces the spread.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Movement|Route Variance", meta = (ClampMin = "1.0", UIMin = "1.0", UIMax = "3.0"))
+	float RouteCostVariance = 1.3f;
+
+	/** Whether every creep draws a map of its own or the creeps of a mouth share one per wave. */
+	UPROPERTY(config, EditAnywhere, Category = "Movement|Route Variance")
+	EBDRouteVarianceMode RouteVarianceMode = EBDRouteVarianceMode::PerCreep;
+
 	//~ Debug routes ---------------------------------------------------------
 
 	/** Colors of the routes drawn by BD.Path.ShowRoutes, one per spawn point, cycling when there are more points than colors. */
@@ -72,8 +166,13 @@ public:
 		FColor(255, 80, 80, 255), FColor(80, 255, 80, 255), FColor(80, 160, 255, 255),
 		FColor(255, 220, 60, 255), FColor(255, 100, 255, 255), FColor(80, 255, 255, 255) };
 
+	/** Thickness of the uniform cost route of a mouth, the thin line under the creeps' own. */
 	UPROPERTY(config, EditAnywhere, Category = "Debug|Routes", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float RouteLineThickness = 6.0f;
+
+	/** Thickness of the route each living creep is actually walking, drawn over the uniform one in the color of its mouth. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug|Routes", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float CreepRouteLineThickness = 14.0f;
 
 	/** Height the routes are drawn at, above the grid plane. */
 	UPROPERTY(config, EditAnywhere, Category = "Debug|Routes", meta = (ForceUnits = "cm"))

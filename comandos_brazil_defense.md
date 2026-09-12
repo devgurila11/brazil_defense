@@ -55,7 +55,19 @@ Linhas do grid e cores por estado. Use `2` para ver os índices também.
 ```
 BD.Path.ShowRoutes 1
 ```
-Desenha as seis rotas coloridas. Só funciona com a urna já posicionada.
+Desenha as rotas coloridas, uma cor por boca. Só funciona com a urna já
+posicionada. Antes da primeira onda, todas as bocas; a partir dela, só
+as bocas da onda atual: a rota mais curta fina e, por cima, mais grossa,
+o que falta da rota que cada creep vivo está andando de verdade (rota
+por creep, `RouteCostVariance` em Project Settings > Brazil Defense -
+Waves; 1.0 põe todos na mesma linha).
+
+```
+BD.HUD.Debug 1
+```
+Placar de teste no canto superior esquerdo: votos azul/vermelho, onda e
+contagem, bocas da onda e creeps vivos. Os mesmos números de
+`BD.Votes.Status` e `BD.Wave.Status`. O autossetup liga sozinho.
 
 ---
 
@@ -210,6 +222,7 @@ Varre o ciclo dia/noite. 0 = amanhecer, 0.5 = meio, 0.75 = noite.
 ```
 BD.Grid.Debug 0
 BD.Path.ShowRoutes 0
+BD.HUD.Debug 0
 ```
 Desliga o debug.
 

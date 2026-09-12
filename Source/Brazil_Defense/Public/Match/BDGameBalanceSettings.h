@@ -114,6 +114,23 @@ public:
 	/** How many creeps each spawn point sends on a wave. The total is that times the number of points. */
 	int32 GetCreepsPerSpawnPoint(int32 Wave) const;
 
+	//~ Active spawn points ----------------------------------------------------
+	// Which mouths open is drawn per wave, from the seed of the match. Every mouth every
+	// wave tells the player where the horde comes from before it comes; one wave out of
+	// a single mouth and the next out of five is the same horde arriving somewhere else.
+	//
+	// The size of a wave does not follow the draw: the total is the growing number it
+	// always was, split over the mouths that opened. Fewer mouths is a thicker stream,
+	// never a smaller wave.
+
+	/** Fewest mouths a wave may come out of. Clamped to the mouths that have a route. */
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "1", UIMin = "1"))
+	int32 MinActiveSpawnPoints = 1;
+
+	/** Most mouths a wave may come out of. 0 means every mouth of the board. */
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "0", UIMin = "0"))
+	int32 MaxActiveSpawnPoints = 0;
+
 	//~ Upgrades ---------------------------------------------------------------
 	// Cost of level N = UpgradeCostBase x UpgradeCostGrowth ^ (N - 1); damage at level N =
 	// Damage x (1 + DamageGrowthPerLevel x (N - 1)). Calibrated so a level 5 defender costs

@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 #include "Grid/BDGridTypes.h"
+#include "Path/BDRouteCost.h"
 #include "BDEnemyBase.generated.h"
 
 class UBDEnemyData;
@@ -26,6 +27,14 @@ class UStaticMeshComponent;
  *
  * Speeds live on the data asset in cells per second and are turned into centimetres
  * here, with the cell size of the grid it walks on.
+ *
+ * The route is the same for every creep of a spawn point; the line walked over it is
+ * not. Each creep draws a lateral offset and a speed of its own at spawn and keeps
+ * them, so a wave fills the width of the corridor instead of queueing on one line, and
+ * the corners are cut with a short curve wherever the grid around them is open. Both
+ * are cosmetic in the sense that the cells walked never change - but they are what
+ * makes the maze readable: where the horde spreads there is room, where it files into a
+ * line the player closed something.
  */
 UCLASS(Blueprintable, meta = (DisplayName = "BD Enemy Base"))
 class BRAZIL_DEFENSE_API ABDEnemyBase : public APawn
@@ -98,8 +107,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	const TArray<FBDCellCoord>& GetPath() const { return Path; }
 
+	/**
+	 * Cell of the route the creep is walking towards. Several waypoints may share it: a
+	 * cut corner is a handful of points inside one cell.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
-	int32 GetCurrentPathIndex() const { return CurrentPathIndex; }
+	int32 GetCurrentPathIndex() const;
 
 	/**
 	 * The cell the creep is walking towards, or the cell it stands on once the route is
@@ -110,11 +123,11 @@ public:
 
 	/** Whether the route has been walked to its end: the last cell and the objective beyond it. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
-	bool HasArrived() const { return Waypoints.Num() > 0 && CurrentPathIndex >= Waypoints.Num(); }
+	bool HasArrived() const { return Waypoints.Num() > 0 && CurrentWaypoint >= Waypoints.Num(); }
 
 	/** Whether every cell of the route is behind the creep and it is walking to the objective actor. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
-	bool IsOnFinalLeg() const { return Path.Num() > 0 && CurrentPathIndex >= Path.Num() && !HasArrived(); }
+	bool IsOnFinalLeg() const { return Path.Num() > 0 && GetCurrentPathIndex() >= Path.Num() && !HasArrived(); }
 
 	/** Current speed along the route, in centimetres per second. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
@@ -125,6 +138,13 @@ public:
 
 	/** Index of the spawn point this creep came out of, set by the wave subsystem. Debug and logging only. */
 	int32 SpawnPointIndex = INDEX_NONE;
+
+	/**
+	 * The cost map this creep's route was searched over, set by the wave subsystem at
+	 * spawn and kept: a reroute after the board changed is searched over the same map, so
+	 * the creep keeps its own preferences rather than snapping onto the shortest line.
+	 */
+	FBDRouteCost RouteCost;
 
 protected:
 	/**
@@ -143,8 +163,44 @@ private:
 	/** World location of the floor under a cell center. Traces once; the result is cached per route. */
 	FVector ResolveWaypoint(const FBDCellCoord& Coord) const;
 
-	/** Rebuilds the cached world positions of the route from Path, plus the objective as the final one. */
+	/**
+	 * Rebuilds the cached world positions of the route from Path, plus the objective as
+	 * the final one. This is where the creep's own line is drawn: the cell centers are
+	 * pushed sideways by its lateral offset and the corners that may be cut are replaced
+	 * by a short curve.
+	 */
 	void RebuildWaypoints();
+
+	/**
+	 * The lane the creep is on at a cell of the route, as a signed fraction of a cell: the
+	 * lane it leans to plus where its wander has got to. Bounded by LateralOffsetMax.
+	 */
+	float LaneFractionAt(int32 Index) const;
+
+	/**
+	 * How far sideways the waypoint of a cell is pushed, mitred so both legs of a turn
+	 * keep the same distance from the middle of the route.
+	 * @param Centers world position of every cell of the route, floor resolved.
+	 */
+	FVector ComputeLateralOffset(int32 Index, const TArray<FVector>& Centers, float CellSize) const;
+
+	/**
+	 * Radius of the curve cutting the corner at a waypoint, 0 when it is not cut: a
+	 * straight run, an end of the route, or a turn the board does not leave room for.
+	 *
+	 * Whether there is a corner at all is read off Centers, the route itself, never off
+	 * Line: a creep drifting across its lane bends its own line every cell, and that is
+	 * not the route turning. The radius is then capped against the legs of Line, which is
+	 * what the creep actually walks.
+	 */
+	float ComputeCornerRadius(int32 Index, const TArray<FVector>& Centers, const TArray<FVector>& Line, float CellSize) const;
+
+	/**
+	 * Whether the turn at a cell of the route happens in open ground. A turn forced by a
+	 * fence, a platform or scenery is walked into and taken on the spot, flush with the
+	 * barrier; only a turn with free cells and free edges all around is cut.
+	 */
+	bool IsCornerOpen(int32 Index) const;
 
 	/** Sets the mesh from the data and rests it on the root, whatever its pivot. */
 	void ApplyMesh();
@@ -160,14 +216,46 @@ private:
 	TArray<FBDCellCoord> Path;
 
 	/**
-	 * World location of each cell of Path, resolved to the floor once so ticking never
-	 * traces, followed by the objective location. One longer than Path.
+	 * The line this creep actually walks: the cell centers of Path resolved to the floor
+	 * once so ticking never traces, pushed aside by its lateral offset, with a curve in
+	 * place of every corner that may be cut, and the objective as the last point. Longer
+	 * than Path whenever a corner was cut.
 	 */
 	TArray<FVector> Waypoints;
 
+	/** Cell of Path each waypoint belongs to, Path.Num() for the objective. Same length as Waypoints. */
+	TArray<int32> WaypointPathIndex;
+
 	/** Waypoint the creep is currently walking towards. Waypoints.Num() once it arrived. */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
-	int32 CurrentPathIndex = 0;
+	int32 CurrentWaypoint = 0;
+
+	/** The lane this creep leans to, as a signed fraction of a cell. What it wanders around. */
+	float LateralOffsetFrac = 0.0f;
+
+	/** How far it wanders off that lane, in cell fractions, and over how many cells one full swing takes. */
+	float LaneWanderFrac = 0.0f;
+	float LaneWanderCells = 0.0f;
+
+	/** Where in its swing the creep starts, so two creeps side by side never drift together. */
+	float LaneWanderPhase = 0.0f;
+
+	/** Multiplier on the corner radius, drawn at spawn: some hug the inside of a turn, some swing wide. */
+	float CornerRadiusScale = 1.0f;
+
+	/** Multiplier on the data MoveSpeed, drawn at spawn. Around 1. */
+	float SpeedScale = 1.0f;
+
+	/** The slow breath around that pace: how deep, how long one cycle takes, and where it starts. */
+	float SpeedBreathFrac = 0.0f;
+	float SpeedBreathPeriod = 0.0f;
+	float SpeedBreathPhase = 0.0f;
+
+	/** Seconds this creep has been walking, for the breath. Dilated like everything else. */
+	float Age = 0.0f;
+
+	/** Half the width of the mesh, so the offset never pushes the body into a fence. */
+	float BodyRadius = 0.0f;
 
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
 	float CurrentHealth = 0.0f;

@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "Grid/BDGridTypes.h"
+#include "Path/BDRouteCost.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "BDPathfinder.generated.h"
 
@@ -16,6 +17,9 @@ class UBDGridSubsystem;
  * Movement is four directional: a maze made of dividers has to actually close, and
  * diagonal steps would let creeps slip through the corner between two blocked cells.
  * Every step costs the same, so the Manhattan distance is an admissible heuristic.
+ * A search may be handed an FBDRouteCost, which raises the cost of stepping into a
+ * cell but never lowers it below the uniform step, so the heuristic stays admissible
+ * and the answer is the cheapest path over that map rather than the shortest one.
  *
  * A step is allowed when the destination cell is walkable, per
  * UBDGridSubsystem::IsWalkableState, and the edge between the two cells is not
@@ -46,9 +50,11 @@ public:
 	/**
 	 * Shortest path from Start to Goal over walkable cells.
 	 * @param OutPath filled from Start to Goal inclusive, empty when there is no path.
+	 * @param Cost per cell multipliers of this search, or null for the uniform cost. See FBDRouteCost.
 	 * @return false when either end is out of the grid, is not walkable, or is unreachable.
 	 */
-	bool FindPath(const UBDGridSubsystem* Grid, FBDCellCoord Start, FBDCellCoord Goal, TArray<FBDCellCoord>& OutPath) const;
+	bool FindPath(const UBDGridSubsystem* Grid, FBDCellCoord Start, FBDCellCoord Goal, TArray<FBDCellCoord>& OutPath,
+		const FBDRouteCost* Cost = nullptr) const;
 
 	/** Same search without rebuilding the path. Answers only whether one exists. */
 	bool HasAnyPath(const UBDGridSubsystem* Grid, FBDCellCoord Start, FBDCellCoord Goal) const;
@@ -108,9 +114,11 @@ private:
 	 * @param BlockedOverride cells to treat as blocked on top of their real state, or null.
 	 * @param BlockedEdgeOverride edges to treat as blocked on top of their real state, indexed like the grid's, or null.
 	 * @param OutPath when null the path is not reconstructed, which is what HasAnyPath wants.
+	 * @param Cost per cell multipliers, or null for the uniform step. The blocking checks always pass null.
 	 */
 	bool RunSearch(const UBDGridSubsystem& Grid, const FBDCellCoord& Start, const FBDCellCoord& Goal,
-		const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride, TArray<FBDCellCoord>* OutPath) const;
+		const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride, TArray<FBDCellCoord>* OutPath,
+		const FBDRouteCost* Cost = nullptr) const;
 
 	/**
 	 * Finds the spawns and the goal cells every blocking check validates against. The

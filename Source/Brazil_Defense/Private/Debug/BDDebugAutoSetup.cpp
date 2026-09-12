@@ -8,6 +8,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
 #include "Match/BDMatchManager.h"
 #include "Math/RandomStream.h"
@@ -51,7 +52,7 @@ namespace BDAutoSetupPrivate
 	/** Switches a balancing session wants on, flipped when the setup runs. */
 	static const TCHAR* const DebugSwitchesOn[] = {
 		TEXT("BD.Match.FreezeTimer"), TEXT("BD.Day.Freeze"), TEXT("BD.Grid.Debug"),
-		TEXT("BD.Tower.ShowRange"), TEXT("BD.Tower.ShowTarget") };
+		TEXT("BD.Tower.ShowRange"), TEXT("BD.Tower.ShowTarget"), TEXT("BD.HUD.Debug") };
 
 	/** How many fences the setup lays at most, budget allowing: enough to bend the routes, not to seal them. */
 	static constexpr int32 MaxFences = 10;
@@ -62,6 +63,21 @@ namespace BDAutoSetupPrivate
 
 	/** Fraction of a stretch a target may drift from its middle, so two seeds never line up the same. */
 	static constexpr float StretchJitter = 0.3f;
+
+	/**
+	 * Regions the board is cut into per axis, for the pieces to be dealt over. Two makes
+	 * quadrants: enough to stop a corner from taking everything, coarse enough that a
+	 * board whose routes all run down one side can still be filled.
+	 */
+	static constexpr int32 RegionsPerAxis = 2;
+
+	/** Which region of the board a cell falls in. */
+	static int32 RegionOf(const UBDGridSubsystem& Grid, const FBDCellCoord& Cell)
+	{
+		const int32 X = FMath::Clamp(Cell.X * RegionsPerAxis / FMath::Max(1, Grid.GetSizeX()), 0, RegionsPerAxis - 1);
+		const int32 Y = FMath::Clamp(Cell.Y * RegionsPerAxis / FMath::Max(1, Grid.GetSizeY()), 0, RegionsPerAxis - 1);
+		return Y * RegionsPerAxis + X;
+	}
 
 	static void Shuffle(TArray<FBDCellCoord>& Cells, FRandomStream& Stream)
 	{
@@ -247,6 +263,98 @@ void UBDDebugAutoSetup::Run(const int32 Seed, const int32 DefenderLevel)
 	UE_LOG(LogBDDebug, Log, TEXT("Auto setup done: urn %s, %d platform(s), %d character(s), %d tower(s), %d fence(s), all defenders at level %d. Budgets left: %d platforms, %d characters, %d towers, %d dividers."),
 		bUrn ? TEXT("placed") : TEXT("NOT placed"), Platforms, Characters, Towers, Fences, Level,
 		Match->GetPlatformsRemaining(), Match->GetCharactersRemaining(), Match->GetTowersRemaining(), Match->GetDividersRemaining());
+
+	LogDistribution();
+}
+
+void UBDDebugAutoSetup::LogDistribution() const
+{
+	const UWorld* World = GetWorld();
+	const UBDGridSubsystem* Grid = UBDGridSubsystem::Get(World);
+	if (World == nullptr || Grid == nullptr)
+	{
+		return;
+	}
+
+	// Every defender standing, wherever it stands: on a cell of the grid or in the slot
+	// of a platform. Both shoot, so both count as cover.
+	TArray<int32> PerRegion;
+	PerRegion.Init(0, BDAutoSetupPrivate::RegionsPerAxis * BDAutoSetupPrivate::RegionsPerAxis);
+
+	for (TActorIterator<ABDTowerBase> It(World); It; ++It)
+	{
+		FBDCellCoord Cell;
+		if (Grid->WorldToCell(It->GetActorLocation(), Cell))
+		{
+			++PerRegion[BDAutoSetupPrivate::RegionOf(*Grid, Cell)];
+		}
+	}
+
+	FString Regions;
+	for (const int32 Count : PerRegion)
+	{
+		Regions += Regions.IsEmpty() ? FString::FromInt(Count) : FString::Printf(TEXT(" %d"), Count);
+	}
+
+	FString Slots;
+	int32 SlotsFilled = 0;
+	int32 SlotsTotal = 0;
+	for (TObjectIterator<UBDPlatformComponent> It; It; ++It)
+	{
+		if (It->GetWorld() != World || !It->bInsideBattleArea || !IsValid(It->GetOwner()))
+		{
+			continue;
+		}
+
+		int32 Used = 0;
+		for (int32 Slot = 0; Slot < It->Slots.Num(); ++Slot)
+		{
+			Used += It->IsSlotFree(Slot) ? 0 : 1;
+		}
+
+		SlotsFilled += Used;
+		SlotsTotal += It->Slots.Num();
+		Slots += Slots.IsEmpty()
+			? FString::Printf(TEXT("%d/%d"), Used, It->Slots.Num())
+			: FString::Printf(TEXT(" %d/%d"), Used, It->Slots.Num());
+	}
+
+	int32 Routes = 0;
+	int32 Covered = 0;
+	if (UBDWaveSubsystem* Waves = FindWaves())
+	{
+		for (const FBDSpawnPoint& Point : Waves->GetSpawnPoints())
+		{
+			if (Point.Route.Num() == 0)
+			{
+				continue;
+			}
+			++Routes;
+
+			for (TActorIterator<ABDTowerBase> It(World); It; ++It)
+			{
+				const float RangeSquared = FMath::Square(It->GetEffectiveRange());
+				const FVector Guard = It->GetActorLocation();
+				bool bInRange = false;
+				for (const FBDCellCoord& Cell : Point.Route)
+				{
+					if (FVector::DistSquared2D(Guard, Grid->CellToWorld(Cell)) <= RangeSquared)
+					{
+						bInRange = true;
+						break;
+					}
+				}
+				if (bInRange)
+				{
+					++Covered;
+					break;
+				}
+			}
+		}
+	}
+
+	UE_LOG(LogBDDebug, Log, TEXT("Auto setup spread: defenders per region [%s]; platform slots %d/%d [%s]; %d of %d route(s) with a defender in range."),
+		*Regions, SlotsFilled, SlotsTotal, *Slots, Covered, Routes);
 }
 
 void UBDDebugAutoSetup::ClearAll()
@@ -350,6 +458,37 @@ void UBDDebugAutoSetup::BuildStretchTargets(const int32 Count, FRandomStream& St
 
 	// Interleaved by route already; a shuffle keeps two seeds from placing in the same order.
 	BDAutoSetupPrivate::Shuffle(OutTargets, Stream);
+
+	// Routes are not spread over the board evenly: several can run down the same side and
+	// leave the other half of the map without a target. Bucketed by region and dealt one
+	// per region in turn, every region gets a piece before any region gets a second one.
+	const UBDGridSubsystem* Grid = UBDGridSubsystem::Get(GetWorld());
+	if (Grid == nullptr)
+	{
+		return;
+	}
+
+	TArray<TArray<FBDCellCoord>> Regions;
+	Regions.SetNum(BDAutoSetupPrivate::RegionsPerAxis * BDAutoSetupPrivate::RegionsPerAxis);
+	for (const FBDCellCoord& Target : OutTargets)
+	{
+		Regions[BDAutoSetupPrivate::RegionOf(*Grid, Target)].Add(Target);
+	}
+
+	TArray<FBDCellCoord> Dealt;
+	Dealt.Reserve(OutTargets.Num());
+	for (int32 Round = 0; Dealt.Num() < OutTargets.Num(); ++Round)
+	{
+		for (const TArray<FBDCellCoord>& Region : Regions)
+		{
+			if (Region.IsValidIndex(Round))
+			{
+				Dealt.Add(Region[Round]);
+			}
+		}
+	}
+
+	OutTargets = MoveTemp(Dealt);
 }
 
 bool UBDDebugAutoSetup::TryPlaceCellPieceNear(UBDPlacementComponent& Placement, UBDPlaceableData* Piece,
@@ -460,16 +599,25 @@ int32 UBDDebugAutoSetup::FillSlots(UBDPlacementComponent& Placement, FRandomStre
 		return A.GetOwner()->GetName() < B.GetOwner()->GetName();
 	});
 
-	int32 Placed = 0;
-	for (UBDPlatformComponent* Platform : Platforms)
+	int32 MostSlots = 0;
+	for (const UBDPlatformComponent* Platform : Platforms)
 	{
-		for (int32 Slot = 0; Slot < Platform->Slots.Num(); ++Slot)
+		MostSlots = FMath::Max(MostSlots, Platform->Slots.Num());
+	}
+
+	// A slot at a time across every platform, not a platform at a time: twelve characters
+	// over six platforms is two on each, and a platform standing empty beside a full one
+	// is exactly the heap this setup exists to avoid.
+	int32 Placed = 0;
+	for (int32 Slot = 0; Slot < MostSlots; ++Slot)
+	{
+		for (UBDPlatformComponent* Platform : Platforms)
 		{
 			if (Match->GetBudgetRemaining(EBDPieceKind::Character) <= 0)
 			{
 				return Placed;
 			}
-			if (!Platform->IsSlotFree(Slot))
+			if (!Platform->Slots.IsValidIndex(Slot) || !Platform->IsSlotFree(Slot))
 			{
 				continue;
 			}
@@ -503,6 +651,63 @@ int32 UBDDebugAutoSetup::PlaceTowers(UBDPlacementComponent& Placement, FRandomSt
 		if (TryPlaceCellPieceNear(Placement, BDAutoSetupPrivate::Pick(TowerPieces, Stream), Target, Stream))
 		{
 			++Placed;
+		}
+	}
+
+	return Placed + CoverUncoveredRoutes(Placement, Stream);
+}
+
+int32 UBDDebugAutoSetup::CoverUncoveredRoutes(UBDPlacementComponent& Placement, FRandomStream& Stream)
+{
+	UBDWaveSubsystem* Waves = FindWaves();
+	const ABDMatchManager* Match = FindMatch();
+	const UBDGridSubsystem* Grid = UBDGridSubsystem::Get(GetWorld());
+	if (Waves == nullptr || Match == nullptr || Grid == nullptr || TowerPieces.Num() == 0)
+	{
+		return 0;
+	}
+
+	int32 Placed = 0;
+	for (const FBDSpawnPoint& Point : Waves->GetSpawnPoints())
+	{
+		if (Match->GetBudgetRemaining(EBDPieceKind::Tower) <= 0)
+		{
+			break;
+		}
+		if (Point.Route.Num() < 3)
+		{
+			continue;
+		}
+
+		// Every defender already standing, characters on their platforms included, with
+		// the range it actually covers. Read again per route: the last one placed counts.
+		bool bCovered = false;
+		for (TActorIterator<ABDTowerBase> It(GetWorld()); It && !bCovered; ++It)
+		{
+			const float RangeSquared = FMath::Square(It->GetEffectiveRange());
+			const FVector Guard = It->GetActorLocation();
+			for (const FBDCellCoord& Cell : Point.Route)
+			{
+				if (FVector::DistSquared2D(Guard, Grid->CellToWorld(Cell)) <= RangeSquared)
+				{
+					bCovered = true;
+					break;
+				}
+			}
+		}
+
+		if (bCovered)
+		{
+			continue;
+		}
+
+		// The middle of the route: the stretch the creeps spend the longest on, and far
+		// enough from both ends that a piece has somewhere to stand.
+		const FBDCellCoord& Target = Point.Route[Point.Route.Num() / 2];
+		if (TryPlaceCellPieceNear(Placement, BDAutoSetupPrivate::Pick(TowerPieces, Stream), Target, Stream))
+		{
+			++Placed;
+			UE_LOG(LogBDDebug, Verbose, TEXT("  defender added on the uncovered route through %s."), *Target.ToString());
 		}
 	}
 
