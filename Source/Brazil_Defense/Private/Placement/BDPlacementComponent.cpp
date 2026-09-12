@@ -226,7 +226,7 @@ bool UBDPlacementComponent::IsObjectiveSelection() const
 
 bool UBDPlacementComponent::IsTowerSelection() const
 {
-	return CurrentSelection != nullptr && CurrentSelection->GetPieceKind() == EBDPieceKind::Tower;
+	return CurrentSelection != nullptr && CurrentSelection->IsDefender();
 }
 
 UBDPlatformComponent* UBDPlacementComponent::FindPlatformAt(const FBDCellCoord& Coord) const
@@ -556,6 +556,105 @@ void UBDPlacementComponent::SetHoveredCellDirect(const FBDCellCoord Coord)
 	EvaluatePlacement();
 }
 
+void UBDPlacementComponent::SetHoveredSlotDirect(UBDPlatformComponent* Platform, const int32 SlotIndex)
+{
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (Platform == nullptr || Grid == nullptr || !Platform->Slots.IsValidIndex(SlotIndex))
+	{
+		return;
+	}
+
+	// The slot's own location as the cursor point, so the nearest slot is that slot; the
+	// cell under it is what the slot lookup starts from.
+	HoverPoint = Platform->GetSlotWorldTransform(SlotIndex).GetLocation();
+	FBDCellCoord Cell;
+	if (!Grid->WorldToCell(HoverPoint, Cell))
+	{
+		TArray<FBDCellCoord> Cells;
+		Platform->GetFootprintCells(Cells);
+		if (Cells.Num() == 0)
+		{
+			return;
+		}
+		Cell = Cells[0];
+	}
+
+	HoveredCell = Cell;
+	bHoveringGrid = true;
+	EvaluatePlacement();
+}
+
+void UBDPlacementComponent::SetRotationSteps(const int32 Steps)
+{
+	if (CurrentSelection == nullptr)
+	{
+		return;
+	}
+
+	const int32 StepCount = IsEdgeSelection() ? EdgeRotationStepCount : CellRotationStepCount;
+	RotationSteps = ((Steps % StepCount) + StepCount) % StepCount;
+
+	if (bHoveringGrid)
+	{
+		ResolveHover(HoverPoint);
+	}
+	EvaluatePlacement();
+}
+
+void UBDPlacementComponent::DebugRemoveAll()
+{
+	UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr)
+	{
+		return;
+	}
+
+	if (bMoving)
+	{
+		CancelMove();
+	}
+
+	ABDMatchManager* Match = GetMatch();
+	int32 Removed = 0;
+
+	// Slot pieces first, so a platform does not take them down without their own refund.
+	while (PlacedOnSlots.Num() > 0)
+	{
+		const FBDPlacedPiece Piece = PlacedOnSlots[0];
+		ForgetPiece(*Grid, Piece);
+		if (Match != nullptr && Piece.Data != nullptr)
+		{
+			Match->RefundRemoval(Piece.Data->GetPieceKind());
+		}
+		++Removed;
+	}
+
+	while (PlacedByCell.Num() > 0)
+	{
+		const FBDPlacedPiece Piece = PlacedByCell.CreateConstIterator()->Value;
+		ForgetPiece(*Grid, Piece);
+		if (Match != nullptr && Piece.Data != nullptr)
+		{
+			Match->RefundRemoval(Piece.Data->GetPieceKind());
+		}
+		++Removed;
+	}
+
+	while (PlacedByEdge.Num() > 0)
+	{
+		const FBDPlacedPiece Piece = PlacedByEdge.CreateConstIterator()->Value;
+		ForgetPiece(*Grid, Piece);
+		if (Match != nullptr && Piece.Data != nullptr)
+		{
+			Match->RefundRemoval(Piece.Data->GetPieceKind());
+		}
+		++Removed;
+	}
+
+	CancelSelection();
+	UE_LOG(LogBDGrid, Log, TEXT("Every placed piece removed: %d piece(s)."), Removed);
+}
+
 void UBDPlacementComponent::SetHoveredEdgeDirect(const FBDEdgeCoord Edge)
 {
 	if (const UBDGridSubsystem* Grid = GetGrid())
@@ -792,7 +891,7 @@ FString UBDPlacementComponent::DescribeCurrentRefusal() const
 
 void UBDPlacementComponent::ReportRefusalChange()
 {
-	if (CurrentRefusal == LastReportedRefusal)
+	if (CurrentRefusal == LastReportedRefusal || !bRefusalLogging)
 	{
 		return;
 	}
@@ -1425,10 +1524,10 @@ void UBDPlacementComponent::ForgetSlotPiecesOn(const FBDPlacedPiece& PlatformPie
 		for (const FBDPlacedPiece& Piece : Mounted)
 		{
 			ForgetPiece(*GetGrid(), Piece);
-			if (Match != nullptr)
+			if (Match != nullptr && Piece.Data != nullptr)
 			{
-				// A tower taken back is a tower held again, even when it is the platform that went.
-				Match->RefundRemoval(EBDPieceKind::Tower);
+				// A defender taken back is a defender held again, even when it is the platform that went.
+				Match->RefundRemoval(Piece.Data->GetPieceKind());
 			}
 		}
 	}
@@ -1653,6 +1752,8 @@ bool UBDPlacementComponent::TryBeginMoveAtHovered()
 	const FBDPlacedPiece* Found = FindPieceUnderHover();
 	if (Found == nullptr || Found->Data == nullptr)
 	{
+		// A click on nothing of the player's ends whatever was selected for an upgrade.
+		SelectDefender(nullptr);
 		return false;
 	}
 
@@ -1870,11 +1971,59 @@ void UBDPlacementComponent::HandlePlaceReleased()
 		return;
 	}
 
+	// Released where it was pressed: a click, not a drag. The piece goes home and, when
+	// it is a defender, it becomes the one selected for an upgrade; a second click on
+	// the same one buys the level.
+	if (IsHoveringMoveOrigin())
+	{
+		ABDTowerBase* Clicked = MovingPiece.Actors.Num() > 0 ? Cast<ABDTowerBase>(MovingPiece.Actors[0]) : nullptr;
+		CancelMove();
+
+		if (Clicked != nullptr && Clicked == SelectedDefender.Get())
+		{
+			UpgradeSelectedDefender();
+		}
+		else
+		{
+			SelectDefender(Clicked);
+		}
+		return;
+	}
+
 	// Released over a bad spot: back where it was, nothing charged.
 	if (!TryPlaceAtHovered())
 	{
 		CancelMove();
 	}
+}
+
+void UBDPlacementComponent::SelectDefender(ABDTowerBase* Tower)
+{
+	SelectedDefender = Tower;
+	if (Tower == nullptr)
+	{
+		return;
+	}
+
+	// The deal is stated at selection, so the second click is made knowing.
+	UE_LOG(LogBDGrid, Log, TEXT("Selected %s. Click it again to buy. %s"), *Tower->GetName(), *Tower->DescribeUpgrade());
+}
+
+bool UBDPlacementComponent::UpgradeSelectedDefender()
+{
+	ABDTowerBase* Tower = SelectedDefender.Get();
+	if (Tower == nullptr)
+	{
+		return false;
+	}
+
+	const bool bUpgraded = Tower->Upgrade();
+	if (bUpgraded && !Tower->IsMaxLevel())
+	{
+		// Still selected: the next level is on offer straight away.
+		UE_LOG(LogBDGrid, Log, TEXT("%s"), *Tower->DescribeUpgrade());
+	}
+	return bUpgraded;
 }
 
 void UBDPlacementComponent::HandleRemoveInput()

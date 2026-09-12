@@ -18,7 +18,7 @@ const FBDTowerLevel* UBDTowerData::GetLevel(const int32 Level) const
 		return nullptr;
 	}
 
-	return &Levels[FMath::Clamp(Level, 0, Levels.Num() - 1)];
+	return &Levels[FMath::Clamp(Level - 1, 0, Levels.Num() - 1)];
 }
 
 #if WITH_EDITOR

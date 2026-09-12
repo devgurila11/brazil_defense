@@ -65,6 +65,9 @@ public:
 	 */
 	bool PlaceObjective(const FBDCellCoord& Coord, UClass* ActorClass, UStaticMesh* Mesh, EBDObjectiveRefusal& OutRefusal);
 
+	/** Debug: takes the urn off the board. The Goal cell goes back to Free; the actor stays where it is, unplaced. */
+	void ClearObjective();
+
 	/** Whether the urn has been placed this match. Nothing else may be placed before it. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Objective")
 	bool IsPlaced() const { return bPlaced; }

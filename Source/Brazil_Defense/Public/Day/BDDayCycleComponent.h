@@ -112,4 +112,8 @@ private:
 	/** Where the cycle is now, and where the current wave says it should end up. */
 	float CycleAlpha = 0.0f;
 	float TargetAlpha = 0.0f;
+
+	/** Last wave handed in, kept so BD.Day.Freeze 0 resumes at the right sky. */
+	int32 LastWave = 0;
+	bool bWasFrozen = false;
 };

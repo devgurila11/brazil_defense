@@ -44,7 +44,10 @@ enum class EBDPieceKind : uint8
 {
 	Divider UMETA(DisplayName = "Divider"),
 	Platform UMETA(DisplayName = "Platform"),
+	/** Ground equipment: a defender standing on a grid cell. */
 	Tower UMETA(DisplayName = "Tower"),
+	/** A human shooter: a defender standing on a platform slot. Its own budget. */
+	Character UMETA(DisplayName = "Character"),
 
 	/** The urn. Placed by the player before anything else, exactly once; its cell becomes the Goal. */
 	Objective UMETA(DisplayName = "Objective")

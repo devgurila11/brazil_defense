@@ -8,6 +8,7 @@
 #include "BDGameBalanceSettings.generated.h"
 
 class UBDDifficultyData;
+class UCurveFloat;
 
 /**
  * Everything about how a match paces itself, kept out of the code so it can be tuned
@@ -65,6 +66,73 @@ public:
 	/** Fraction refunded when taking a piece back during the building phase, before wave 1. */
 	UPROPERTY(config, EditAnywhere, Category = "Removal", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
 	float BuildingPhaseRefundRatio = 1.0f;
+
+	//~ Wave scaling -----------------------------------------------------------
+
+	/**
+	 * Creep health multiplier by wave: effective health = MaxHealth x curve(Wave). A
+	 * curve so it is tuned in the graph, not in code. When no curve is set the fallback
+	 * is HealthScaleGrowth ^ (Wave - 1): with 10 health against 10 damage that is one
+	 * shot on wave 1, two on wave 5, three on wave 10, nine on wave 20.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (AllowedClasses = "/Script/Engine.CurveFloat"))
+	TSoftObjectPtr<UCurveFloat> HealthScaleByWave;
+
+	/** Per wave growth of the fallback exponential, used when HealthScaleByWave is unset. */
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "1.0", UIMin = "1.0"))
+	float HealthScaleGrowth = 1.12f;
+
+	//~ Spawn pacing ----------------------------------------------------------
+	// Interval = Max(WaveSpawnIntervalMin, WaveSpawnIntervalBase x WaveSpawnIntervalDecay ^ Wave).
+	// A wave has to arrive as a mass, not as a thread: at one creep a second the defense
+	// kills them at the rate they come in and the peak never builds. The interval shrinks
+	// with the wave so the late ones pile up on purpose.
+
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float WaveSpawnIntervalBase = 0.35f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "0.01", ClampMax = "1.0", UIMin = "0.01", UIMax = "1.0"))
+	float WaveSpawnIntervalDecay = 0.97f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float WaveSpawnIntervalMin = 0.2f;
+
+	/** Seconds between two creeps of a wave. */
+	float GetWaveSpawnInterval(int32 Wave) const;
+
+	/** Creeps each spawn point sends on wave 1. */
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "1", UIMin = "1"))
+	int32 CreepsPerSpawnPointBase = 1;
+
+	/** Extra creeps per spawn point on every wave after the first: per point = Base + Step x (Wave - 1). */
+	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "0", UIMin = "0"))
+	int32 CreepsPerSpawnPointStep = 1;
+
+	/** Health multiplier for the creeps of a wave. */
+	float GetHealthScale(int32 Wave) const;
+
+	/** How many creeps each spawn point sends on a wave. The total is that times the number of points. */
+	int32 GetCreepsPerSpawnPoint(int32 Wave) const;
+
+	//~ Upgrades ---------------------------------------------------------------
+	// Cost of level N = UpgradeCostBase x UpgradeCostGrowth ^ (N - 1); damage at level N =
+	// Damage x (1 + DamageGrowthPerLevel x (N - 1)). Calibrated so a level 5 defender costs
+	// a few hundred votes, payable inside one match. Exponential cost against linear damage
+	// makes stacking the same defender expensive on its own, so spreading out becomes the
+	// right move without forbidding anything. Paid in blue votes, which are the score: an
+	// upgrade is bought with the scoreboard, on purpose.
+
+	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "1.0", UIMin = "1.0"))
+	float UpgradeCostGrowth = 1.35f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float DamageGrowthPerLevel = 0.60f;
+
+	/** Blue votes it costs to bring a defender of this upgrade cost base to a level (2 and up). */
+	int32 GetUpgradeCost(int32 UpgradeCostBase, int32 Level) const;
+
+	/** Damage multiplier of a level, 1.0 at level 1. */
+	float GetUpgradeDamageScale(int32 Level) const;
 
 	//~ Moving pieces between waves -------------------------------------------
 	// Rate = Min(MoveTaxMax, MoveTaxInitial + MoveTaxStep * Wave), charged on the build

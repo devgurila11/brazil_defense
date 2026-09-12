@@ -44,12 +44,42 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	const UBDTowerData* GetData() const { return Data; }
 
-	/** Index into the levels of the data. Not GetLevel: AActor already owns that name for the ULevel. */
+	/** Current level, 1 to UBDTowerData::MaxLevels. Not GetLevel: AActor already owns that name for the ULevel. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	int32 GetTowerLevel() const { return Level; }
 
-	/** The stats of the current level, or null when the tower has no data. */
+	/** The authored stats behind the current level, or null when the tower has no data. */
 	const FBDTowerLevel* GetCurrentLevel() const;
+
+	/** Damage of one hit at the current level: authored when the level is authored, the upgrade formula otherwise. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	float GetEffectiveDamage() const;
+
+	//~ Upgrades ---------------------------------------------------------------
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	bool IsMaxLevel() const;
+
+	/** Blue votes the next level costs. 0 at max level. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	int32 GetUpgradeCost() const;
+
+	/** Damage one hit would do after the next upgrade, for showing the deal before it is taken. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	float GetDamageAtNextLevel() const;
+
+	/** Whether the next level can be bought right now, and why not when it cannot. */
+	bool CanUpgrade(FString& OutReason) const;
+
+	/** The deal in one line: levels, cost, the score it leaves, the damage it buys, and the inversion warning when due. */
+	FString DescribeUpgrade() const;
+
+	/** Buys the next level with blue votes. @return false, nothing spent, when it cannot. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Tower")
+	bool Upgrade();
+
+	/** Debug: sets the level outright, for nothing. Clamped to the valid range. */
+	void DebugSetLevel(int32 NewLevel);
 
 	/** Range actually used in combat, in centimetres: the level range in cells, times the cell size, times the platform multiplier when on one. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
@@ -82,6 +112,10 @@ public:
 	/** Whether the weapon is pointing at the current target within the aim tolerance. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	bool IsAligned() const { return bAligned; }
+
+	/** Degrees between where the weapon points and where the target is. 0 with no target. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	float GetAimError() const;
 
 	//~ Magazine, for the HUD. Ammunition is infinite: a magazine only paces the fire. ---
 
@@ -170,7 +204,7 @@ private:
 	TObjectPtr<const UBDTowerData> Data;
 
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Tower")
-	int32 Level = 0;
+	int32 Level = 1;
 
 	/** Weak: the creep dies on its own schedule. */
 	TWeakObjectPtr<ABDEnemyBase> CurrentTarget;

@@ -33,9 +33,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
 	int32 PlatformBudget = 3;
 
-	/** Towers the player starts the match holding. Unlike dividers, towers stay placeable. */
+	/** Ground towers the player may build. Unlike dividers, defenders stay placeable through the waves. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
-	int32 StartingTowers = 2;
+	int32 TowerBudget = 8;
+
+	/** Characters the player may mount on platform slots. Separate from towers: they are a different resource. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
+	int32 CharacterBudget = 12;
 
 	/** Permanent obstacles scattered on the board before the player sees it. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Board", meta = (ClampMin = "0", UIMin = "0"))

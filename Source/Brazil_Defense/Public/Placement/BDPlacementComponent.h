@@ -10,6 +10,7 @@
 
 class ABDMatchManager;
 class ABDPlacementPreview;
+class ABDTowerBase;
 class UBDPlatformComponent;
 class APlayerController;
 class UBDGridSubsystem;
@@ -181,6 +182,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	bool IsMoving() const { return bMoving; }
 
+	//~ Upgrading ------------------------------------------------------------
+	// Outside placement mode a click on a placed defender selects it and states the deal;
+	// a second click on the same defender buys the level. A click anywhere else drops it.
+
+	/** The defender selected for an upgrade, or null. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
+	ABDTowerBase* GetSelectedDefender() const { return SelectedDefender.Get(); }
+
+	/** Selects a defender and logs its upgrade deal. Null clears the selection. */
+	void SelectDefender(ABDTowerBase* Tower);
+
+	/** Buys the next level of the selected defender. @return false when there is none or it cannot. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
+	bool UpgradeSelectedDefender();
+
 	/** Blue votes dropping the lifted piece would charge. 0 when nothing is lifted. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	int32 GetMoveCost() const;
@@ -257,6 +273,18 @@ public:
 	/** Points the hover at an edge without a mouse, as if the cursor were on its middle. */
 	void SetHoveredEdgeDirect(FBDEdgeCoord Edge);
 
+	/** Points the hover at one slot of a platform without a mouse, as if the cursor were on that slot. */
+	void SetHoveredSlotDirect(UBDPlatformComponent* Platform, int32 SlotIndex);
+
+	/** Turns the held piece until it faces a given number of quarter turns. */
+	void SetRotationSteps(int32 Steps);
+
+	/** Silences the one-line-per-answer refusal log, for tooling that tries many spots in a row. */
+	void SetRefusalLogging(bool bEnabled) { bRefusalLogging = bEnabled; }
+
+	/** Debug: takes back every piece the player placed, refunding each, whatever the phase says. */
+	void DebugRemoveAll();
+
 	FBDOnHoverChanged OnHoverChanged;
 
 private:
@@ -275,6 +303,7 @@ private:
 
 	bool IsEdgeSelection() const;
 	bool IsObjectiveSelection() const;
+	/** A defender of either kind, tower or character, is in hand. */
 	bool IsTowerSelection() const;
 
 	/** The platform standing on a cell inside the battle area, or null. */
@@ -417,6 +446,9 @@ private:
 	UPROPERTY(Transient)
 	TArray<FBDPlacedPiece> PlacedOnSlots;
 
+	/** See SelectDefender. */
+	TWeakObjectPtr<ABDTowerBase> SelectedDefender;
+
 	/** The platform and slot a held tower is aimed at. Reset whenever the hover is not over a platform. */
 	TWeakObjectPtr<UBDPlatformComponent> HoveredPlatform;
 	int32 HoveredSlotIndex = INDEX_NONE;
@@ -451,6 +483,7 @@ private:
 
 	EBDPlacementRefusal CurrentRefusal = EBDPlacementRefusal::NoSelection;
 	EBDPlacementRefusal LastReportedRefusal = EBDPlacementRefusal::NoSelection;
+	bool bRefusalLogging = true;
 
 	/**
 	 * Quarter turns from the piece's authored facing. Kept as steps rather than degrees

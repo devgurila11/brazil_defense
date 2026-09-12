@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Grid/BDGridTypes.h"
+#include "Match/BDMatchTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "BDWaveSubsystem.generated.h"
 
@@ -50,8 +51,11 @@ struct FBDSpawnPoint
  * the top and from the bottom of the board enter the urn from their own side and still
  * converge on the same point.
  *
- * This is the seam ABDMatchManager was waiting for: arrivals and kills go to its vote
- * counters, and the board being empty again ends the wave.
+ * This is the seam ABDMatchManager was waiting for: a wave going out spawns its creeps
+ * here, one every balance interval round robin over the spawn points, as many as the
+ * balance says for that wave and as tough as the wave's health scale; arrivals and
+ * kills go to the match's vote counters, and the board being empty again, with nothing
+ * left to send, ends the wave.
  */
 UCLASS()
 class BRAZIL_DEFENSE_API UBDWaveSubsystem : public UTickableWorldSubsystem
@@ -105,6 +109,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Wave")
 	int32 SpawnEnemyAtEveryPoint(const UBDEnemyData* Data);
 
+	//~ Waves ---------------------------------------------------------------
+
+	/** Creeps of the current wave still to be sent out. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Wave")
+	int32 GetWaveSpawnsRemaining() const { return WaveSpawnsRemaining; }
+
 	//~ Spawn loop, for load testing ------------------------------------------
 
 	/**
@@ -119,6 +129,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Wave")
 	bool IsSpawnLoopRunning() const { return bSpawnLoopRunning; }
 
+	/** Debug: removes every creep and drops whatever the wave still had to send, scoring nothing. @return how many were removed. */
+	int32 DespawnAll();
+
 	/** Kills every creep on the board. Counts as kills: their VotesOnDeath are scored. @return how many were killed. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Wave")
 	int32 KillAll();
@@ -131,6 +144,13 @@ public:
 
 	/** The same list without a copy, for the towers scanning it every tick. May hold nulls for a frame. */
 	const TArray<TObjectPtr<ABDEnemyBase>>& GetLivingEnemiesRef() const { return LivingEnemies; }
+
+	/** Damage that bought nothing: overkill on a hit, or a shot that arrived on a dead creep. Tallied per wave. */
+	void ReportWastedDamage(float Damage, bool bLostShot);
+
+	/** A shot left a tower; damage that actually came off a creep. Tallied per wave, to tell throughput from waste. */
+	void ReportShotFired() { ++WaveShotsFired; }
+	void ReportDamageDealt(float Damage) { WaveDamageDealt += FMath::Max(0.0f, Damage); }
 
 	//~ Reports from the creeps. Not meant to be called by anything else. -----
 
@@ -156,6 +176,14 @@ private:
 	void ForgetEnemy(ABDEnemyBase* Enemy);
 
 	void DrawRoutes() const;
+
+	/** Listens to the match once there is one; it is spawned after this subsystem. */
+	void EnsureMatchBinding();
+	void HandleWaveStarted(int32 Wave);
+	void HandlePhaseChanged(EBDMatchPhase NewPhase);
+
+	/** Sends the next creep of the wave out of the next spawn point in turn. */
+	void SpawnNextOfWave();
 
 	/** Grid change handlers: the spawn point routes go stale and every creep out is rerouted. */
 	void MarkBoardChanged();
@@ -183,6 +211,31 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ABDEnemyBase>> LivingEnemies;
+
+	/** The wave being sent out. */
+	int32 WaveSpawnsRemaining = 0;
+	int32 WaveSpawnCursor = 0;
+	float WaveSpawnTimer = 0.0f;
+	float WaveSpawnInterval = 0.0f;
+
+	/** Bookkeeping of the wave out, reported when it clears: the peak is what the balance has to watch. */
+	int32 WaveNumber = 0;
+	int32 WaveSpawnedTotal = 0;
+	int32 WavePeakAlive = 0;
+	int32 WaveArrived = 0;
+	int32 WaveKilled = 0;
+	float WaveWastedDamage = 0.0f;
+	int32 WaveLostShots = 0;
+	int32 WaveShotsFired = 0;
+	float WaveDamageDealt = 0.0f;
+	float WaveTotalHealth = 0.0f;
+
+	UPROPERTY(Transient)
+	TObjectPtr<const UBDEnemyData> WaveEnemyData;
+
+	TWeakObjectPtr<ABDMatchManager> BoundMatch;
+	FDelegateHandle WaveStartedHandle;
+	FDelegateHandle PhaseChangedHandle;
 
 	/** See StartSpawnLoop. */
 	static constexpr int32 LoopLogEvery = 10;

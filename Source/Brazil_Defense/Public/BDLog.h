@@ -22,3 +22,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBDWave, Log, All);
 
 /** Towers, targeting and projectiles. */
 DECLARE_LOG_CATEGORY_EXTERN(LogBDTower, Log, All);
+
+/** Debug tooling: automatic test setups and the like. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDDebug, Log, All);

@@ -2,6 +2,7 @@
 
 #include "Match/BDGameBalanceSettings.h"
 
+#include "Curves/CurveFloat.h"
 #include "Match/BDDifficultyData.h"
 
 UBDGameBalanceSettings::UBDGameBalanceSettings()
@@ -28,6 +29,37 @@ bool UBDGameBalanceSettings::IsGameSpeedAllowed(const float Speed) const
 	}
 
 	return false;
+}
+
+float UBDGameBalanceSettings::GetHealthScale(const int32 Wave) const
+{
+	const int32 SafeWave = FMath::Max(1, Wave);
+	if (const UCurveFloat* Curve = HealthScaleByWave.LoadSynchronous())
+	{
+		return FMath::Max(0.0f, Curve->GetFloatValue(static_cast<float>(SafeWave)));
+	}
+
+	return FMath::Pow(FMath::Max(1.0f, HealthScaleGrowth), static_cast<float>(SafeWave - 1));
+}
+
+float UBDGameBalanceSettings::GetWaveSpawnInterval(const int32 Wave) const
+{
+	return FMath::Max(WaveSpawnIntervalMin, WaveSpawnIntervalBase * FMath::Pow(WaveSpawnIntervalDecay, static_cast<float>(FMath::Max(0, Wave))));
+}
+
+int32 UBDGameBalanceSettings::GetCreepsPerSpawnPoint(const int32 Wave) const
+{
+	return FMath::Max(1, CreepsPerSpawnPointBase) + FMath::Max(0, CreepsPerSpawnPointStep) * FMath::Max(0, Wave - 1);
+}
+
+int32 UBDGameBalanceSettings::GetUpgradeCost(const int32 UpgradeCostBase, const int32 Level) const
+{
+	return FMath::RoundToInt(FMath::Max(0, UpgradeCostBase) * FMath::Pow(FMath::Max(1.0f, UpgradeCostGrowth), static_cast<float>(FMath::Max(1, Level) - 1)));
+}
+
+float UBDGameBalanceSettings::GetUpgradeDamageScale(const int32 Level) const
+{
+	return 1.0f + FMath::Max(0.0f, DamageGrowthPerLevel) * (FMath::Max(1, Level) - 1);
 }
 
 float UBDGameBalanceSettings::GetMoveTaxRate(const int32 Wave) const

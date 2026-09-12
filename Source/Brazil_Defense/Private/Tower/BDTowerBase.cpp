@@ -12,6 +12,8 @@
 #include "Grid/BDGridDebug.h"
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
+#include "Match/BDGameBalanceSettings.h"
+#include "Match/BDMatchManager.h"
 #include "Platform/BDPlatformComponent.h"
 #include "Tower/BDProjectileBase.h"
 #include "Tower/BDTowerData.h"
@@ -69,7 +71,7 @@ UBDWaveSubsystem* ABDTowerBase::GetWaves() const
 void ABDTowerBase::InitializeTower(const UBDTowerData* InData)
 {
 	Data = InData;
-	Level = 0;
+	Level = 1;
 	FireCooldown = 0.0f;
 	ReloadRemaining = 0.0f;
 	ShotsInMagazine = Data != nullptr ? Data->MagazineSize : 0;
@@ -101,10 +103,13 @@ void ABDTowerBase::ApplyMesh()
 
 	Mesh->SetStaticMesh(LoadedMesh);
 	Mesh->SetRelativeScale3D(Data->MeshScale);
+	Mesh->SetRelativeRotation(Data->MeshRotation);
 
-	// Rest the mesh on the root, so the root is the floor contact whatever the pivot of the asset is.
-	const FBox Bounds = LoadedMesh->GetBoundingBox();
-	Mesh->SetRelativeLocation(FVector(0.0f, 0.0f, -Bounds.Min.Z * Data->MeshScale.Z));
+	// Rest the mesh on the root, so the root is the floor contact whatever the pivot of
+	// the asset is, with the scale and the rotation the data asked for already applied.
+	const FBox Bounds = LoadedMesh->GetBoundingBox().TransformBy(
+		FTransform(Data->MeshRotation, FVector::ZeroVector, Data->MeshScale));
+	Mesh->SetRelativeLocation(FVector(0.0f, 0.0f, -Bounds.Min.Z));
 }
 
 float ABDTowerBase::GetReloadProgress() const
@@ -117,9 +122,154 @@ float ABDTowerBase::GetReloadProgress() const
 	return FMath::Clamp(1.0f - ReloadRemaining / Data->ReloadTime, 0.0f, 1.0f);
 }
 
+float ABDTowerBase::GetAimError() const
+{
+	const ABDEnemyBase* Target = CurrentTarget.Get();
+	if (Target == nullptr)
+	{
+		return 0.0f;
+	}
+
+	const float WantedYaw = (Target->GetActorLocation() - Turret->GetComponentLocation()).GetSafeNormal2D().ToOrientationRotator().Yaw;
+	return FMath::Abs(FMath::FindDeltaAngleDegrees(Turret->GetComponentRotation().Yaw, WantedYaw));
+}
+
 const FBDTowerLevel* ABDTowerBase::GetCurrentLevel() const
 {
 	return Data != nullptr ? Data->GetLevel(Level) : nullptr;
+}
+
+float ABDTowerBase::GetEffectiveDamage() const
+{
+	if (Data == nullptr)
+	{
+		return 0.0f;
+	}
+
+	// An authored level says what it does. Past the authored ones, the formula grows the
+	// base damage: a single authored level is a base and nine formula levels.
+	if (Data->HasAuthoredLevel(Level) && Level > 1)
+	{
+		return Data->GetLevel(Level)->Damage;
+	}
+
+	const FBDTowerLevel* Base = Data->GetLevel(1);
+	return Base != nullptr ? Base->Damage * UBDGameBalanceSettings::Get().GetUpgradeDamageScale(Level) : 0.0f;
+}
+
+//~ Upgrades ---------------------------------------------------------------------
+
+bool ABDTowerBase::IsMaxLevel() const
+{
+	return Level >= UBDTowerData::MaxLevels;
+}
+
+int32 ABDTowerBase::GetUpgradeCost() const
+{
+	if (Data == nullptr || IsMaxLevel())
+	{
+		return 0;
+	}
+
+	return UBDGameBalanceSettings::Get().GetUpgradeCost(Data->UpgradeCostBase, Level + 1);
+}
+
+float ABDTowerBase::GetDamageAtNextLevel() const
+{
+	if (Data == nullptr || IsMaxLevel())
+	{
+		return GetEffectiveDamage();
+	}
+
+	const int32 Next = Level + 1;
+	if (Data->HasAuthoredLevel(Next))
+	{
+		return Data->GetLevel(Next)->Damage;
+	}
+
+	const FBDTowerLevel* Base = Data->GetLevel(1);
+	return Base != nullptr ? Base->Damage * UBDGameBalanceSettings::Get().GetUpgradeDamageScale(Next) : 0.0f;
+}
+
+bool ABDTowerBase::CanUpgrade(FString& OutReason) const
+{
+	if (Data == nullptr)
+	{
+		OutReason = TEXT("no data");
+		return false;
+	}
+
+	if (IsMaxLevel())
+	{
+		OutReason = FString::Printf(TEXT("already at the maximum level %d"), UBDTowerData::MaxLevels);
+		return false;
+	}
+
+	const ABDMatchManager* Match = ABDMatchManager::Get(this);
+	if (Match == nullptr)
+	{
+		OutReason = TEXT("no match to pay");
+		return false;
+	}
+
+	const int32 Cost = GetUpgradeCost();
+	if (!Match->CanAffordVotesBlue(Cost))
+	{
+		OutReason = FString::Printf(TEXT("%d blue vote(s) needed, %d held"), Cost, Match->GetVotesBlue());
+		return false;
+	}
+
+	return true;
+}
+
+FString ABDTowerBase::DescribeUpgrade() const
+{
+	if (IsMaxLevel())
+	{
+		return FString::Printf(TEXT("%s is at the maximum level %d."), *GetName(), Level);
+	}
+
+	const ABDMatchManager* Match = ABDMatchManager::Get(this);
+	const int32 Cost = GetUpgradeCost();
+	const int32 Blue = Match != nullptr ? Match->GetVotesBlue() : 0;
+	const int32 Red = Match != nullptr ? Match->GetVotesRed() : 0;
+
+	FString Reason;
+	const bool bCan = CanUpgrade(Reason);
+	const bool bInverts = Match != nullptr && Match->WouldInvertScoreboard(Cost);
+
+	return FString::Printf(TEXT("%s level %d -> %d: cost %d blue vote(s), blue %d -> %d against red %d, damage %.1f -> %.1f.%s%s"),
+		*GetName(), Level, Level + 1, Cost, Blue, Blue - Cost, Red, GetEffectiveDamage(), GetDamageAtNextLevel(),
+		bInverts ? TEXT(" WARNING: red would pull ahead.") : TEXT(""),
+		bCan ? TEXT("") : *FString::Printf(TEXT(" Refused: %s."), *Reason));
+}
+
+bool ABDTowerBase::Upgrade()
+{
+	FString Reason;
+	if (!CanUpgrade(Reason))
+	{
+		UE_LOG(LogBDTower, Warning, TEXT("%s cannot be upgraded: %s."), *GetName(), *Reason);
+		return false;
+	}
+
+	ABDMatchManager* Match = ABDMatchManager::Get(this);
+	const int32 Cost = GetUpgradeCost();
+	const float DamageBefore = GetEffectiveDamage();
+	if (Match == nullptr || !Match->SpendVotesBlue(Cost))
+	{
+		return false;
+	}
+
+	++Level;
+	UE_LOG(LogBDTower, Log, TEXT("%s upgraded to level %d for %d blue vote(s): damage %.1f -> %.1f, blue now %d."),
+		*GetName(), Level, Cost, DamageBefore, GetEffectiveDamage(), Match->GetVotesBlue());
+	return true;
+}
+
+void ABDTowerBase::DebugSetLevel(const int32 NewLevel)
+{
+	Level = FMath::Clamp(NewLevel, 1, UBDTowerData::MaxLevels);
 }
 
 float ABDTowerBase::GetEffectiveRangeCells() const
@@ -170,6 +320,13 @@ void ABDTowerBase::NotifyReleasedSlot()
 bool ABDTowerBase::IsValidTarget(const ABDEnemyBase* Enemy, const float RangeSquared) const
 {
 	if (Enemy == nullptr || !IsValid(Enemy) || Enemy->HasArrived())
+	{
+		return false;
+	}
+
+	// A creep the shots in the air already kill is not a target: it is dead, it just
+	// does not know yet. When every creep in range is like that, the tower holds fire.
+	if (Enemy->IsDoomed())
 	{
 		return false;
 	}
@@ -299,7 +456,15 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 
 	// 3. Align the weapon. 4. Only then fire, at the rate of the level, while the
 	//    magazine lasts. The weapon keeps tracking through a reload.
+	const bool bWasAligned = bAligned;
 	bAligned = TurnTowards(Target, DeltaSeconds);
+	if (bAligned && !bWasAligned)
+	{
+		UE_LOG(LogBDTower, Verbose, TEXT("%s aligned on %s: weapon yaw %.1f, target yaw %.1f, error %.2f deg."),
+			*GetName(), *Target->GetName(), Turret->GetComponentRotation().Yaw,
+			(Target->GetActorLocation() - Turret->GetComponentLocation()).GetSafeNormal2D().ToOrientationRotator().Yaw,
+			GetAimError());
+	}
 	if (bAligned && FireCooldown <= 0.0f && !IsReloading())
 	{
 		Fire(Target, *LevelStats);
@@ -359,8 +524,12 @@ void ABDTowerBase::Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats)
 	}
 
 	// Cells per second on the data, centimetres per second in the world.
-	Projectile->Launch(this, Target, LevelStats.Damage, LevelStats.ProjectileSpeed * Grid->GetCellSize());
+	Projectile->Launch(this, Target, GetEffectiveDamage(), LevelStats.ProjectileSpeed * Grid->GetCellSize());
 	++ShotsFired;
+	if (UBDWaveSubsystem* Waves = GetWaves())
+	{
+		Waves->ReportShotFired();
+	}
 
 	UE_LOG(LogBDTower, Verbose, TEXT("%s fired shot %d at %s."), *GetName(), ShotsFired, *Target->GetName());
 }

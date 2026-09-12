@@ -8,6 +8,7 @@
 #include "Engine/StaticMesh.h"
 #include "Tower/BDTowerBase.h"
 #include "Tower/BDTowerSettings.h"
+#include "Wave/BDWaveSubsystem.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace BDProjectilePrivate
@@ -53,6 +54,34 @@ void ABDProjectileBase::Launch(ABDTowerBase* InShooter, ABDEnemyBase* InTarget, 
 
 	LastKnownAimPoint = GetAimPoint();
 	SetActorRotation((LastKnownAimPoint - GetActorLocation()).GetSafeNormal().ToOrientationRotator());
+
+	// Booked at launch, so the next tower to look at this creep sees the shot coming.
+	if (InTarget != nullptr)
+	{
+		InTarget->AddIncomingDamage(Damage);
+		bIncomingBooked = true;
+	}
+}
+
+void ABDProjectileBase::ReleaseIncoming()
+{
+	if (!bIncomingBooked)
+	{
+		return;
+	}
+
+	bIncomingBooked = false;
+	if (ABDEnemyBase* Enemy = Target.Get())
+	{
+		Enemy->RemoveIncomingDamage(Damage);
+	}
+}
+
+void ABDProjectileBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Covers every way a shot can end without reaching its Tick again.
+	ReleaseIncoming();
+	Super::EndPlay(EndPlayReason);
 }
 
 FVector ABDProjectileBase::GetAimPoint() const
@@ -84,6 +113,7 @@ void ABDProjectileBase::Tick(const float DeltaSeconds)
 	Age += DeltaSeconds;
 	if (Age > Settings.MaxLifetime)
 	{
+		ReportLost();
 		Destroy();
 		return;
 	}
@@ -102,11 +132,17 @@ void ABDProjectileBase::Tick(const float DeltaSeconds)
 
 	if (Distance <= FMath::Max(Step, Settings.HitDistance))
 	{
-		// Arrived. Only a target still alive takes the hit; the void takes nothing.
+		// Arrived. Only a target still alive takes the hit; the void takes nothing, and
+		// the shot is counted as wasted.
 		SetActorLocation(LastKnownAimPoint);
+		ReleaseIncoming();
 		if (Enemy != nullptr)
 		{
 			Hit(Enemy);
+		}
+		else
+		{
+			ReportLost();
 		}
 		Destroy();
 		return;
@@ -114,6 +150,15 @@ void ABDProjectileBase::Tick(const float DeltaSeconds)
 
 	const FVector Direction = ToAim / Distance;
 	SetActorLocationAndRotation(Location + Direction * Step, Direction.ToOrientationRotator());
+}
+
+void ABDProjectileBase::ReportLost()
+{
+	const UWorld* World = GetWorld();
+	if (UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr)
+	{
+		Waves->ReportWastedDamage(Damage, /*bLostShot*/ true);
+	}
 }
 
 void ABDProjectileBase::Hit(ABDEnemyBase* HitTarget)

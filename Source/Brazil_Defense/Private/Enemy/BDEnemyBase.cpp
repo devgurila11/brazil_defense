@@ -50,10 +50,12 @@ UBDWaveSubsystem* ABDEnemyBase::GetWaves() const
 	return World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
 }
 
-void ABDEnemyBase::InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDCellCoord>& InPath)
+void ABDEnemyBase::InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDCellCoord>& InPath, const float HealthScale)
 {
 	Data = InData;
-	CurrentHealth = Data != nullptr ? Data->MaxHealth : 0.0f;
+	MaxHealth = Data != nullptr ? Data->MaxHealth * FMath::Max(0.0f, HealthScale) : 0.0f;
+	CurrentHealth = MaxHealth;
+	IncomingDamage = 0.0f;
 	CurrentSpeed = 0.0f;
 	bFinished = false;
 
@@ -251,6 +253,18 @@ void ABDEnemyBase::ApplyDamage(const float Damage, AActor* Source)
 	if (bFinished || Damage <= 0.0f)
 	{
 		return;
+	}
+
+	// Whatever the hit takes beyond what was left is overkill: damage the defense paid
+	// for and got nothing from. The wave keeps the tally.
+	const float Overkill = FMath::Max(0.0f, Damage - CurrentHealth);
+	if (UBDWaveSubsystem* Waves = GetWaves())
+	{
+		Waves->ReportDamageDealt(Damage - Overkill);
+		if (Overkill > 0.0f)
+		{
+			Waves->ReportWastedDamage(Overkill, /*bLostShot*/ false);
+		}
 	}
 
 	CurrentHealth -= Damage;

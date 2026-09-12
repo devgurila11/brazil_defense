@@ -28,6 +28,12 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Debug", meta = (AllowedClasses = "/Script/Brazil_Defense.BDEnemyData"))
 	TSoftObjectPtr<UBDEnemyData> DebugEnemy;
 
+	//~ Waves ----------------------------------------------------------------
+
+	/** Enemy a wave sends out, until waves have a composition of their own. Falls back to DebugEnemy when unset. The pacing lives in the balance settings. */
+	UPROPERTY(config, EditAnywhere, Category = "Waves", meta = (AllowedClasses = "/Script/Brazil_Defense.BDEnemyData"))
+	TSoftObjectPtr<UBDEnemyData> WaveEnemy;
+
 	//~ Ground ---------------------------------------------------------------
 
 	/**

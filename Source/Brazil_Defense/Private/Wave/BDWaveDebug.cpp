@@ -154,8 +154,10 @@ namespace BDWaveDebug
 		const FString ObjectiveText = Waves->GetObjectiveLocation(ObjectiveLocation)
 			? ObjectiveLocation.ToCompactString()
 			: TEXT("none");
-		UE_LOG(LogBDWave, Log, TEXT("BD.Wave.Status: %d spawn point(s), %d creep(s) on the board, objective at %s."),
-			Points.Num(), Waves->GetLivingEnemyCount(), *ObjectiveText);
+		const ABDMatchManager* Match = World != nullptr ? ABDMatchManager::Get(World) : nullptr;
+		UE_LOG(LogBDWave, Log, TEXT("BD.Wave.Status: %d spawn point(s), %d creep(s) on the board, %d of the wave still to send, health x%.2f on wave %d, objective at %s."),
+			Points.Num(), Waves->GetLivingEnemyCount(), Waves->GetWaveSpawnsRemaining(),
+			Match != nullptr ? Match->GetHealthScale() : 1.0f, Match != nullptr ? Match->GetCurrentWave() : 0, *ObjectiveText);
 
 		for (int32 Index = 0; Index < Points.Num(); ++Index)
 		{
@@ -172,9 +174,9 @@ namespace BDWaveDebug
 		Waves->GetLivingEnemies(Enemies);
 		for (const ABDEnemyBase* Enemy : Enemies)
 		{
-			UE_LOG(LogBDWave, Log, TEXT("  %s from point %d: cell %d of %d, heading %s, %.0f cm/s, health %.0f."),
+			UE_LOG(LogBDWave, Log, TEXT("  %s from point %d: cell %d of %d, heading %s, %.0f cm/s, health %.0f/%.0f."),
 				*Enemy->GetName(), Enemy->SpawnPointIndex, Enemy->GetCurrentPathIndex(), Enemy->GetPath().Num(),
-				*Enemy->GetHeadingCell().ToString(), Enemy->GetCurrentSpeed(), Enemy->GetCurrentHealth());
+				*Enemy->GetHeadingCell().ToString(), Enemy->GetCurrentSpeed(), Enemy->GetCurrentHealth(), Enemy->GetMaxHealth());
 		}
 	}
 
@@ -204,6 +206,24 @@ namespace BDWaveDebug
 		Match->AddVotesBlue(FCString::Atoi(*Args[0]));
 		UE_LOG(LogBDMatch, Log, TEXT("BD.Votes.AddBlue: now %d blue / %d red."), Match->GetVotesBlue(), Match->GetVotesRed());
 	}
+
+	static void ExecVotesAddRed(const TArray<FString>& Args, UWorld* World)
+	{
+		ABDMatchManager* Match = World != nullptr ? ABDMatchManager::Get(World) : nullptr;
+		if (Args.Num() != 1 || Match == nullptr)
+		{
+			UE_LOG(LogBDMatch, Error, TEXT("Usage: BD.Votes.AddRed <votes> (needs a running match)"));
+			return;
+		}
+
+		Match->AddVotesRed(FCString::Atoi(*Args[0]));
+		UE_LOG(LogBDMatch, Log, TEXT("BD.Votes.AddRed: now %d blue / %d red."), Match->GetVotesBlue(), Match->GetVotesRed());
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdVotesAddRed(
+		TEXT("BD.Votes.AddRed"),
+		TEXT("BD.Votes.AddRed <votes>: debug, scores votes against the player, to test the scoreboard warnings."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecVotesAddRed));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdVotesAddBlue(
 		TEXT("BD.Votes.AddBlue"),

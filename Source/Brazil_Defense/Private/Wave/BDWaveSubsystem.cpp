@@ -12,6 +12,7 @@
 #include "Grid/BDGridSettings.h"
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
+#include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
 #include "Objective/BDObjective.h"
 #include "Path/BDPathfinder.h"
@@ -104,6 +105,12 @@ void UBDWaveSubsystem::Deinitialize()
 	}
 
 	StopSpawnLoop();
+	if (ABDMatchManager* Match = BoundMatch.Get())
+	{
+		Match->OnWaveStarted.Remove(WaveStartedHandle);
+		Match->OnPhaseChanged.Remove(PhaseChangedHandle);
+	}
+	BoundMatch.Reset();
 	LivingEnemies.Empty();
 	SpawnPoints.Empty();
 	GoalCells.Empty();
@@ -175,9 +182,129 @@ void UBDWaveSubsystem::HandleEdgeBlockedChanged(const FBDEdgeCoord& Edge, const 
 	MarkBoardChanged();
 }
 
+void UBDWaveSubsystem::EnsureMatchBinding()
+{
+	if (BoundMatch.IsValid())
+	{
+		return;
+	}
+
+	ABDMatchManager* Match = GetMatch();
+	if (Match == nullptr)
+	{
+		return;
+	}
+
+	WaveStartedHandle = Match->OnWaveStarted.AddUObject(this, &UBDWaveSubsystem::HandleWaveStarted);
+	PhaseChangedHandle = Match->OnPhaseChanged.AddUObject(this, &UBDWaveSubsystem::HandlePhaseChanged);
+	BoundMatch = Match;
+}
+
+void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
+{
+	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
+	const UBDEnemyData* Data = Settings.WaveEnemy.LoadSynchronous();
+	if (Data == nullptr)
+	{
+		Data = Settings.DebugEnemy.LoadSynchronous();
+	}
+
+	if (Data == nullptr)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Wave %d has no enemy to send: set Wave Enemy in Project Settings > Brazil Defense - Waves."), Wave);
+		return;
+	}
+
+	// One more creep per spawn point every wave: the pressure grows with the board, not
+	// with a flat number, so a map with more mouths is a harder map.
+	const int32 PointCount = GetSpawnPointCount();
+	const int32 PerPoint = UBDGameBalanceSettings::Get().GetCreepsPerSpawnPoint(Wave);
+
+	WaveEnemyData = Data;
+	WaveSpawnsRemaining = PerPoint * PointCount;
+	WaveSpawnCursor = 0;
+	WaveSpawnInterval = UBDGameBalanceSettings::Get().GetWaveSpawnInterval(Wave);
+	// The first one goes out on the next tick, not an interval from now.
+	WaveSpawnTimer = WaveSpawnInterval;
+
+	WaveNumber = Wave;
+	WaveSpawnedTotal = 0;
+	WavePeakAlive = LivingEnemies.Num();
+	WaveArrived = 0;
+	WaveKilled = 0;
+	WaveWastedDamage = 0.0f;
+	WaveLostShots = 0;
+	WaveShotsFired = 0;
+	WaveDamageDealt = 0.0f;
+	WaveTotalHealth = 0.0f;
+
+	UE_LOG(LogBDWave, Log, TEXT("Wave %d: %d x %s (%d per spawn point x %d points) at x%.2f health, one every %.2fs."),
+		Wave, WaveSpawnsRemaining, *Data->GetName(), PerPoint, PointCount,
+		UBDGameBalanceSettings::Get().GetHealthScale(Wave), WaveSpawnInterval);
+}
+
+void UBDWaveSubsystem::HandlePhaseChanged(const EBDMatchPhase NewPhase)
+{
+	// A wave ended from outside (BD.Match.ClearWave, defeat): whatever it had not sent stays unsent.
+	if (NewPhase != EBDMatchPhase::WaveActive && WaveSpawnsRemaining > 0)
+	{
+		UE_LOG(LogBDWave, Warning, TEXT("Wave left with %d creep(s) unsent."), WaveSpawnsRemaining);
+		WaveSpawnsRemaining = 0;
+	}
+}
+
+void UBDWaveSubsystem::SpawnNextOfWave()
+{
+	const int32 PointCount = GetSpawnPointCount();
+	if (PointCount == 0 || WaveEnemyData == nullptr)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Wave cannot send its creeps: no spawn point with a route. %d dropped."), WaveSpawnsRemaining);
+		WaveSpawnsRemaining = 0;
+		return;
+	}
+
+	// Round robin over the points; a point with no route is skipped, not retried forever.
+	for (int32 Attempt = 0; Attempt < PointCount; ++Attempt)
+	{
+		const int32 Index = WaveSpawnCursor % PointCount;
+		++WaveSpawnCursor;
+		if (SpawnEnemy(WaveEnemyData, Index) != nullptr)
+		{
+			--WaveSpawnsRemaining;
+			++WaveSpawnedTotal;
+			WavePeakAlive = FMath::Max(WavePeakAlive, LivingEnemies.Num());
+			if (LivingEnemies.Num() > 0 && LivingEnemies.Last() != nullptr)
+			{
+				WaveTotalHealth += LivingEnemies.Last()->GetMaxHealth();
+			}
+			return;
+		}
+	}
+
+	UE_LOG(LogBDWave, Error, TEXT("Wave cannot send its creeps: every spawn point refused. %d dropped."), WaveSpawnsRemaining);
+	WaveSpawnsRemaining = 0;
+}
+
 void UBDWaveSubsystem::Tick(const float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	EnsureMatchBinding();
+
+	if (WaveSpawnsRemaining > 0)
+	{
+		WaveSpawnTimer += DeltaTime;
+		const float Interval = FMath::Max(0.0f, WaveSpawnInterval);
+		while (WaveSpawnsRemaining > 0 && WaveSpawnTimer >= Interval)
+		{
+			WaveSpawnTimer -= Interval;
+			SpawnNextOfWave();
+			if (Interval <= 0.0f)
+			{
+				WaveSpawnTimer = 0.0f;
+			}
+		}
+	}
 
 	const UWorld* World = GetWorld();
 	if (BDWavePrivate::GShowRoutes != 0 && World != nullptr && BDGridDebug::ShouldDrawInWorld(*World))
@@ -483,7 +610,8 @@ ABDEnemyBase* UBDWaveSubsystem::SpawnEnemy(const UBDEnemyData* Data, const int32
 
 	// The route goes in before the creep ticks once: SpawnActor returns before the first tick.
 	Enemy->SpawnPointIndex = SpawnPointIndex;
-	Enemy->InitializeEnemy(Data, Point.Route);
+	const ABDMatchManager* Match = GetMatch();
+	Enemy->InitializeEnemy(Data, Point.Route, Match != nullptr ? Match->GetHealthScale() : 1.0f);
 	LivingEnemies.Add(Enemy);
 
 	// Under the spawn loop this is the line that would flood the log; the loop summarizes instead.
@@ -510,6 +638,23 @@ int32 UBDWaveSubsystem::SpawnEnemyAtEveryPoint(const UBDEnemyData* Data)
 	}
 
 	return Spawned;
+}
+
+int32 UBDWaveSubsystem::DespawnAll()
+{
+	StopSpawnLoop();
+	WaveSpawnsRemaining = 0;
+
+	TArray<ABDEnemyBase*> Enemies;
+	GetLivingEnemies(Enemies);
+	// Destroying reports back through NotifyEnemyRemoved, which scores nothing and drops the entry.
+	for (ABDEnemyBase* Enemy : Enemies)
+	{
+		Enemy->Destroy();
+	}
+	LivingEnemies.Reset();
+
+	return Enemies.Num();
 }
 
 int32 UBDWaveSubsystem::KillAll()
@@ -540,6 +685,15 @@ void UBDWaveSubsystem::GetLivingEnemies(TArray<ABDEnemyBase*>& OutEnemies) const
 
 //~ Reports from the creeps ----------------------------------------------------
 
+void UBDWaveSubsystem::ReportWastedDamage(const float Damage, const bool bLostShot)
+{
+	WaveWastedDamage += FMath::Max(0.0f, Damage);
+	if (bLostShot)
+	{
+		++WaveLostShots;
+	}
+}
+
 void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
 {
 	if (Enemy == nullptr || !LivingEnemies.Contains(Enemy))
@@ -556,6 +710,7 @@ void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
 	}
 
 	++SpawnLoopArrived;
+	++WaveArrived;
 	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s reached the urn: red +%d."), *Enemy->GetName(), Votes);
 	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s reached the urn: red +%d."), *Enemy->GetName(), Votes);
 	ForgetEnemy(Enemy);
@@ -577,6 +732,7 @@ void UBDWaveSubsystem::NotifyEnemyDied(ABDEnemyBase* Enemy)
 	}
 
 	++SpawnLoopKilled;
+	++WaveKilled;
 	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
 	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
 	ForgetEnemy(Enemy);
@@ -585,11 +741,11 @@ void UBDWaveSubsystem::NotifyEnemyDied(ABDEnemyBase* Enemy)
 void UBDWaveSubsystem::NotifyEnemyRemoved(ABDEnemyBase* Enemy)
 {
 	// A creep that already arrived or died is no longer in the list; this is for the ones
-	// that vanished some other way, which score nothing.
+	// that vanished some other way, which score nothing and do not clear a wave either.
 	if (Enemy != nullptr && LivingEnemies.Contains(Enemy))
 	{
 		UE_LOG(LogBDWave, Verbose, TEXT("%s removed from the board without arriving or dying."), *Enemy->GetName());
-		ForgetEnemy(Enemy);
+		LivingEnemies.Remove(Enemy);
 	}
 }
 
@@ -603,10 +759,15 @@ void UBDWaveSubsystem::ForgetEnemy(ABDEnemyBase* Enemy)
 	}
 
 	// Creeps spawned from the console during the building phase leave a board that was
-	// never "in a wave"; only a wave actually out is cleared.
+	// never "in a wave"; only a wave actually out, with nothing left to send, is cleared.
 	ABDMatchManager* Match = GetMatch();
-	if (Match != nullptr && Match->GetPhase() == EBDMatchPhase::WaveActive)
+	if (Match != nullptr && Match->GetPhase() == EBDMatchPhase::WaveActive && WaveSpawnsRemaining <= 0 && !bSpawnLoopRunning)
 	{
+		// The peak is the number to watch: a wave whose creeps pile up faster than they die
+		// is the wave the balance got wrong, whatever the kill count says.
+		UE_LOG(LogBDWave, Log, TEXT("Wave %d done: %d sent, peak %d alive at once, %d killed, %d reached the urn | %d shot(s), %.0f of %.0f health dealt, %.0f wasted (%d lost on dead creeps)."),
+			WaveNumber, WaveSpawnedTotal, WavePeakAlive, WaveKilled, WaveArrived,
+			WaveShotsFired, WaveDamageDealt, WaveTotalHealth, WaveWastedDamage, WaveLostShots);
 		Match->OnWaveCleared();
 	}
 }

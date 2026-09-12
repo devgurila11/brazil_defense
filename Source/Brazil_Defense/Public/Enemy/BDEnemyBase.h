@@ -43,8 +43,31 @@ public:
 	/**
 	 * Called once by the wave subsystem right after spawning, before the first tick.
 	 * Applies the data (health, mesh) and the route.
+	 * @param HealthScale multiplier of the wave on MaxHealth: waves get tougher, the data does not change.
 	 */
-	void InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDCellCoord>& InPath);
+	void InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDCellCoord>& InPath, float HealthScale = 1.0f);
+
+	/** Health this creep spawned with, wave scaling applied. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	float GetMaxHealth() const { return MaxHealth; }
+
+	//~ Damage on its way ---------------------------------------------------
+	// Every projectile in flight towards this creep books its damage here. A creep whose
+	// booked damage covers its health is already dead, it just does not know yet, and no
+	// tower should spend another shot on it.
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	float GetIncomingDamage() const { return IncomingDamage; }
+
+	/** Whether the shots already in the air are enough to kill this creep. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	bool IsDoomed() const { return CurrentHealth - IncomingDamage <= 0.0f; }
+
+	/** Called by a projectile when it is launched at this creep. */
+	void AddIncomingDamage(float Damage) { IncomingDamage += FMath::Max(0.0f, Damage); }
+
+	/** Called by that projectile when it hits, misses or vanishes. */
+	void RemoveIncomingDamage(float Damage) { IncomingDamage = FMath::Max(0.0f, IncomingDamage - FMath::Max(0.0f, Damage)); }
 
 	/**
 	 * Replaces the route. The new path is expected to start at the cell the creep is
@@ -148,6 +171,13 @@ private:
 
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
 	float CurrentHealth = 0.0f;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
+	float MaxHealth = 0.0f;
+
+	/** Sum of the damage of every projectile currently flying at this creep. */
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
+	float IncomingDamage = 0.0f;
 
 	/** Centimetres per second. Ramps up from zero with the data acceleration. */
 	float CurrentSpeed = 0.0f;

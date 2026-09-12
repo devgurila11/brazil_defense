@@ -14,6 +14,7 @@
 #include "Match/BDDifficultyData.h"
 #include "Match/BDGameBalanceSettings.h"
 #include "Obstacle/BDObstacleGenerator.h"
+#include "Tower/BDTowerBase.h"
 
 namespace BDMatchDebug
 {
@@ -88,7 +89,8 @@ void ABDMatchManager::BeginPlay()
 
 	DividersRemaining = DifficultyData->DividerBudget;
 	PlatformsRemaining = DifficultyData->PlatformBudget;
-	TowersRemaining = DifficultyData->StartingTowers;
+	TowersRemaining = DifficultyData->TowerBudget;
+	CharactersRemaining = DifficultyData->CharacterBudget;
 	ObjectivesRemaining = 1;
 
 	SetupBoard();
@@ -187,9 +189,9 @@ void ABDMatchManager::StartWave()
 
 	OnWaveStarted.Broadcast(CurrentWave);
 
-	UE_LOG(LogBDMatch, Log, TEXT("Wave %d is out. Dividers are%s still removable."),
+	UE_LOG(LogBDMatch, Log, TEXT("Wave %d is out. Dividers are %s removable."),
 		CurrentWave,
-		CanRemove(EBDPieceKind::Divider) ? TEXT("") : TEXT(" no longer"));
+		CanRemove(EBDPieceKind::Divider) ? TEXT("still") : TEXT("no longer"));
 }
 
 void ABDMatchManager::CallWaveEarly()
@@ -210,6 +212,55 @@ void ABDMatchManager::CallWaveEarly()
 		TimeRemaining, Bonus, EarlyCallBonus);
 
 	StartWave();
+}
+
+float ABDMatchManager::GetHealthScale() const
+{
+	return UBDGameBalanceSettings::Get().GetHealthScale(CurrentWave);
+}
+
+void ABDMatchManager::DebugRegenerateObstacles(const int32 Seed)
+{
+	UBDGridSubsystem* Grid = GetGrid();
+	const UWorld* World = GetWorld();
+	UBDObstacleGenerator* Generator = World != nullptr ? World->GetSubsystem<UBDObstacleGenerator>() : nullptr;
+	if (Grid == nullptr || Generator == nullptr)
+	{
+		return;
+	}
+
+	ObstacleSeed = Seed;
+	Generator->GenerateObstacles(Grid, ObstacleSeed, DifficultyData != nullptr ? DifficultyData->ObstacleCount : -1);
+	UE_LOG(LogBDMatch, Log, TEXT("Match board rebuilt from seed %d."), ObstacleSeed);
+}
+
+void ABDMatchManager::DebugResetBudgets()
+{
+	if (DifficultyData == nullptr)
+	{
+		return;
+	}
+
+	DividersRemaining = DifficultyData->DividerBudget;
+	PlatformsRemaining = DifficultyData->PlatformBudget;
+	TowersRemaining = DifficultyData->TowerBudget;
+	CharactersRemaining = DifficultyData->CharacterBudget;
+	ObjectivesRemaining = 1;
+
+	UE_LOG(LogBDMatch, Warning, TEXT("Budgets reset: %d dividers, %d platforms, %d towers, %d characters, 1 objective."),
+		DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining);
+}
+
+void ABDMatchManager::DebugSetWave(const int32 Wave)
+{
+	CurrentWave = FMath::Max(0, Wave);
+	if (DayCycle != nullptr)
+	{
+		DayCycle->SetWave(CurrentWave);
+	}
+
+	UE_LOG(LogBDMatch, Warning, TEXT("Wave counter set to %d: creeps spawn at x%.2f health, %d per spawn point, move tax %.0f%%."),
+		CurrentWave, GetHealthScale(), UBDGameBalanceSettings::Get().GetCreepsPerSpawnPoint(CurrentWave), GetMoveTaxRate() * 100.0f);
 }
 
 void ABDMatchManager::DebugForcePhase(const EBDMatchPhase NewPhase)
@@ -298,6 +349,17 @@ bool ABDMatchManager::SpendVotesBlue(const int32 Votes)
 	return true;
 }
 
+int32 ABDMatchManager::GetUpgradeCost(const ABDTowerBase* Tower) const
+{
+	return Tower != nullptr ? Tower->GetUpgradeCost() : 0;
+}
+
+bool ABDMatchManager::WouldInvertScoreboard(const int32 Cost) const
+{
+	// Only a lead that is lost counts as an inversion; a player already behind is told nothing new.
+	return VotesBlue >= VotesRed && VotesBlue - Cost < VotesRed;
+}
+
 float ABDMatchManager::GetMoveTaxRate() const
 {
 	return UBDGameBalanceSettings::Get().GetMoveTaxRate(CurrentWave);
@@ -337,6 +399,9 @@ int32* ABDMatchManager::FindBudget(const EBDPieceKind Kind)
 	case EBDPieceKind::Tower:
 		return &TowersRemaining;
 
+	case EBDPieceKind::Character:
+		return &CharactersRemaining;
+
 	case EBDPieceKind::Objective:
 		return &ObjectivesRemaining;
 
@@ -364,9 +429,9 @@ bool ABDMatchManager::CanPlace(const EBDPieceKind Kind) const
 		return false;
 	}
 
-	if (Kind == EBDPieceKind::Tower)
+	if (Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character)
 	{
-		// Towers are the one thing that stays placeable once the maze is locked in.
+		// Defenders are the one thing that stays placeable once the maze is locked in.
 		return Phase == EBDMatchPhase::Building || Phase == EBDMatchPhase::WaveActive;
 	}
 
@@ -396,7 +461,7 @@ bool ABDMatchManager::CanRemove(const EBDPieceKind Kind) const
 		return false;
 	}
 
-	if (Kind == EBDPieceKind::Tower)
+	if (Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character)
 	{
 		return true;
 	}
@@ -428,9 +493,9 @@ void ABDMatchManager::RefundRemoval(const EBDPieceKind Kind)
 		return;
 	}
 
-	if (Kind == EBDPieceKind::Tower)
+	if (Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character)
 	{
-		// A tower taken back is a tower held again, whenever it happens.
+		// A defender taken back is a defender held again, whenever it happens.
 		++(*Budget);
 		return;
 	}
@@ -492,10 +557,11 @@ namespace BDMatchCommands
 		}
 
 		UE_LOG(LogBDMatch, Log,
-			TEXT("Phase %s | wave %d | %.1fs to next | dividers %d | platforms %d | towers %d | objectives %d | speed %.0fx | bonus %d | votes %d blue / %d red"),
+			TEXT("Phase %s | wave %d (health x%.2f) | %.1fs to next | dividers %d | platforms %d | towers %d | characters %d | objectives %d | speed %.0fx | bonus %d | votes %d blue / %d red"),
 			*StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())),
-			Match->GetCurrentWave(), Match->GetTimeUntilNextWave(),
-			Match->GetDividersRemaining(), Match->GetPlatformsRemaining(), Match->GetTowersRemaining(), Match->GetObjectivesRemaining(),
+			Match->GetCurrentWave(), Match->GetHealthScale(), Match->GetTimeUntilNextWave(),
+			Match->GetDividersRemaining(), Match->GetPlatformsRemaining(), Match->GetTowersRemaining(),
+			Match->GetCharactersRemaining(), Match->GetObjectivesRemaining(),
 			Match->GetGameSpeed(), Match->GetEarlyCallBonus(), Match->GetVotesBlue(), Match->GetVotesRed());
 	}
 
@@ -532,6 +598,25 @@ namespace BDMatchCommands
 			Match->DebugForcePhase(static_cast<EBDMatchPhase>(PhaseValue));
 		}
 	}
+
+	static void ExecSetWave(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() != 1)
+		{
+			UE_LOG(LogBDMatch, Error, TEXT("Usage: BD.Match.SetWave <wave>"));
+			return;
+		}
+
+		if (ABDMatchManager* Match = FindMatch(World))
+		{
+			Match->DebugSetWave(FCString::Atoi(*Args[0]));
+		}
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdSetWave(
+		TEXT("BD.Match.SetWave"),
+		TEXT("BD.Match.SetWave <wave>: jumps the wave counter, for testing the scaling of a given wave."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSetWave));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdSetPhase(
 		TEXT("BD.Match.SetPhase"),

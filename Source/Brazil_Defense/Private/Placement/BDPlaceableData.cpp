@@ -22,6 +22,13 @@ EBDPieceKind UBDPlaceableData::GetPieceKind() const
 	switch (OccupiesAs)
 	{
 	case EBDCellState::Tower:
+		if (const UBDTowerData* Data = TowerData.LoadSynchronous())
+		{
+			if (Data->bCanPlaceOnSlot && !Data->bCanPlaceOnGround)
+			{
+				return EBDPieceKind::Character;
+			}
+		}
 		return EBDPieceKind::Tower;
 
 	case EBDCellState::Goal:
@@ -32,9 +39,15 @@ EBDPieceKind UBDPlaceableData::GetPieceKind() const
 	}
 }
 
+bool UBDPlaceableData::IsDefender() const
+{
+	const EBDPieceKind Kind = GetPieceKind();
+	return Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character;
+}
+
 int32 UBDPlaceableData::GetBuildCost() const
 {
-	if (GetPieceKind() == EBDPieceKind::Tower)
+	if (IsDefender())
 	{
 		if (const UBDTowerData* Data = TowerData.LoadSynchronous())
 		{

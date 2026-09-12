@@ -28,6 +28,7 @@ public:
 	ABDProjectileBase();
 
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void EndPlay(EEndPlayReason::Type EndPlayReason) override;
 
 	/**
 	 * Sends the projectile off. Called once by the tower right after spawning.
@@ -49,6 +50,12 @@ private:
 	/** Where the shot is heading: the body of the target while it lives, then wherever it was last seen. */
 	FVector GetAimPoint() const;
 
+	/** Takes the booked damage off the target, once, however the flight ends. */
+	void ReleaseIncoming();
+
+	/** Tells the wave this shot's damage went nowhere. */
+	void ReportLost();
+
 	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Tower")
 	TObjectPtr<UStaticMeshComponent> Mesh;
 
@@ -62,4 +69,5 @@ private:
 	float SpeedCm = 0.0f;
 	float Age = 0.0f;
 	bool bLaunched = false;
+	bool bIncomingBooked = false;
 };

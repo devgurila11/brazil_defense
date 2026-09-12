@@ -187,6 +187,27 @@ bool UBDObjectiveSubsystem::PlaceObjective(const FBDCellCoord& Coord, UClass* Ac
 	return true;
 }
 
+void UBDObjectiveSubsystem::ClearObjective()
+{
+	if (!bPlaced)
+	{
+		return;
+	}
+
+	if (UBDGridSubsystem* Grid = GetGrid())
+	{
+		TArray<FBDCellCoord> Goals;
+		UBDPathfinder::GatherCellsWithState(*Grid, EBDCellState::Goal, Goals);
+		for (const FBDCellCoord& Goal : Goals)
+		{
+			Grid->SetCellState(Goal, EBDCellState::Free);
+		}
+	}
+
+	bPlaced = false;
+	UE_LOG(LogBDGrid, Log, TEXT("Objective cleared from %s."), *GoalCell.ToString());
+}
+
 void UBDObjectiveSubsystem::DrawZone() const
 {
 	const UWorld* World = GetWorld();

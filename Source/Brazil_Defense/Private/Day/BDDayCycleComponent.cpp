@@ -90,8 +90,27 @@ float UBDDayCycleComponent::ComputeAlphaForWave(const int32 Wave) const
 	return static_cast<float>(Position) / static_cast<float>(Waves);
 }
 
+namespace BDDayDebug
+{
+	/** Debug: holds the sky where it is, so a high wave can be balanced in daylight. */
+	static int32 GFreeze = 0;
+
+	static FAutoConsoleVariableRef CVarFreeze(
+		TEXT("BD.Day.Freeze"),
+		GFreeze,
+		TEXT("1 freezes the day cycle: waves stop moving the sun. 0 to resume, which catches up to the current wave."),
+		ECVF_Cheat);
+}
+
 void UBDDayCycleComponent::SetWave(const int32 Wave)
 {
+	// Remembered even while frozen, so unfreezing lands on the right sky.
+	LastWave = Wave;
+	if (BDDayDebug::GFreeze != 0)
+	{
+		return;
+	}
+
 	TargetAlpha = ComputeAlphaForWave(Wave);
 }
 
@@ -109,6 +128,19 @@ void UBDDayCycleComponent::TickComponent(const float DeltaTime, const ELevelTick
 	FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	// Frozen: the sky stays put, whatever the waves did meanwhile. On unfreeze the target
+	// is the sky of the last wave seen, and the blend takes it there.
+	if (BDDayDebug::GFreeze != 0)
+	{
+		bWasFrozen = true;
+		return;
+	}
+	if (bWasFrozen)
+	{
+		bWasFrozen = false;
+		TargetAlpha = ComputeAlphaForWave(LastWave);
+	}
 
 	if (FMath::IsNearlyEqual(CycleAlpha, TargetAlpha))
 	{

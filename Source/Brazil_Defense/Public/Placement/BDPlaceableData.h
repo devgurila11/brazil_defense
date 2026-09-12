@@ -101,9 +101,17 @@ public:
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 	//~ End UPrimaryDataAsset interface
 
-	/** What the match budgets and removal rules see this piece as. */
+	/**
+	 * What the match budgets and removal rules see this piece as. A defender is a Tower
+	 * or a Character by the placement flags of its tower data: slot only makes a
+	 * Character, anything else a Tower.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Placeable")
 	EBDPieceKind GetPieceKind() const;
+
+	/** Tower or Character: a defender either way. */
+	UFUNCTION(BlueprintPure, Category = "Placeable")
+	bool IsDefender() const;
 
 	/** What this piece costs to build: the tower data's cost for a defender, Cost for everything else. Loads the tower data if needed. */
 	UFUNCTION(BlueprintPure, Category = "Placeable")

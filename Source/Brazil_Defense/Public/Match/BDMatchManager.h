@@ -8,6 +8,7 @@
 #include "Match/BDMatchTypes.h"
 #include "BDMatchManager.generated.h"
 
+class ABDTowerBase;
 class UBDDayCycleComponent;
 class UBDDifficultyData;
 class UBDGridSubsystem;
@@ -71,6 +72,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetTowersRemaining() const { return TowersRemaining; }
 
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetCharactersRemaining() const { return CharactersRemaining; }
+
+	/** Health multiplier the creeps of the current wave spawn with. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	float GetHealthScale() const;
+
 	/** 1 until the urn is placed, then 0. Not a difficulty knob: there is one urn in the game. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetObjectivesRemaining() const { return ObjectivesRemaining; }
@@ -99,6 +107,15 @@ public:
 	/** Opens the building phase and starts the countdown to the next wave. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void StartBuildingPhase();
+
+	/** Debug: jumps the wave counter, so the scaling of any wave can be tested without playing up to it. */
+	void DebugSetWave(int32 Wave);
+
+	/** Debug: puts every budget back to what the difficulty hands out, as if nothing had been placed. */
+	void DebugResetBudgets();
+
+	/** Debug: throws the generated obstacles away and lays them again from a given seed. Placed pieces keep their cells. */
+	void DebugRegenerateObstacles(int32 Seed);
 
 	/**
 	 * Debug: forces the match into a phase, skipping whatever would normally get it there.
@@ -132,6 +149,19 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool CanAffordVotesBlue(int32 Votes) const { return Votes <= VotesBlue; }
+
+	//~ Upgrades, for the HUD and the log -----------------------------------------
+
+	/** Blue votes the next level of a defender costs. 0 for null or a defender at max level. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetUpgradeCost(const ABDTowerBase* Tower) const;
+
+	/**
+	 * Whether spending this many blue votes would put red ahead of blue. The player may
+	 * still do it, but has to be told: otherwise the candidate flips and it looks like a bug.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool WouldInvertScoreboard(int32 Cost) const;
 
 	//~ Moving pieces between waves --------------------------------------------
 
@@ -230,6 +260,7 @@ private:
 	int32 DividersRemaining = 0;
 	int32 PlatformsRemaining = 0;
 	int32 TowersRemaining = 0;
+	int32 CharactersRemaining = 0;
 	int32 ObjectivesRemaining = 0;
 	int32 EarlyCallBonus = 0;
 	float GameSpeed = 1.0f;

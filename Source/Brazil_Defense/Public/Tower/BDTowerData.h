@@ -112,6 +112,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tower", meta = (ClampMin = "0", UIMin = "0"))
 	int32 UnlockWave = 0;
 
+	/** Base of the upgrade curve: level N costs UpgradeCostBase x UpgradeCostGrowth ^ (N - 1) blue votes. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tower", meta = (ClampMin = "0", UIMin = "0"))
+	int32 UpgradeCostBase = 50;
+
 	//~ Where it may stand ----------------------------------------------------
 
 	/** A tower: ground equipment, placed on a grid cell. */
@@ -170,6 +174,21 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr"))
 	FVector MeshScale = FVector::OneVector;
 
-	/** The level at an index, clamped into Levels. Null when there are no levels at all. */
+	/**
+	 * Rotation applied to Mesh so that its front points along local +X, the direction the
+	 * weapon aims. The engine cone points +Z; pitch -90 lays it down pointing forward, so
+	 * the placeholder reads as an arrow and the aim can be seen at a glance.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr"))
+	FRotator MeshRotation = FRotator::ZeroRotator;
+
+	/**
+	 * The authored stats of a level (1 = the first entry), clamped into Levels. Null when
+	 * there are no levels at all. Damage beyond the authored entries follows the upgrade
+	 * formula of the balance settings; see ABDTowerBase::GetEffectiveDamage.
+	 */
 	const FBDTowerLevel* GetLevel(int32 Level) const;
+
+	/** Whether this level has stats of its own in Levels, as opposed to being derived from the first. */
+	bool HasAuthoredLevel(int32 Level) const { return Level >= 1 && Level <= Levels.Num(); }
 };
