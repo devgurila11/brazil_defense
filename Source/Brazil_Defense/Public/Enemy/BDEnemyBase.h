@@ -14,7 +14,9 @@ class UStaticMeshComponent;
 
 /**
  * The one creep class. It is handed a route of cells at spawn and walks it, center to
- * center, until the last cell, where it reports to UBDWaveSubsystem and disappears.
+ * center, to the last cell, then on to the objective actor itself, where it reports to
+ * UBDWaveSubsystem and disappears. See ABDObjective for why the route does not simply
+ * end on the last cell.
  *
  * Movement is done by hand, in Tick, along the cell centers. No character movement
  * component and no navmesh on purpose: the route already is the answer, computed by
@@ -55,6 +57,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Enemy")
 	void Kill();
 
+	/**
+	 * Takes health off the creep; at zero it dies as a kill. Not AActor::TakeDamage: the
+	 * engine damage pipeline carries types, events and controllers this game has no use
+	 * for, and a plain number is easier to reason about.
+	 * @param Source what dealt the hit, credited with the kill when there is one. May be null.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Enemy")
+	void ApplyDamage(float Damage, AActor* Source);
+
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	const UBDEnemyData* GetData() const { return Data; }
 
@@ -74,9 +85,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	FBDCellCoord GetHeadingCell() const;
 
-	/** Whether the route has been walked to its end. */
+	/** Whether the route has been walked to its end: the last cell and the objective beyond it. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
-	bool HasArrived() const { return Path.Num() > 0 && CurrentPathIndex >= Path.Num(); }
+	bool HasArrived() const { return Waypoints.Num() > 0 && CurrentPathIndex >= Waypoints.Num(); }
+
+	/** Whether every cell of the route is behind the creep and it is walking to the objective actor. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	bool IsOnFinalLeg() const { return Path.Num() > 0 && CurrentPathIndex >= Path.Num() && !HasArrived(); }
 
 	/** Current speed along the route, in centimetres per second. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
@@ -105,7 +120,7 @@ private:
 	/** World location of the floor under a cell center. Traces once; the result is cached per route. */
 	FVector ResolveWaypoint(const FBDCellCoord& Coord) const;
 
-	/** Rebuilds the cached world positions of the route from Path. */
+	/** Rebuilds the cached world positions of the route from Path, plus the objective as the final one. */
 	void RebuildWaypoints();
 
 	/** Sets the mesh from the data and rests it on the root, whatever its pivot. */
@@ -121,10 +136,13 @@ private:
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
 	TArray<FBDCellCoord> Path;
 
-	/** World location of each cell of Path, resolved to the floor once so ticking never traces. */
+	/**
+	 * World location of each cell of Path, resolved to the floor once so ticking never
+	 * traces, followed by the objective location. One longer than Path.
+	 */
 	TArray<FVector> Waypoints;
 
-	/** Cell of Path the creep is currently walking towards. Path.Num() once it arrived. */
+	/** Waypoint the creep is currently walking towards. Waypoints.Num() once it arrived. */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
 	int32 CurrentPathIndex = 0;
 

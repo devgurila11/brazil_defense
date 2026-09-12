@@ -44,7 +44,10 @@ enum class EBDPieceKind : uint8
 {
 	Divider UMETA(DisplayName = "Divider"),
 	Platform UMETA(DisplayName = "Platform"),
-	Tower UMETA(DisplayName = "Tower")
+	Tower UMETA(DisplayName = "Tower"),
+
+	/** The urn. Placed by the player before anything else, exactly once; its cell becomes the Goal. */
+	Objective UMETA(DisplayName = "Objective")
 };
 
 /**

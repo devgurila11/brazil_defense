@@ -7,12 +7,26 @@
 #include "Grid/BDGridTypes.h"
 #include "BDTowerBase.generated.h"
 
+class ABDEnemyBase;
+class ABDProjectileBase;
 class UBDPlatformComponent;
+class UBDTowerData;
+class UBDWaveSubsystem;
+class UStaticMeshComponent;
+struct FBDTowerLevel;
 
 /**
  * The one and only defender type. It behaves the same on a free ground cell and on a
- * platform slot: same class, same data asset, same upgrade tree. Standing on a platform
- * only multiplies its range, through the multiplier of that platform.
+ * platform slot: same class, same data asset, same levels. Standing on a platform only
+ * multiplies its range, through the multiplier of that platform.
+ *
+ * Every tick it looks for a creep in range and holds on to it while it stays there.
+ * Seeing one is not shooting it: the tower first waits out its acquisition delay, then
+ * turns its weapon onto the creep, and only once aligned fires at the rate of its level.
+ * The weapon is a component of its own, so a tower on a slot keeps the facing the slot
+ * gave the actor and still tracks. A magazine, when the data has one, empties at that
+ * rate and then the tower stops to reload, target or no target. Ranges are in cells on
+ * the data and turned into centimetres here, with the cell size of the grid it stands on.
  */
 UCLASS(Blueprintable, meta = (DisplayName = "BD Tower Base"))
 class BRAZIL_DEFENSE_API ABDTowerBase : public AActor
@@ -22,16 +36,77 @@ class BRAZIL_DEFENSE_API ABDTowerBase : public AActor
 public:
 	ABDTowerBase();
 
-	/**
-	 * Attack range before any platform bonus.
-	 * Placeholder home for the value until the tower data asset lands.
-	 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Brazil Defense|Tower", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
-	float BaseRange = 600.0f;
+	virtual void Tick(float DeltaSeconds) override;
 
-	/** Range actually used in combat: base range times the multiplier of the platform, when on one. */
+	/** Called once by whoever spawned the tower, before its first tick. Applies the data and the mesh. */
+	void InitializeTower(const UBDTowerData* InData);
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	const UBDTowerData* GetData() const { return Data; }
+
+	/** Index into the levels of the data. Not GetLevel: AActor already owns that name for the ULevel. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	int32 GetTowerLevel() const { return Level; }
+
+	/** The stats of the current level, or null when the tower has no data. */
+	const FBDTowerLevel* GetCurrentLevel() const;
+
+	/** Range actually used in combat, in centimetres: the level range in cells, times the cell size, times the platform multiplier when on one. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	float GetEffectiveRange() const;
+
+	/** Range actually used in combat, in cells. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	float GetEffectiveRangeCells() const;
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	ABDEnemyBase* GetCurrentTarget() const { return CurrentTarget.Get(); }
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	int32 GetShotsFired() const { return ShotsFired; }
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	int32 GetKills() const { return Kills; }
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	UStaticMeshComponent* GetMesh() const { return Mesh; }
+
+	/** The part that turns: the weapon. The mesh hangs off it. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	USceneComponent* GetTurret() const { return Turret; }
+
+	/** Seconds still to wait before the current target may be shot. 0 once acquired. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	float GetAcquisitionRemaining() const { return AcquisitionRemaining; }
+
+	/** Whether the weapon is pointing at the current target within the aim tolerance. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	bool IsAligned() const { return bAligned; }
+
+	//~ Magazine, for the HUD. Ammunition is infinite: a magazine only paces the fire. ---
+
+	/** Shots left before the next reload. Meaningless when the data has no magazine. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	int32 GetShotsLeftInMagazine() const { return ShotsInMagazine; }
+
+	/** How far the reload has come, 0..1. 0 when not reloading. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	float GetReloadProgress() const;
+
+	/** Seconds of reload still to wait. 0 when not reloading. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	float GetReloadRemaining() const { return ReloadRemaining; }
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	bool IsReloading() const { return ReloadRemaining > 0.0f; }
+
+	/** Credited by the creep that died to a shot of this tower. Not meant to be called directly. */
+	void NotifyKill() { ++Kills; }
+
+	/** Where a projectile of this tower lands: applies the damage by the damage type of the data. Called by the projectile. */
+	void ApplyHit(ABDEnemyBase* HitTarget, const FVector& HitLocation, float Damage);
+
+	//~ Where it stands --------------------------------------------------------
 
 	/** Platform this tower stands on, or null when it sits on a ground cell. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
@@ -57,7 +132,66 @@ public:
 	/** Called by UBDPlatformComponent when this tower leaves a slot. Not meant to be called directly. */
 	void NotifyReleasedSlot();
 
+protected:
+	/** Spawns and launches one projectile at the current target. Virtual so a Blueprint child can add a muzzle effect. */
+	virtual void Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats);
+
 private:
+	UBDWaveSubsystem* GetWaves() const;
+
+	/** Sets the mesh from the data and rests it on the root, whatever its pivot. */
+	void ApplyMesh();
+
+	/** Whether a creep is alive, still walking and inside the range. */
+	bool IsValidTarget(const ABDEnemyBase* Enemy, float RangeSquared) const;
+
+	/** Picks a creep in range by the priority of the data. Null when none is in range. */
+	ABDEnemyBase* AcquireTarget(float RangeSquared) const;
+
+	/** Turns the weapon towards the target by the turn rate of the data. @return true when aligned within the tolerance. */
+	bool TurnTowards(const ABDEnemyBase* Target, float DeltaSeconds);
+
+	/** Forgets the target and starts the acquisition over. */
+	void DropTarget();
+
+	/** Where shots leave from: the top of the mesh, or the weapon pivot when there is none. */
+	FVector GetMuzzleLocation() const;
+
+	void DrawDebug() const;
+
+	/** Turns to follow the target. Yaw only: the board is flat. */
+	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Tower")
+	TObjectPtr<USceneComponent> Turret;
+
+	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Tower")
+	TObjectPtr<UStaticMeshComponent> Mesh;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Tower")
+	TObjectPtr<const UBDTowerData> Data;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Tower")
+	int32 Level = 0;
+
+	/** Weak: the creep dies on its own schedule. */
+	TWeakObjectPtr<ABDEnemyBase> CurrentTarget;
+
+	/** Seconds until the next shot may go out. */
+	float FireCooldown = 0.0f;
+
+	/** Seconds of recognition still owed on the current target. */
+	float AcquisitionRemaining = 0.0f;
+
+	/** Rounds left before a reload. Filled from the data at initialization and after every reload. */
+	int32 ShotsInMagazine = 0;
+
+	/** Seconds of reload left. Counts down whether or not a target is in sight. */
+	float ReloadRemaining = 0.0f;
+
+	bool bAligned = false;
+
+	int32 ShotsFired = 0;
+	int32 Kills = 0;
+
 	/** Weak on purpose: the platform actor and the tower have independent lifetimes. */
 	UPROPERTY(Transient)
 	TWeakObjectPtr<UBDPlatformComponent> Platform;

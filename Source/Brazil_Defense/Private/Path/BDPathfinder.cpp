@@ -157,8 +157,8 @@ bool UBDPathfinder::WouldBlockPath(const UBDGridSubsystem* Grid, const FBDCellCo
 	bLastBlockCheckWasCached = false;
 
 	TArray<FBDCellCoord> Spawns;
-	FBDCellCoord GoalCoord;
-	if (!GatherSpawnsAndGoal(*Grid, Spawns, GoalCoord))
+	TArray<FBDCellCoord> Goals;
+	if (!GatherSpawnsAndGoals(*Grid, Spawns, Goals))
 	{
 		return false;
 	}
@@ -193,7 +193,7 @@ bool UBDPathfinder::WouldBlockPath(const UBDGridSubsystem* Grid, const FBDCellCo
 		}
 	}
 
-	return CacheBlockResult(Grid, Origin, Footprint, AnySpawnCutOff(*Grid, Spawns, GoalCoord, &BlockedOverride, nullptr));
+	return CacheBlockResult(Grid, Origin, Footprint, AnySpawnCutOff(*Grid, Spawns, Goals, &BlockedOverride, nullptr));
 }
 
 bool UBDPathfinder::WouldBlockPathEdges(const UBDGridSubsystem* Grid, const TArray<FBDEdgeCoord>& Candidate) const
@@ -215,8 +215,8 @@ bool UBDPathfinder::WouldBlockPathEdges(const UBDGridSubsystem* Grid, const TArr
 	bLastBlockCheckWasCached = false;
 
 	TArray<FBDCellCoord> Spawns;
-	FBDCellCoord GoalCoord;
-	if (!GatherSpawnsAndGoal(*Grid, Spawns, GoalCoord))
+	TArray<FBDCellCoord> Goals;
+	if (!GatherSpawnsAndGoals(*Grid, Spawns, Goals))
 	{
 		return false;
 	}
@@ -234,46 +234,87 @@ bool UBDPathfinder::WouldBlockPathEdges(const UBDGridSubsystem* Grid, const TArr
 		}
 	}
 
-	return CacheEdgeBlockResult(Grid, Candidate, AnySpawnCutOff(*Grid, Spawns, GoalCoord, nullptr, &BlockedEdgeOverride));
+	return CacheEdgeBlockResult(Grid, Candidate, AnySpawnCutOff(*Grid, Spawns, Goals, nullptr, &BlockedEdgeOverride));
 }
 
-bool UBDPathfinder::GatherSpawnsAndGoal(const UBDGridSubsystem& Grid, TArray<FBDCellCoord>& OutSpawns, FBDCellCoord& OutGoal)
+bool UBDPathfinder::CanEverySpawnReach(const UBDGridSubsystem* Grid, const FBDCellCoord Target) const
 {
-	TArray<FBDCellCoord> Goals;
-	GatherCellsWithState(Grid, EBDCellState::Spawn, OutSpawns);
-	GatherCellsWithState(Grid, EBDCellState::Goal, Goals);
+	if (Grid == nullptr || !Grid->IsValidCoord(Target) || !Grid->IsWalkable(Target))
+	{
+		return false;
+	}
 
-	if (OutSpawns.Num() == 0 || Goals.Num() == 0)
+	if (bHasCachedReachResult
+		&& CachedReachGrid.Get() == Grid
+		&& CachedReachGridVersion == Grid->GetVersion()
+		&& CachedReachTarget == Target)
+	{
+		bLastBlockCheckWasCached = true;
+		return bCachedReachResult;
+	}
+
+	bLastBlockCheckWasCached = false;
+
+	TArray<FBDCellCoord> Spawns;
+	GatherCellsWithState(*Grid, EBDCellState::Spawn, Spawns);
+
+	bool bReachable = Spawns.Num() > 0;
+	for (const FBDCellCoord& Spawn : Spawns)
+	{
+		if (!RunSearch(*Grid, Spawn, Target, nullptr, nullptr, nullptr))
+		{
+			bReachable = false;
+			break;
+		}
+	}
+
+	CachedReachGrid = Grid;
+	CachedReachGridVersion = Grid->GetVersion();
+	CachedReachTarget = Target;
+	bCachedReachResult = bReachable;
+	bHasCachedReachResult = true;
+
+	return bReachable;
+}
+
+bool UBDPathfinder::GatherSpawnsAndGoals(const UBDGridSubsystem& Grid, TArray<FBDCellCoord>& OutSpawns, TArray<FBDCellCoord>& OutGoals)
+{
+	GatherCellsWithState(Grid, EBDCellState::Spawn, OutSpawns);
+	GatherCellsWithState(Grid, EBDCellState::Goal, OutGoals);
+
+	if (OutSpawns.Num() == 0 || OutGoals.Num() == 0)
 	{
 		// Not a soft case: without a spawn and a goal there is no premise to validate
 		// against, and every placement would silently look legal.
 		UE_LOG(LogBDPath, Error,
-			TEXT("Blocking check called on a grid with %d spawn(s) and %d goal(s). Mark them on the map: ")
+			TEXT("Blocking check called on a grid with %d spawn(s) and %d goal cell(s). Mark them on the map: ")
 			TEXT("blocking cannot be evaluated and every placement will pass."),
-			OutSpawns.Num(), Goals.Num());
+			OutSpawns.Num(), OutGoals.Num());
 		return false;
 	}
 
-	if (Goals.Num() > 1)
-	{
-		// There is one urn in the game. More than one Goal breaks that premise, so this
-		// is an error, not a note. Row-major order keeps the fallback deterministic.
-		UE_LOG(LogBDPath, Error,
-			TEXT("Blocking check found %d goal cells. The game has a single goal; using %s and ignoring the rest."),
-			Goals.Num(), *Goals[0].ToString());
-	}
-
-	OutGoal = Goals[0];
 	return true;
 }
 
-bool UBDPathfinder::AnySpawnCutOff(const UBDGridSubsystem& Grid, const TArray<FBDCellCoord>& Spawns, const FBDCellCoord& Goal,
+bool UBDPathfinder::AnySpawnCutOff(const UBDGridSubsystem& Grid, const TArray<FBDCellCoord>& Spawns, const TArray<FBDCellCoord>& Goals,
 	const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride) const
 {
-	// Every spawn has to keep a way to the goal.
+	// Every spawn has to keep a way to the urn: to any one of its cells. The urn cells
+	// are adjacent, so the first search normally settles it and the others only run
+	// when a spawn really is walled off.
 	for (const FBDCellCoord& Spawn : Spawns)
 	{
-		if (!RunSearch(Grid, Spawn, Goal, BlockedOverride, BlockedEdgeOverride, nullptr))
+		bool bReachesUrn = false;
+		for (const FBDCellCoord& Goal : Goals)
+		{
+			if (RunSearch(Grid, Spawn, Goal, BlockedOverride, BlockedEdgeOverride, nullptr))
+			{
+				bReachesUrn = true;
+				break;
+			}
+		}
+
+		if (!bReachesUrn)
 		{
 			return true;
 		}

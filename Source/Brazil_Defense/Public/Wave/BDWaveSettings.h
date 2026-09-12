@@ -44,6 +44,14 @@ public:
 	//~ Movement -------------------------------------------------------------
 
 	/**
+	 * How close to the objective actor a creep has to get to count as arrived. The last
+	 * leg of a route goes from the final Goal cell to the urn itself, and the urn has a
+	 * body: a creep is not expected to reach its exact origin.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Movement", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float ArrivalDistance = 150.0f;
+
+	/**
 	 * Degrees per second a creep turns towards where it is walking. 0 snaps instantly.
 	 * Cosmetic only: the position always follows the route exactly, whatever the facing.
 	 */

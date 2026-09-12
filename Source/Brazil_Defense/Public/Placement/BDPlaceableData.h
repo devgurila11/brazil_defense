@@ -7,6 +7,7 @@
 #include "Grid/BDGridTypes.h"
 #include "BDPlaceableData.generated.h"
 
+class UBDTowerData;
 class UStaticMesh;
 
 /** Local axis of a mesh. */
@@ -49,6 +50,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable")
 	TSoftObjectPtr<UStaticMesh> PreviewMesh;
 
+	/**
+	 * Tower pieces only: the tower this piece builds. The actor comes from ActorClass, or
+	 * from the tower data when ActorClass is empty, and is handed the data at spawn.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable", meta = (EditCondition = "!bOccupiesEdge && OccupiesAs == EBDCellState::Tower"))
+	TSoftObjectPtr<UBDTowerData> TowerData;
+
 	/** Price of the piece. Stored only: nothing spends it yet. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable", meta = (ClampMin = "0"))
 	int32 Cost = 0;
@@ -67,7 +75,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cell", meta = (ClampMin = "1", EditCondition = "!bOccupiesEdge"))
 	FIntPoint Footprint = FIntPoint(1, 1);
 
-	/** State written on the covered cells. Only Platform and Tower make sense here. */
+	/** State written on the covered cells: Platform or Tower, or Goal for the urn, which must then be 1x1. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Cell", meta = (EditCondition = "!bOccupiesEdge"))
 	EBDCellState OccupiesAs = EBDCellState::Platform;
 
@@ -96,6 +104,10 @@ public:
 	/** What the match budgets and removal rules see this piece as. */
 	UFUNCTION(BlueprintPure, Category = "Placeable")
 	EBDPieceKind GetPieceKind() const;
+
+	/** What this piece costs to build: the tower data's cost for a defender, Cost for everything else. Loads the tower data if needed. */
+	UFUNCTION(BlueprintPure, Category = "Placeable")
+	int32 GetBuildCost() const;
 
 	/** Whether the piece obstructs movement once placed, which is what makes a blocking check worth running. */
 	UFUNCTION(BlueprintPure, Category = "Placeable")

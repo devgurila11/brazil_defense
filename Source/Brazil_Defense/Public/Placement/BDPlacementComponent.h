@@ -5,12 +5,15 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Grid/BDGridTypes.h"
+#include "Match/BDMatchTypes.h"
 #include "BDPlacementComponent.generated.h"
 
 class ABDMatchManager;
 class ABDPlacementPreview;
+class UBDPlatformComponent;
 class APlayerController;
 class UBDGridSubsystem;
+class UBDObjectiveSubsystem;
 class UBDPathfinder;
 class UBDPlaceableData;
 class UInputComponent;
@@ -43,6 +46,15 @@ struct FBDPlacedPiece
 	/** Yaw the actors were spawned with, so a saved or rebuilt board comes back facing the same way. */
 	UPROPERTY()
 	float Yaw = 0.0f;
+
+	/** Slot pieces: the platform and the slot the tower stands on. No cell is written for these. */
+	UPROPERTY()
+	TWeakObjectPtr<UBDPlatformComponent> Platform;
+
+	UPROPERTY()
+	int32 SlotIndex = INDEX_NONE;
+
+	bool IsOnSlot() const { return SlotIndex != INDEX_NONE; }
 };
 
 /**
@@ -68,8 +80,20 @@ enum class EBDPlacementRefusal : uint8
 	EdgeOnBorder,
 	/** An edge of the segment already carries a fence. */
 	EdgeTaken,
-	/** Some spawn would lose every way to the goal. */
-	WouldBlockPath
+	/** Some spawn would lose every way to the goal; for the urn itself, some spawn cannot reach it. */
+	WouldBlockPath,
+	/** The urn is not down yet, and nothing is built before the urn. */
+	ObjectiveMissing,
+	/** The urn is being put outside the zone it may stand in. */
+	ObjectiveOutOfZone,
+	/** The platform slot under the cursor already holds a tower. */
+	SlotTaken,
+	/** The held defender is ground equipment and the cursor is over a platform slot. */
+	TowerCannotGoOnSlot,
+	/** The held defender is a character and the cursor is over a ground cell: characters stand on platforms. */
+	CharacterNeedsPlatform,
+	/** Moving the lifted piece here would cost more blue votes than the player has. */
+	CannotAffordMove
 };
 
 /** Broadcast whenever the hovered cell or its validity changes. */
@@ -84,7 +108,20 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnHoverChanged, const FBDCellCoord& /*Ce
  * nearest the cursor and fences off a run of edges. The grid tells them apart; the
  * gesture is the same.
  *
- * Nothing here spends money or counts waves: this is only the gesture.
+ * The urn is a cell piece with its own rules: it comes first, it goes only in its zone,
+ * and putting it down is UBDObjectiveSubsystem's job rather than a cell write here.
+ *
+ * A defender over a platform is the other special case: the hover snaps to the platform
+ * slot nearest the cursor, the defender is mounted on it and no cell is written. On the
+ * ground a defender takes its cell as Tower, which the creeps walk through. Which of the
+ * two a defender accepts is on its UBDTowerData: towers take cells, characters take slots.
+ *
+ * Between waves a placed piece can be picked up and put elsewhere. The piece is lifted
+ * off the board and held exactly like a fresh selection, so every rule above applies to
+ * the destination; dropping it charges the match a share of its build cost in blue
+ * votes, and an invalid or cancelled drop puts it back where it was for nothing.
+ *
+ * Nothing else here spends money or counts waves: this is only the gesture.
  */
 UCLASS(ClassGroup = (BrazilDefense), meta = (BlueprintSpawnableComponent, DisplayName = "BD Placement"))
 class BRAZIL_DEFENSE_API UBDPlacementComponent : public UActorComponent
@@ -109,7 +146,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	void SelectPlaceable(UBDPlaceableData* Placeable);
 
-	/** Leaves placement mode and hides the ghost. */
+	/**
+	 * Leaves placement mode and destroys the ghost. Also done on its own when the building
+	 * phase ends or the budget of the held piece runs out: a piece stuck to the cursor
+	 * says "you can still build", and at those moments that is not true.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	void CancelSelection();
 
@@ -120,6 +161,27 @@ public:
 	/** Takes back whatever the player put under the cursor. @return false when there is nothing of theirs there. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	bool TryRemoveAtHovered();
+
+	//~ Moving ---------------------------------------------------------------
+
+	/**
+	 * Lifts the piece under the cursor off the board and holds it as the selection, so
+	 * it can be dropped elsewhere with TryPlaceAtHovered or put back with CancelMove.
+	 * @return false when nothing of the player's is there, or the match does not allow moving now.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
+	bool TryBeginMoveAtHovered();
+
+	/** Puts the lifted piece back where it was, for nothing, and drops the selection. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
+	void CancelMove();
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
+	bool IsMoving() const { return bMoving; }
+
+	/** Blue votes dropping the lifted piece would charge. 0 when nothing is lifted. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
+	int32 GetMoveCost() const;
 
 	/**
 	 * Turns the held piece a quarter turn, forwards or backwards, wrapping around.
@@ -156,6 +218,17 @@ public:
 	/** The boundary nearest the cursor inside the hovered cell. Meaningful only while hovering the grid. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	FBDEdgeCoord GetHoveredEdge() const { return HoveredEdge; }
+
+	/** The platform under the cursor while a tower is held over one, or null. */
+	UBDPlatformComponent* GetHoveredPlatform() const { return HoveredPlatform.Get(); }
+
+	/** The slot the held tower would take, or INDEX_NONE when the hover is not over a platform. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
+	int32 GetHoveredSlotIndex() const { return HoveredSlotIndex; }
+
+	/** Whether the held tower is aimed at a platform slot rather than a cell. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
+	bool IsHoveringSlot() const { return HoveredSlotIndex != INDEX_NONE && HoveredPlatform.IsValid(); }
 
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	bool IsCurrentPlacementValid() const { return bCurrentPlacementValid; }
@@ -196,8 +269,23 @@ private:
 	ABDMatchManager* GetMatch() const;
 
 	const UBDPathfinder* GetPathfinder() const;
+	UBDObjectiveSubsystem* GetObjectives() const;
 
 	bool IsEdgeSelection() const;
+	bool IsObjectiveSelection() const;
+	bool IsTowerSelection() const;
+
+	/** The platform standing on a cell inside the battle area, or null. */
+	UBDPlatformComponent* FindPlatformAt(const FBDCellCoord& Coord) const;
+
+	/** Index of the slot of a platform nearest to a point on the board plane, or INDEX_NONE when it has no slots. */
+	static int32 FindNearestSlot(const UBDPlatformComponent& Platform, const FVector& Point);
+
+	/** Recomputes HoveredPlatform and HoveredSlotIndex for the current selection and hover. */
+	void ResolveSlotHover();
+
+	/** The class actually spawned for the selection: ActorClass, or the tower class of its tower data. */
+	UClass* ResolveActorClass() const;
 
 	/** Projects the mouse onto the grid plane. @return false when it misses the board. */
 	bool TraceGridPlane(FVector& OutHitPoint) const;
@@ -216,6 +304,12 @@ private:
 	void EvaluatePlacement();
 	EBDPlacementRefusal EvaluateCellPlacement(const UBDGridSubsystem& Grid) const;
 	EBDPlacementRefusal EvaluateEdgePlacement(const UBDGridSubsystem& Grid) const;
+	EBDPlacementRefusal EvaluateObjectivePlacement() const;
+	EBDPlacementRefusal EvaluateSlotPlacement() const;
+
+	/** Whether the held defender is allowed on a grid cell / a platform slot, per its tower data. */
+	bool CanSelectionStandOnGround() const;
+	bool CanSelectionStandOnSlot() const;
 
 	/** Logs the refusal when it differs from the last one logged, so a hover does not spam. */
 	void ReportRefusalChange();
@@ -238,6 +332,30 @@ private:
 
 	bool PlaceCellPiece(UBDGridSubsystem& Grid, FBDPlacedPiece& Piece);
 	bool PlaceEdgePiece(UBDGridSubsystem& Grid, FBDPlacedPiece& Piece);
+	/** Hands the urn to UBDObjectiveSubsystem. Not remembered as a piece: it cannot be taken back. */
+	bool PlaceObjectivePiece();
+	/** Mounts the held tower on the hovered slot. No cell is written. */
+	bool PlaceSlotPiece(FBDPlacedPiece& Piece);
+
+	/** Takes back every tower mounted on the platforms of a piece, refunding each. Called before the platform itself goes. */
+	void ForgetSlotPiecesOn(const FBDPlacedPiece& PlatformPiece);
+
+	/** Lifts the pieces mounted on the platforms of a piece into MovingMounted, hidden, slots released. */
+	void LiftSlotPiecesOn(const FBDPlacedPiece& PlatformPiece);
+
+	/** Mounts MovingMounted back on the same slots of the platform just placed. */
+	void RemountLiftedPieces(const FBDPlacedPiece& PlatformPiece);
+
+	/** Places the lifted piece at the current hover, reusing its actors. @return false when the placement failed. */
+	bool DropMovingPiece();
+
+	/** Points the hover back at where the lifted piece came from, rotation included. */
+	void HoverMoveOrigin();
+
+	/** Whether the current hover is the very spot the lifted piece came from. */
+	bool IsHoveringMoveOrigin() const;
+
+	static void SetActorsHidden(const TArray<TObjectPtr<AActor>>& Actors, bool bHidden);
 	void SpawnPieceActors(const TArray<FTransform>& Transforms, FBDPlacedPiece& Piece) const;
 
 	/** The piece under the cursor, preferring the fence when the cursor is nearer to it than to the cell center. */
@@ -247,12 +365,24 @@ private:
 	void EnsurePreview();
 
 	void HandlePlaceInput();
+	void HandlePlaceReleased();
 	void HandleRemoveInput();
 	void HandleCancelInput();
 	void HandleRotateInput(const FInputActionValue& Value);
 
 	/** Pushes the gameplay mapping context onto the local player. */
 	void AddMappingContext();
+
+	/**
+	 * Listens to the match once there is one. The match manager is spawned by the game
+	 * mode, possibly after this component began play, so the binding is retried from the
+	 * tick until it takes.
+	 */
+	void EnsureMatchBinding();
+	void HandleMatchPhaseChanged(EBDMatchPhase NewPhase);
+
+	/** Drops the selection when the match has nothing of that kind left to place. */
+	void CancelSelectionIfBudgetExhausted();
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBDPlaceableData> CurrentSelection;
@@ -262,6 +392,10 @@ private:
 
 	/** Resolved on first use: finding it walks the actor list. */
 	mutable TWeakObjectPtr<ABDMatchManager> CachedMatch;
+
+	/** The match whose phase changes this component is bound to, so the binding is dropped cleanly. */
+	TWeakObjectPtr<ABDMatchManager> BoundMatch;
+	FDelegateHandle PhaseChangedHandle;
 
 	/**
 	 * Every cell a piece covers points at that piece, so a right click anywhere on a
@@ -276,6 +410,33 @@ private:
 
 	UPROPERTY(Transient)
 	TMap<FBDEdgeCoord, FBDPlacedPiece> PlacedByEdge;
+
+	/** Towers mounted on platform slots. Few enough to search; keyed by nothing on purpose. */
+	UPROPERTY(Transient)
+	TArray<FBDPlacedPiece> PlacedOnSlots;
+
+	/** The platform and slot a held tower is aimed at. Reset whenever the hover is not over a platform. */
+	TWeakObjectPtr<UBDPlatformComponent> HoveredPlatform;
+	int32 HoveredSlotIndex = INDEX_NONE;
+
+	//~ The lifted piece, while one is being moved ---------------------------
+
+	bool bMoving = false;
+
+	/** The piece as it stood, actors and all, hidden while it travels. */
+	UPROPERTY(Transient)
+	FBDPlacedPiece MovingPiece;
+
+	/** Pieces that were mounted on the lifted platform, slot indices kept. */
+	UPROPERTY(Transient)
+	TArray<FBDPlacedPiece> MovingMounted;
+
+	/** Where it came from, so a cancelled or refused drop puts it back. */
+	FBDCellCoord MoveOriginCell;
+	FBDEdgeCoord MoveOriginEdge;
+	TWeakObjectPtr<UBDPlatformComponent> MoveOriginPlatform;
+	int32 MoveOriginSlot = INDEX_NONE;
+	int32 MoveOriginRotationSteps = 0;
 
 	FBDCellCoord HoveredCell;
 	FBDEdgeCoord HoveredEdge;

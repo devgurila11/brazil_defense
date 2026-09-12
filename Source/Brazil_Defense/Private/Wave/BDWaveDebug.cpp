@@ -115,8 +115,12 @@ namespace BDWaveDebug
 		}
 
 		const TArray<FBDSpawnPoint>& Points = Waves->GetSpawnPoints();
-		UE_LOG(LogBDWave, Log, TEXT("BD.Wave.Status: %d spawn point(s), %d creep(s) on the board."),
-			Points.Num(), Waves->GetLivingEnemyCount());
+		FVector ObjectiveLocation;
+		const FString ObjectiveText = Waves->GetObjectiveLocation(ObjectiveLocation)
+			? ObjectiveLocation.ToCompactString()
+			: TEXT("none");
+		UE_LOG(LogBDWave, Log, TEXT("BD.Wave.Status: %d spawn point(s), %d creep(s) on the board, objective at %s."),
+			Points.Num(), Waves->GetLivingEnemyCount(), *ObjectiveText);
 
 		for (int32 Index = 0; Index < Points.Num(); ++Index)
 		{
@@ -151,6 +155,25 @@ namespace BDWaveDebug
 		UE_LOG(LogBDMatch, Log, TEXT("BD.Votes.Status: %d blue (kills) / %d red (arrivals)."),
 			Match->GetVotesBlue(), Match->GetVotesRed());
 	}
+
+	static void ExecVotesAddBlue(const TArray<FString>& Args, UWorld* World)
+	{
+		ABDMatchManager* Match = World != nullptr ? ABDMatchManager::Get(World) : nullptr;
+		if (Args.Num() != 1 || Match == nullptr)
+		{
+			UE_LOG(LogBDMatch, Error, TEXT("Usage: BD.Votes.AddBlue <votes> (needs a running match)"));
+			return;
+		}
+
+		// Debug only: hands the player votes to spend, so a move tax can be tested without a wave of kills.
+		Match->AddVotesBlue(FCString::Atoi(*Args[0]));
+		UE_LOG(LogBDMatch, Log, TEXT("BD.Votes.AddBlue: now %d blue / %d red."), Match->GetVotesBlue(), Match->GetVotesRed());
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdVotesAddBlue(
+		TEXT("BD.Votes.AddBlue"),
+		TEXT("BD.Votes.AddBlue <votes>: debug, gives the player blue votes to spend."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecVotesAddBlue));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdSpawn(
 		TEXT("BD.Wave.Spawn"),

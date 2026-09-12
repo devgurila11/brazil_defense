@@ -13,6 +13,7 @@
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
 #include "Match/BDMatchManager.h"
+#include "Objective/BDObjective.h"
 #include "Path/BDPathfinder.h"
 #include "Stats/Stats.h"
 #include "Wave/BDWaveSettings.h"
@@ -259,6 +260,42 @@ void UBDWaveSubsystem::BuildSpawnPoints()
 	}
 }
 
+bool UBDWaveSubsystem::GetObjectiveLocation(FVector& OutLocation)
+{
+	if (!Objective.IsValid())
+	{
+		Objective = ABDObjective::Get(GetWorld());
+	}
+
+	if (const ABDObjective* Urn = Objective.Get())
+	{
+		OutLocation = Urn->GetActorLocation();
+		return true;
+	}
+
+	const UBDGridSubsystem* Grid = GetGrid();
+	GetSpawnPoints();
+	if (Grid == nullptr || GoalCells.Num() == 0)
+	{
+		return false;
+	}
+
+	if (!bWarnedNoObjective)
+	{
+		bWarnedNoObjective = true;
+		UE_LOG(LogBDWave, Warning,
+			TEXT("No BD Objective actor in the level: creeps converge on the middle of the Goal cells. Place one on the urn."));
+	}
+
+	OutLocation = FVector::ZeroVector;
+	for (const FBDCellCoord& Goal : GoalCells)
+	{
+		OutLocation += Grid->CellToWorld(Goal);
+	}
+	OutLocation /= GoalCells.Num();
+	return true;
+}
+
 bool UBDWaveSubsystem::FindRouteToGoal(const FBDCellCoord& From, TArray<FBDCellCoord>& OutRoute) const
 {
 	OutRoute.Reset();
@@ -290,8 +327,10 @@ void UBDWaveSubsystem::RerouteLivingEnemies()
 	TArray<FBDCellCoord> Route;
 	for (ABDEnemyBase* Enemy : LivingEnemies)
 	{
-		if (Enemy == nullptr || Enemy->HasArrived())
+		if (Enemy == nullptr || Enemy->HasArrived() || Enemy->IsOnFinalLeg())
 		{
+			// On the final leg the creep is already inside the urn cells, walking to the
+			// actor; there is no route left for the board to change.
 			continue;
 		}
 

@@ -111,7 +111,21 @@ public:
 
 	//~ Grid footprint -------------------------------------------------------
 
-	/** Bottom-left cell of the footprint: the cell under the owner location. */
+	/**
+	 * Tells the platform exactly which cells it was placed on. The placement gesture
+	 * spawns the actor at the middle of its footprint, and may have turned it, so the
+	 * "pivot is the bottom-left cell" rule of an authored platform does not hold for a
+	 * placed one. Restamps the grid.
+	 */
+	void SetPlacedFootprint(const FBDCellCoord& Origin, const FIntPoint& Footprint);
+
+	/** Takes the placed stamp off the grid and stops restamping until SetPlacedFootprint is called again. For a piece lifted off the board. */
+	void ClearPlacedFootprint();
+
+	/** Whether this platform is currently lifted off the board and stamps nothing. */
+	bool IsLifted() const { return bLifted; }
+
+	/** Bottom-left cell of the footprint: the placed origin, or the cell under the owner location. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Platform")
 	bool GetFootprintOrigin(FBDCellCoord& OutCoord) const;
 
@@ -151,6 +165,12 @@ private:
 
 	/** Owner transform the current stamp was computed from, used to detect movement. */
 	FTransform StampedTransform;
+
+	/** See SetPlacedFootprint. */
+	bool bHasPlacedFootprint = false;
+	bool bLifted = false;
+	FBDCellCoord PlacedOrigin;
+	FIntPoint PlacedFootprint = FIntPoint(1, 1);
 
 	FDelegateHandle GridRebuiltHandle;
 

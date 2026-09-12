@@ -30,6 +30,11 @@ bool UBDGameBalanceSettings::IsGameSpeedAllowed(const float Speed) const
 	return false;
 }
 
+float UBDGameBalanceSettings::GetMoveTaxRate(const int32 Wave) const
+{
+	return FMath::Min(MoveTaxMax, MoveTaxInitial + MoveTaxStep * FMath::Max(0, Wave));
+}
+
 float UBDGameBalanceSettings::GetWaveDelay(const int32 Wave) const
 {
 	const float Decayed = BaseWaveDelay * FMath::Pow(WaveDelayDecayRate, static_cast<float>(FMath::Max(0, Wave)));

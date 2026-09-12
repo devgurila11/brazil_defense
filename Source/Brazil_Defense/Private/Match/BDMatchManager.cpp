@@ -89,6 +89,7 @@ void ABDMatchManager::BeginPlay()
 	DividersRemaining = DifficultyData->DividerBudget;
 	PlatformsRemaining = DifficultyData->PlatformBudget;
 	TowersRemaining = DifficultyData->StartingTowers;
+	ObjectivesRemaining = 1;
 
 	SetupBoard();
 
@@ -278,6 +279,35 @@ void ABDMatchManager::AddVotesRed(const int32 Votes)
 	UE_LOG(LogBDMatch, Verbose, TEXT("Red +%d votes, now %d blue / %d red."), Votes, VotesBlue, VotesRed);
 }
 
+bool ABDMatchManager::SpendVotesBlue(const int32 Votes)
+{
+	if (Votes < 0 || !CanAffordVotesBlue(Votes))
+	{
+		return false;
+	}
+
+	if (Votes == 0)
+	{
+		return true;
+	}
+
+	VotesBlue -= Votes;
+	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
+
+	UE_LOG(LogBDMatch, Verbose, TEXT("Blue -%d votes, now %d blue / %d red."), Votes, VotesBlue, VotesRed);
+	return true;
+}
+
+float ABDMatchManager::GetMoveTaxRate() const
+{
+	return UBDGameBalanceSettings::Get().GetMoveTaxRate(CurrentWave);
+}
+
+int32 ABDMatchManager::GetMoveCost(const int32 BuildCost) const
+{
+	return FMath::RoundToInt(FMath::Max(0, BuildCost) * GetMoveTaxRate());
+}
+
 bool ABDMatchManager::SetGameSpeed(const float Speed)
 {
 	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
@@ -307,6 +337,9 @@ int32* ABDMatchManager::FindBudget(const EBDPieceKind Kind)
 	case EBDPieceKind::Tower:
 		return &TowersRemaining;
 
+	case EBDPieceKind::Objective:
+		return &ObjectivesRemaining;
+
 	default:
 		return nullptr;
 	}
@@ -315,6 +348,12 @@ int32* ABDMatchManager::FindBudget(const EBDPieceKind Kind)
 const int32* ABDMatchManager::FindBudget(const EBDPieceKind Kind) const
 {
 	return const_cast<ABDMatchManager*>(this)->FindBudget(Kind);
+}
+
+int32 ABDMatchManager::GetBudgetRemaining(const EBDPieceKind Kind) const
+{
+	const int32* Budget = FindBudget(Kind);
+	return Budget != nullptr ? *Budget : 0;
 }
 
 bool ABDMatchManager::CanPlace(const EBDPieceKind Kind) const
@@ -360,6 +399,13 @@ bool ABDMatchManager::CanRemove(const EBDPieceKind Kind) const
 	if (Kind == EBDPieceKind::Tower)
 	{
 		return true;
+	}
+
+	if (Kind == EBDPieceKind::Objective)
+	{
+		// The urn is put down once. Everything the player builds afterwards is built
+		// around it, so taking it back would invalidate the whole maze.
+		return false;
 	}
 
 	if (!IsBuildLocked())
@@ -446,10 +492,10 @@ namespace BDMatchCommands
 		}
 
 		UE_LOG(LogBDMatch, Log,
-			TEXT("Phase %s | wave %d | %.1fs to next | dividers %d | platforms %d | towers %d | speed %.0fx | bonus %d | votes %d blue / %d red"),
+			TEXT("Phase %s | wave %d | %.1fs to next | dividers %d | platforms %d | towers %d | objectives %d | speed %.0fx | bonus %d | votes %d blue / %d red"),
 			*StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())),
 			Match->GetCurrentWave(), Match->GetTimeUntilNextWave(),
-			Match->GetDividersRemaining(), Match->GetPlatformsRemaining(), Match->GetTowersRemaining(),
+			Match->GetDividersRemaining(), Match->GetPlatformsRemaining(), Match->GetTowersRemaining(), Match->GetObjectivesRemaining(),
 			Match->GetGameSpeed(), Match->GetEarlyCallBonus(), Match->GetVotesBlue(), Match->GetVotesRed());
 	}
 

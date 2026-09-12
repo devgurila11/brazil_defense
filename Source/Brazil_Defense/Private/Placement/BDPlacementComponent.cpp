@@ -13,11 +13,17 @@
 #include "InputMappingContext.h"
 #include "GameFramework/PlayerController.h"
 #include "Grid/BDGridSubsystem.h"
+#include "Objective/BDObjectiveSubsystem.h"
 #include "Match/BDMatchManager.h"
 #include "Path/BDPathfinder.h"
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementPreview.h"
 #include "Placement/BDPlacementSettings.h"
+#include "Platform/BDPlatformComponent.h"
+#include "Tower/BDTowerBase.h"
+#include "Tower/BDTowerData.h"
+#include "UObject/UObjectIterator.h"
+#include "Grid/BDGridSettings.h"
 
 UBDPlacementComponent::UBDPlacementComponent()
 {
@@ -45,7 +51,65 @@ void UBDPlacementComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		Preview = nullptr;
 	}
 
+	if (ABDMatchManager* Match = BoundMatch.Get())
+	{
+		Match->OnPhaseChanged.Remove(PhaseChangedHandle);
+	}
+	BoundMatch.Reset();
+
 	Super::EndPlay(EndPlayReason);
+}
+
+void UBDPlacementComponent::EnsureMatchBinding()
+{
+	if (BoundMatch.IsValid())
+	{
+		return;
+	}
+
+	ABDMatchManager* Match = GetMatch();
+	if (Match == nullptr)
+	{
+		return;
+	}
+
+	PhaseChangedHandle = Match->OnPhaseChanged.AddUObject(this, &UBDPlacementComponent::HandleMatchPhaseChanged);
+	BoundMatch = Match;
+}
+
+void UBDPlacementComponent::HandleMatchPhaseChanged(const EBDMatchPhase NewPhase)
+{
+	if (NewPhase == EBDMatchPhase::Building || CurrentSelection == nullptr)
+	{
+		return;
+	}
+
+	UE_LOG(LogBDGrid, Log, TEXT("Selection of '%s' cleared: the match left the building phase (%s)."),
+		*GetNameSafe(CurrentSelection),
+		*StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(NewPhase)));
+
+	CancelSelection();
+}
+
+void UBDPlacementComponent::CancelSelectionIfBudgetExhausted()
+{
+	const ABDMatchManager* Match = GetMatch();
+	if (CurrentSelection == nullptr || Match == nullptr)
+	{
+		return;
+	}
+
+	const EBDPieceKind Kind = CurrentSelection->GetPieceKind();
+	if (Match->GetBudgetRemaining(Kind) > 0)
+	{
+		return;
+	}
+
+	UE_LOG(LogBDGrid, Log, TEXT("Selection of '%s' cleared: no %s left to place."),
+		*GetNameSafe(CurrentSelection),
+		*StaticEnum<EBDPieceKind>()->GetNameStringByValue(static_cast<int64>(Kind)));
+
+	CancelSelection();
 }
 
 void UBDPlacementComponent::BindInput(UInputComponent* InputComponent)
@@ -66,6 +130,8 @@ void UBDPlacementComponent::BindInput(UInputComponent* InputComponent)
 	if (UInputAction* Action = Settings.PlaceAction.LoadSynchronous())
 	{
 		EnhancedInput->BindAction(Action, ETriggerEvent::Started, this, &UBDPlacementComponent::HandlePlaceInput);
+		// A move is a drag: press on a placed piece lifts it, release drops it.
+		EnhancedInput->BindAction(Action, ETriggerEvent::Completed, this, &UBDPlacementComponent::HandlePlaceReleased);
 	}
 
 	if (UInputAction* Action = Settings.RemoveAction.LoadSynchronous())
@@ -142,9 +208,119 @@ const UBDPathfinder* UBDPlacementComponent::GetPathfinder() const
 	return World != nullptr ? World->GetSubsystem<UBDPathfinder>() : nullptr;
 }
 
+UBDObjectiveSubsystem* UBDPlacementComponent::GetObjectives() const
+{
+	const UWorld* World = GetWorld();
+	return World != nullptr ? World->GetSubsystem<UBDObjectiveSubsystem>() : nullptr;
+}
+
 bool UBDPlacementComponent::IsEdgeSelection() const
 {
 	return CurrentSelection != nullptr && CurrentSelection->bOccupiesEdge;
+}
+
+bool UBDPlacementComponent::IsObjectiveSelection() const
+{
+	return CurrentSelection != nullptr && CurrentSelection->GetPieceKind() == EBDPieceKind::Objective;
+}
+
+bool UBDPlacementComponent::IsTowerSelection() const
+{
+	return CurrentSelection != nullptr && CurrentSelection->GetPieceKind() == EBDPieceKind::Tower;
+}
+
+UBDPlatformComponent* UBDPlacementComponent::FindPlatformAt(const FBDCellCoord& Coord) const
+{
+	const UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return nullptr;
+	}
+
+	// Every platform in the world, placed by the player or authored in the level. There
+	// are a handful; walking them per hover frame is cheaper than keeping a registry.
+	for (TObjectIterator<UBDPlatformComponent> It; It; ++It)
+	{
+		UBDPlatformComponent* Platform = *It;
+		if (Platform->GetWorld() != World || !Platform->bInsideBattleArea || !IsValid(Platform->GetOwner()))
+		{
+			continue;
+		}
+
+		TArray<FBDCellCoord> Cells;
+		Platform->GetFootprintCells(Cells);
+		if (Cells.Contains(Coord))
+		{
+			return Platform;
+		}
+	}
+
+	return nullptr;
+}
+
+int32 UBDPlacementComponent::FindNearestSlot(const UBDPlatformComponent& Platform, const FVector& Point)
+{
+	int32 Nearest = INDEX_NONE;
+	float NearestDistance = TNumericLimits<float>::Max();
+
+	for (int32 Index = 0; Index < Platform.Slots.Num(); ++Index)
+	{
+		const float Distance = FVector::DistSquared2D(Platform.GetSlotWorldTransform(Index).GetLocation(), Point);
+		if (Distance < NearestDistance)
+		{
+			Nearest = Index;
+			NearestDistance = Distance;
+		}
+	}
+
+	return Nearest;
+}
+
+void UBDPlacementComponent::ResolveSlotHover()
+{
+	HoveredPlatform.Reset();
+	HoveredSlotIndex = INDEX_NONE;
+
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (!IsTowerSelection() || Grid == nullptr || !bHoveringGrid || Grid->GetCellState(HoveredCell) != EBDCellState::Platform)
+	{
+		return;
+	}
+
+	UBDPlatformComponent* Platform = FindPlatformAt(HoveredCell);
+	if (Platform == nullptr)
+	{
+		return;
+	}
+
+	// The slot nearest the cursor, taken or not: a taken one is refused as SlotTaken,
+	// which tells the player more than silently snapping to another slot would.
+	HoveredPlatform = Platform;
+	HoveredSlotIndex = FindNearestSlot(*Platform, HoverPoint);
+}
+
+UClass* UBDPlacementComponent::ResolveActorClass() const
+{
+	if (CurrentSelection == nullptr)
+	{
+		return nullptr;
+	}
+
+	if (UClass* ActorClass = CurrentSelection->ActorClass.LoadSynchronous())
+	{
+		return ActorClass;
+	}
+
+	if (IsTowerSelection())
+	{
+		const UBDTowerData* TowerData = CurrentSelection->TowerData.LoadSynchronous();
+		if (TowerData != nullptr)
+		{
+			return TowerData->TowerClass.IsNull() ? ABDTowerBase::StaticClass() : TowerData->TowerClass.LoadSynchronous();
+		}
+	}
+
+	return nullptr;
 }
 
 //~ Selection ------------------------------------------------------------------
@@ -158,6 +334,12 @@ void UBDPlacementComponent::SelectPlaceable(UBDPlaceableData* Placeable)
 		return;
 	}
 
+	// Picking a new piece while one is lifted sends the lifted one home first.
+	if (bMoving)
+	{
+		CancelMove();
+	}
+
 	CurrentSelection = Placeable;
 	RotationSteps = 0;
 
@@ -166,6 +348,9 @@ void UBDPlacementComponent::SelectPlaceable(UBDPlaceableData* Placeable)
 		CancelSelection();
 		return;
 	}
+
+	// Whoever holds a piece has to hear the phase change, tick or no tick yet.
+	EnsureMatchBinding();
 
 	EnsurePreview();
 	if (Preview != nullptr)
@@ -229,12 +414,23 @@ void UBDPlacementComponent::RotateSelection(const bool bClockwise)
 
 void UBDPlacementComponent::CancelSelection()
 {
+	if (bMoving)
+	{
+		// The lifted piece is not dropped on the floor: it goes home first.
+		CancelMove();
+		return;
+	}
+
 	CurrentSelection = nullptr;
 	bCurrentPlacementValid = false;
+	CurrentRefusal = EBDPlacementRefusal::NoSelection;
+	LastReportedRefusal = EBDPlacementRefusal::NoSelection;
 
+	// The ghost goes with the selection; the next selection spawns a fresh one.
 	if (Preview != nullptr)
 	{
-		Preview->SetPlaceable(nullptr);
+		Preview->Destroy();
+		Preview = nullptr;
 	}
 }
 
@@ -377,6 +573,8 @@ void UBDPlacementComponent::TickComponent(const float DeltaTime, const ELevelTic
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	EnsureMatchBinding();
+
 	const FBDCellCoord PreviousCell = HoveredCell;
 	const bool bWasHovering = bHoveringGrid;
 	const bool bWasValid = bCurrentPlacementValid;
@@ -396,6 +594,16 @@ void UBDPlacementComponent::TickComponent(const float DeltaTime, const ELevelTic
 	if (bHoveringGrid != bWasHovering || HoveredCell != PreviousCell || bCurrentPlacementValid != bWasValid)
 	{
 		OnHoverChanged.Broadcast(HoveredCell, bCurrentPlacementValid);
+	}
+
+	// With the urn in hand the zone it may go in is painted on the floor, hovering or
+	// not: without it the player would find the zone by trial and error.
+	if (IsObjectiveSelection())
+	{
+		if (const UBDObjectiveSubsystem* Objectives = GetObjectives())
+		{
+			Objectives->DrawZone();
+		}
 	}
 }
 
@@ -432,6 +640,63 @@ void UBDPlacementComponent::GetSelectionSegmentEdges(TArray<FBDEdgeCoord>& OutEd
 	}
 
 	OutEdges = Grid->GetEdgesForSegment(HoveredEdge.Cell, CurrentSelection->SegmentLength, HoveredEdge.Direction);
+}
+
+EBDPlacementRefusal UBDPlacementComponent::EvaluateObjectivePlacement() const
+{
+	const UBDObjectiveSubsystem* Objectives = GetObjectives();
+	if (Objectives == nullptr)
+	{
+		return EBDPlacementRefusal::NotHoveringGrid;
+	}
+
+	switch (Objectives->EvaluateCell(HoveredCell))
+	{
+	case EBDObjectiveRefusal::None:
+		return EBDPlacementRefusal::None;
+
+	case EBDObjectiveRefusal::OutOfZone:
+		return EBDPlacementRefusal::ObjectiveOutOfZone;
+
+	case EBDObjectiveRefusal::CellTaken:
+		return EBDPlacementRefusal::CellTaken;
+
+	case EBDObjectiveRefusal::Unreachable:
+		return EBDPlacementRefusal::WouldBlockPath;
+
+	default:
+		return EBDPlacementRefusal::OffGrid;
+	}
+}
+
+bool UBDPlacementComponent::CanSelectionStandOnGround() const
+{
+	const UBDTowerData* TowerData = IsTowerSelection() ? CurrentSelection->TowerData.LoadSynchronous() : nullptr;
+	// A tower piece with no data is treated as ground equipment: that is what a plain ABDTowerBase is.
+	return TowerData == nullptr || TowerData->bCanPlaceOnGround;
+}
+
+bool UBDPlacementComponent::CanSelectionStandOnSlot() const
+{
+	const UBDTowerData* TowerData = IsTowerSelection() ? CurrentSelection->TowerData.LoadSynchronous() : nullptr;
+	return TowerData != nullptr && TowerData->bCanPlaceOnSlot;
+}
+
+EBDPlacementRefusal UBDPlacementComponent::EvaluateSlotPlacement() const
+{
+	const UBDPlatformComponent* Platform = HoveredPlatform.Get();
+	if (Platform == nullptr || HoveredSlotIndex == INDEX_NONE)
+	{
+		// A platform with no slots at all is just a taken cell.
+		return EBDPlacementRefusal::CellTaken;
+	}
+
+	if (!CanSelectionStandOnSlot())
+	{
+		return EBDPlacementRefusal::TowerCannotGoOnSlot;
+	}
+
+	return Platform->IsSlotFree(HoveredSlotIndex) ? EBDPlacementRefusal::None : EBDPlacementRefusal::SlotTaken;
 }
 
 EBDPlacementRefusal UBDPlacementComponent::EvaluateCellPlacement(const UBDGridSubsystem& Grid) const
@@ -530,23 +795,42 @@ void UBDPlacementComponent::ReportRefusalChange()
 
 	// One line per change of answer, not per frame: a hover across the board that stays
 	// refused for the same reason says so once.
+	// A move says what it will cost and what the score becomes, so the drop is decided knowing.
+	FString CostText;
+	if (bMoving)
+	{
+		const ABDMatchManager* Match = GetMatch();
+		const int32 Cost = GetMoveCost();
+		const int32 Blue = Match != nullptr ? Match->GetVotesBlue() : 0;
+		CostText = IsHoveringMoveOrigin()
+			? TEXT(" (back where it was: no charge)")
+			: FString::Printf(TEXT(" (move tax %d vote(s) at %.0f%%: blue %d -> %d)"),
+				Cost, Match != nullptr ? Match->GetMoveTaxRate() * 100.0f : 0.0f, Blue, Blue - Cost);
+	}
+
+	const TCHAR* Verb = bMoving ? TEXT("Move") : TEXT("Placement");
+
 	if (CurrentRefusal == EBDPlacementRefusal::None)
 	{
-		UE_LOG(LogBDGrid, Log, TEXT("Placement of '%s': valid at %s."),
-			*GetNameSafe(CurrentSelection),
-			IsEdgeSelection() ? *HoveredEdge.ToString() : *HoveredCell.ToString());
+		UE_LOG(LogBDGrid, Log, TEXT("%s of '%s': valid at %s%s%s."),
+			Verb, *GetNameSafe(CurrentSelection),
+			IsEdgeSelection() ? *HoveredEdge.ToString() : *HoveredCell.ToString(),
+			IsHoveringSlot() ? *FString::Printf(TEXT(" slot %d of %s"), HoveredSlotIndex, *GetNameSafe(HoveredPlatform->GetOwner())) : TEXT(""),
+			*CostText);
 		return;
 	}
 
-	UE_LOG(LogBDGrid, Log, TEXT("Placement of '%s' refused at %s: %s."),
-		*GetNameSafe(CurrentSelection),
+	UE_LOG(LogBDGrid, Log, TEXT("%s of '%s' refused at %s%s: %s%s."),
+		Verb, *GetNameSafe(CurrentSelection),
 		bHoveringGrid ? (IsEdgeSelection() ? *HoveredEdge.ToString() : *HoveredCell.ToString()) : TEXT("no cell"),
-		*DescribeCurrentRefusal());
+		IsHoveringSlot() ? *FString::Printf(TEXT(" slot %d"), HoveredSlotIndex) : TEXT(""),
+		*DescribeCurrentRefusal(), *CostText);
 }
 
 void UBDPlacementComponent::EvaluatePlacement()
 {
 	bCurrentPlacementValid = false;
+	ResolveSlotHover();
 
 	const UBDGridSubsystem* Grid = GetGrid();
 	if (CurrentSelection == nullptr)
@@ -559,12 +843,43 @@ void UBDPlacementComponent::EvaluatePlacement()
 	}
 	else
 	{
+		// Nothing is built before the urn: the maze is built around it, so it has to be
+		// there first. Checked ahead of the budget so the reason names the urn.
+		const UBDObjectiveSubsystem* Objectives = GetObjectives();
+		const bool bObjectiveMissing = !IsObjectiveSelection() && Objectives != nullptr && !Objectives->IsPlaced();
+
 		// A piece the player cannot afford, or cannot place in this phase, is refused
-		// before the pathfinding: the budget is cheaper to check than the board.
+		// before the pathfinding: the budget is cheaper to check than the board. A lifted
+		// piece is already paid for and already counted, so it asks the match a different
+		// question: may things move right now, and can the tax be paid.
 		const ABDMatchManager* Match = GetMatch();
-		if (Match != nullptr && !Match->CanPlace(CurrentSelection->GetPieceKind()))
+		if (bMoving && Match != nullptr && !Match->CanMove())
 		{
 			CurrentRefusal = EBDPlacementRefusal::MatchRefused;
+		}
+		else if (bMoving && Match != nullptr && !IsHoveringMoveOrigin() && !Match->CanAffordVotesBlue(GetMoveCost()))
+		{
+			CurrentRefusal = EBDPlacementRefusal::CannotAffordMove;
+		}
+		else if (!bMoving && bObjectiveMissing)
+		{
+			CurrentRefusal = EBDPlacementRefusal::ObjectiveMissing;
+		}
+		else if (!bMoving && Match != nullptr && !Match->CanPlace(CurrentSelection->GetPieceKind()))
+		{
+			CurrentRefusal = EBDPlacementRefusal::MatchRefused;
+		}
+		else if (IsObjectiveSelection())
+		{
+			CurrentRefusal = EvaluateObjectivePlacement();
+		}
+		else if (IsHoveringSlot())
+		{
+			CurrentRefusal = EvaluateSlotPlacement();
+		}
+		else if (IsTowerSelection() && !CanSelectionStandOnGround())
+		{
+			CurrentRefusal = EBDPlacementRefusal::CharacterNeedsPlatform;
 		}
 		else
 		{
@@ -631,6 +946,10 @@ float UBDPlacementComponent::ResolveGroundZ(const FVector& Point) const
 	{
 		Params.AddIgnoredActors(Entry.Value.Actors);
 	}
+	for (const FBDPlacedPiece& Piece : PlacedOnSlots)
+	{
+		Params.AddIgnoredActors(Piece.Actors);
+	}
 
 	FHitResult Hit;
 	if (World->LineTraceSingleByChannel(Hit, Start, End, Settings.GroundTraceChannel, Params))
@@ -652,6 +971,13 @@ void UBDPlacementComponent::BuildInstanceTransforms(TArray<FTransform>& OutTrans
 	}
 
 	const float CellSize = Grid->GetCellSize();
+
+	if (IsHoveringSlot())
+	{
+		// The slot says where and which way; the platform already stands on its floor.
+		OutTransforms.Add(HoveredPlatform->GetSlotWorldTransform(HoveredSlotIndex));
+		return;
+	}
 
 	if (IsEdgeSelection())
 	{
@@ -705,6 +1031,16 @@ void UBDPlacementComponent::ComputeOutline(FVector& OutCenter, FVector& OutExten
 	const UBDPlacementSettings& Settings = UBDPlacementSettings::Get();
 	const float CellSize = Grid->GetCellSize();
 
+	if (IsHoveringSlot())
+	{
+		// The slot itself is what gets highlighted, at the size the debug slot markers use.
+		const float Radius = UBDGridSettings::Get().SlotMarkerRadius;
+		OutCenter = HoveredPlatform->GetSlotWorldTransform(HoveredSlotIndex).GetLocation();
+		OutExtent = FVector(Radius, Radius, Settings.OutlineHeight * 0.5f);
+		OutCenter.Z += OutExtent.Z;
+		return;
+	}
+
 	if (IsEdgeSelection())
 	{
 		// A strip along the whole run, from the start of the first edge to the end of
@@ -750,11 +1086,34 @@ void UBDPlacementComponent::ComputeOutline(FVector& OutCenter, FVector& OutExten
 
 void UBDPlacementComponent::SpawnPieceActors(const TArray<FTransform>& Transforms, FBDPlacedPiece& Piece) const
 {
-	UClass* ActorClass = CurrentSelection != nullptr ? CurrentSelection->ActorClass.LoadSynchronous() : nullptr;
+	UClass* ActorClass = ResolveActorClass();
 	if (ActorClass == nullptr)
 	{
 		return;
 	}
+
+	// A lifted piece brings its actors with it: they are moved, not remade, so a tower
+	// keeps its level and its tally across the move.
+	if (Piece.Actors.Num() > 0)
+	{
+		for (int32 Index = 0; Index < Piece.Actors.Num(); ++Index)
+		{
+			AActor* Actor = Piece.Actors[Index];
+			if (Actor == nullptr)
+			{
+				continue;
+			}
+
+			if (Transforms.IsValidIndex(Index))
+			{
+				Actor->SetActorTransform(Transforms[Index]);
+			}
+		}
+		SetActorsHidden(Piece.Actors, false);
+		return;
+	}
+
+	const UBDTowerData* TowerData = IsTowerSelection() ? CurrentSelection->TowerData.LoadSynchronous() : nullptr;
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -762,11 +1121,58 @@ void UBDPlacementComponent::SpawnPieceActors(const TArray<FTransform>& Transform
 
 	for (const FTransform& SpawnTransform : Transforms)
 	{
-		if (AActor* Spawned = GetWorld()->SpawnActor<AActor>(ActorClass, SpawnTransform, SpawnParams))
+		AActor* Spawned = GetWorld()->SpawnActor<AActor>(ActorClass, SpawnTransform, SpawnParams);
+		if (Spawned == nullptr)
 		{
-			Piece.Actors.Add(Spawned);
+			continue;
+		}
+
+		Piece.Actors.Add(Spawned);
+
+		// A tower is told what it is before its first tick, ground or slot alike.
+		if (ABDTowerBase* Tower = Cast<ABDTowerBase>(Spawned))
+		{
+			Tower->InitializeTower(TowerData);
 		}
 	}
+}
+
+bool UBDPlacementComponent::PlaceSlotPiece(FBDPlacedPiece& Piece)
+{
+	UBDPlatformComponent* Platform = HoveredPlatform.Get();
+	if (Platform == nullptr || HoveredSlotIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	TArray<FTransform> InstanceTransforms;
+	BuildInstanceTransforms(InstanceTransforms);
+	SpawnPieceActors(InstanceTransforms, Piece);
+
+	ABDTowerBase* Tower = Piece.Actors.Num() > 0 ? Cast<ABDTowerBase>(Piece.Actors[0]) : nullptr;
+	if (Tower == nullptr || !Platform->TryOccupy(HoveredSlotIndex, Tower))
+	{
+		UE_LOG(LogBDGrid, Error, TEXT("Slot %d of %s refused '%s' after the preview said it was free."),
+			HoveredSlotIndex, *GetNameSafe(Platform->GetOwner()), *GetNameSafe(CurrentSelection));
+		for (AActor* Actor : Piece.Actors)
+		{
+			if (Actor != nullptr)
+			{
+				Actor->Destroy();
+			}
+		}
+		return false;
+	}
+
+	Piece.Platform = Platform;
+	Piece.SlotIndex = HoveredSlotIndex;
+	Piece.Yaw = Tower->GetActorRotation().Yaw;
+	PlacedOnSlots.Add(Piece);
+
+	UE_LOG(LogBDGrid, Verbose, TEXT("Placed '%s' on slot %d of %s."),
+		*GetNameSafe(CurrentSelection), HoveredSlotIndex, *GetNameSafe(Platform->GetOwner()));
+
+	return true;
 }
 
 bool UBDPlacementComponent::PlaceCellPiece(UBDGridSubsystem& Grid, FBDPlacedPiece& Piece)
@@ -789,6 +1195,23 @@ bool UBDPlacementComponent::PlaceCellPiece(UBDGridSubsystem& Grid, FBDPlacedPiec
 	TArray<FTransform> InstanceTransforms;
 	BuildInstanceTransforms(InstanceTransforms);
 	SpawnPieceActors(InstanceTransforms, Piece);
+
+	for (AActor* Actor : Piece.Actors)
+	{
+		if (ABDTowerBase* Tower = Cast<ABDTowerBase>(Actor))
+		{
+			Tower->SetGroundCoord(HoveredCell);
+		}
+
+		// A platform stamps its own cells from its pivot, which is the middle of the
+		// footprint here, not its corner: hand it the cells about to be written. Before
+		// the grid write, so what it remembers under its stamp is the Free board, and
+		// what it puts back when it goes is Free too.
+		if (UBDPlatformComponent* PlatformComponent = Actor != nullptr ? Actor->FindComponentByClass<UBDPlatformComponent>() : nullptr)
+		{
+			PlatformComponent->SetPlacedFootprint(Piece.Origin, Piece.Footprint);
+		}
+	}
 
 	// The grid is written last, so a failed spawn cannot leave cells marked as taken
 	// by a piece that does not exist.
@@ -830,12 +1253,69 @@ bool UBDPlacementComponent::PlaceEdgePiece(UBDGridSubsystem& Grid, FBDPlacedPiec
 	return true;
 }
 
+bool UBDPlacementComponent::PlaceObjectivePiece()
+{
+	UBDObjectiveSubsystem* Objectives = GetObjectives();
+	if (Objectives == nullptr)
+	{
+		return false;
+	}
+
+	// The ghost mesh doubles as the urn mesh when the actor class brings none, so what
+	// the player saw while placing is what stands there.
+	UClass* ActorClass = CurrentSelection->ActorClass.LoadSynchronous();
+	UStaticMesh* Mesh = CurrentSelection->PreviewMesh.LoadSynchronous();
+
+	EBDObjectiveRefusal Refusal;
+	return Objectives->PlaceObjective(HoveredCell, ActorClass, Mesh, Refusal);
+}
+
 bool UBDPlacementComponent::TryPlaceAtHovered()
 {
 	UBDGridSubsystem* Grid = GetGrid();
 	if (CurrentSelection == nullptr || Grid == nullptr || !bHoveringGrid || !bCurrentPlacementValid)
 	{
 		return false;
+	}
+
+	if (bMoving)
+	{
+		if (IsHoveringMoveOrigin())
+		{
+			// Dropped where it was picked up: a change of mind, not a move.
+			CancelMove();
+			return true;
+		}
+
+		// Charged before the board is touched, so a refused payment leaves everything lifted.
+		ABDMatchManager* Match = GetMatch();
+		const int32 Cost = GetMoveCost();
+		if (Match != nullptr && !Match->SpendVotesBlue(Cost))
+		{
+			UE_LOG(LogBDGrid, Warning, TEXT("Move of '%s' refused: %d blue vote(s) needed."), *GetNameSafe(CurrentSelection), Cost);
+			return false;
+		}
+
+		if (!DropMovingPiece())
+		{
+			// The board said yes a frame ago and no now. Give the votes back and go home.
+			if (Match != nullptr)
+			{
+				Match->AddVotesBlue(Cost);
+			}
+			CancelMove();
+			return false;
+		}
+
+		UE_LOG(LogBDGrid, Log, TEXT("Moved '%s' to %s for %d blue vote(s)."),
+			*GetNameSafe(MovingPiece.Data),
+			IsEdgeSelection() ? *HoveredEdge.ToString() : *HoveredCell.ToString(), Cost);
+
+		bMoving = false;
+		MovingPiece = FBDPlacedPiece();
+		MovingMounted.Reset();
+		CancelSelection();
+		return true;
 	}
 
 	// Charged before anything is spawned or written, so a refused budget leaves no trace.
@@ -849,22 +1329,56 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 		}
 	}
 
+	if (IsObjectiveSelection())
+	{
+		if (!PlaceObjectivePiece())
+		{
+			return false;
+		}
+
+		EvaluatePlacement();
+		CancelSelectionIfBudgetExhausted();
+		return true;
+	}
+
 	FBDPlacedPiece Piece;
 	Piece.Data = CurrentSelection;
 
-	const bool bPlaced = IsEdgeSelection() ? PlaceEdgePiece(*Grid, Piece) : PlaceCellPiece(*Grid, Piece);
+	const bool bPlaced = IsHoveringSlot()
+		? PlaceSlotPiece(Piece)
+		: (IsEdgeSelection() ? PlaceEdgePiece(*Grid, Piece) : PlaceCellPiece(*Grid, Piece));
 	if (!bPlaced)
 	{
 		return false;
 	}
 
 	EvaluatePlacement();
+	CancelSelectionIfBudgetExhausted();
 	return true;
 }
 
 const FBDPlacedPiece* UBDPlacementComponent::FindPieceUnderHover() const
 {
 	const UBDGridSubsystem* Grid = GetGrid();
+
+	// A tower on a slot comes before the platform under it, when the cursor is nearer
+	// to that slot than to any other slot of the platform: the player is pointing at
+	// the tower, not at the truck.
+	if (Grid != nullptr && Grid->GetCellState(HoveredCell) == EBDCellState::Platform)
+	{
+		if (const UBDPlatformComponent* Platform = FindPlatformAt(HoveredCell))
+		{
+			const int32 NearestSlot = FindNearestSlot(*Platform, HoverPoint);
+			for (const FBDPlacedPiece& Piece : PlacedOnSlots)
+			{
+				if (Piece.Platform.Get() == Platform && Piece.SlotIndex == NearestSlot)
+				{
+					return &Piece;
+				}
+			}
+		}
+	}
+
 	const FBDPlacedPiece* CellPiece = PlacedByCell.Find(HoveredCell);
 	const FBDPlacedPiece* EdgePiece = PlacedByEdge.Find(HoveredEdge);
 
@@ -879,8 +1393,64 @@ const FBDPlacedPiece* UBDPlacementComponent::FindPieceUnderHover() const
 	return ToEdge < ToCell ? EdgePiece : CellPiece;
 }
 
+void UBDPlacementComponent::ForgetSlotPiecesOn(const FBDPlacedPiece& PlatformPiece)
+{
+	ABDMatchManager* Match = GetMatch();
+
+	for (const AActor* Actor : PlatformPiece.Actors)
+	{
+		const UBDPlatformComponent* Platform = Actor != nullptr ? Actor->FindComponentByClass<UBDPlatformComponent>() : nullptr;
+		if (Platform == nullptr)
+		{
+			continue;
+		}
+
+		// Walked on a copy: forgetting a slot piece edits PlacedOnSlots.
+		const TArray<FBDPlacedPiece> Mounted = PlacedOnSlots.FilterByPredicate([Platform](const FBDPlacedPiece& Piece)
+		{
+			return Piece.Platform.Get() == Platform;
+		});
+
+		for (const FBDPlacedPiece& Piece : Mounted)
+		{
+			ForgetPiece(*GetGrid(), Piece);
+			if (Match != nullptr)
+			{
+				// A tower taken back is a tower held again, even when it is the platform that went.
+				Match->RefundRemoval(EBDPieceKind::Tower);
+			}
+		}
+	}
+}
+
 void UBDPlacementComponent::ForgetPiece(UBDGridSubsystem& Grid, const FBDPlacedPiece& Piece)
 {
+	if (Piece.IsOnSlot())
+	{
+		if (UBDPlatformComponent* Platform = Piece.Platform.Get())
+		{
+			Platform->Release(Piece.SlotIndex);
+		}
+
+		const TWeakObjectPtr<UBDPlatformComponent> PlatformKey = Piece.Platform;
+		const int32 SlotKey = Piece.SlotIndex;
+		for (AActor* Actor : Piece.Actors)
+		{
+			if (Actor != nullptr)
+			{
+				Actor->Destroy();
+			}
+		}
+		PlacedOnSlots.RemoveAll([&PlatformKey, SlotKey](const FBDPlacedPiece& Other)
+		{
+			return Other.Platform == PlatformKey && Other.SlotIndex == SlotKey;
+		});
+		return;
+	}
+
+	// A platform goes with everything mounted on it.
+	ForgetSlotPiecesOn(Piece);
+
 	for (const FBDEdgeCoord& Edge : Piece.Edges)
 	{
 		Grid.SetEdgeBlocked(Edge, false);
@@ -952,11 +1522,348 @@ bool UBDPlacementComponent::TryRemoveAtHovered()
 	return true;
 }
 
+//~ Moving ------------------------------------------------------------------------
+
+void UBDPlacementComponent::SetActorsHidden(const TArray<TObjectPtr<AActor>>& Actors, const bool bHidden)
+{
+	for (AActor* Actor : Actors)
+	{
+		if (Actor != nullptr)
+		{
+			Actor->SetActorHiddenInGame(bHidden);
+			Actor->SetActorEnableCollision(!bHidden);
+		}
+	}
+}
+
+int32 UBDPlacementComponent::GetMoveCost() const
+{
+	const ABDMatchManager* Match = GetMatch();
+	if (!bMoving || Match == nullptr || MovingPiece.Data == nullptr)
+	{
+		return 0;
+	}
+
+	return Match->GetMoveCost(MovingPiece.Data->GetBuildCost());
+}
+
+bool UBDPlacementComponent::IsHoveringMoveOrigin() const
+{
+	if (!bMoving || !bHoveringGrid || RotationSteps != MoveOriginRotationSteps)
+	{
+		return false;
+	}
+
+	if (MoveOriginSlot != INDEX_NONE)
+	{
+		return IsHoveringSlot() && HoveredPlatform == MoveOriginPlatform && HoveredSlotIndex == MoveOriginSlot;
+	}
+
+	if (IsEdgeSelection())
+	{
+		return HoveredEdge == MoveOriginEdge;
+	}
+
+	return !IsHoveringSlot() && HoveredCell == MoveOriginCell;
+}
+
+void UBDPlacementComponent::LiftSlotPiecesOn(const FBDPlacedPiece& PlatformPiece)
+{
+	for (const AActor* Actor : PlatformPiece.Actors)
+	{
+		UBDPlatformComponent* Platform = Actor != nullptr ? Actor->FindComponentByClass<UBDPlatformComponent>() : nullptr;
+		if (Platform == nullptr)
+		{
+			continue;
+		}
+
+		for (int32 Index = PlacedOnSlots.Num() - 1; Index >= 0; --Index)
+		{
+			if (PlacedOnSlots[Index].Platform.Get() != Platform)
+			{
+				continue;
+			}
+
+			FBDPlacedPiece Mounted = PlacedOnSlots[Index];
+			PlacedOnSlots.RemoveAt(Index);
+			Platform->Release(Mounted.SlotIndex);
+			SetActorsHidden(Mounted.Actors, true);
+			MovingMounted.Add(Mounted);
+		}
+	}
+}
+
+void UBDPlacementComponent::RemountLiftedPieces(const FBDPlacedPiece& PlatformPiece)
+{
+	UBDPlatformComponent* Platform = nullptr;
+	for (const AActor* Actor : PlatformPiece.Actors)
+	{
+		Platform = Actor != nullptr ? Actor->FindComponentByClass<UBDPlatformComponent>() : nullptr;
+		if (Platform != nullptr)
+		{
+			break;
+		}
+	}
+
+	for (FBDPlacedPiece& Mounted : MovingMounted)
+	{
+		ABDTowerBase* Tower = Mounted.Actors.Num() > 0 ? Cast<ABDTowerBase>(Mounted.Actors[0]) : nullptr;
+		SetActorsHidden(Mounted.Actors, false);
+
+		if (Platform == nullptr || Tower == nullptr || !Platform->TryOccupy(Mounted.SlotIndex, Tower))
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Could not remount '%s' on slot %d after moving its platform."),
+				*GetNameSafe(Mounted.Data), Mounted.SlotIndex);
+			continue;
+		}
+
+		Mounted.Platform = Platform;
+		PlacedOnSlots.Add(Mounted);
+	}
+
+	MovingMounted.Reset();
+}
+
+bool UBDPlacementComponent::TryBeginMoveAtHovered()
+{
+	UBDGridSubsystem* Grid = GetGrid();
+	if (bMoving || Grid == nullptr || !bHoveringGrid)
+	{
+		return false;
+	}
+
+	const ABDMatchManager* Match = GetMatch();
+	if (Match != nullptr && !Match->CanMove())
+	{
+		UE_LOG(LogBDGrid, Log, TEXT("Nothing moves outside the building phase."));
+		return false;
+	}
+
+	const FBDPlacedPiece* Found = FindPieceUnderHover();
+	if (Found == nullptr || Found->Data == nullptr)
+	{
+		return false;
+	}
+
+	// Copied before the maps drop the entry this points at.
+	MovingPiece = *Found;
+
+	// Remember where it came from. The origin hover is what a cancel points back at.
+	MoveOriginSlot = MovingPiece.SlotIndex;
+	MoveOriginPlatform = MovingPiece.Platform;
+	MoveOriginCell = MovingPiece.IsOnSlot() ? HoveredCell : MovingPiece.Origin;
+	MoveOriginEdge = MovingPiece.Edges.Num() > 0 ? MovingPiece.Edges[0] : FBDEdgeCoord();
+	MoveOriginRotationSteps = MovingPiece.Edges.Num() > 0
+		? (MovingPiece.Edges[0].Direction == FBDEdgeCoord::DirectionX ? 1 : 0)
+		: FMath::RoundToInt(MovingPiece.Yaw / DegreesPerRotationStep) % CellRotationStepCount;
+
+	// Off the board, actors kept but out of sight. A platform takes its passengers along.
+	if (MovingPiece.IsOnSlot())
+	{
+		if (UBDPlatformComponent* Platform = MovingPiece.Platform.Get())
+		{
+			Platform->Release(MovingPiece.SlotIndex);
+		}
+		PlacedOnSlots.RemoveAll([this](const FBDPlacedPiece& Other)
+		{
+			return Other.Platform == MovingPiece.Platform && Other.SlotIndex == MovingPiece.SlotIndex;
+		});
+	}
+	else
+	{
+		LiftSlotPiecesOn(MovingPiece);
+
+		for (const FBDEdgeCoord& Edge : MovingPiece.Edges)
+		{
+			Grid->SetEdgeBlocked(Edge, false);
+			PlacedByEdge.Remove(Edge);
+		}
+
+		if (MovingPiece.Edges.Num() == 0)
+		{
+			for (int32 Y = 0; Y < FMath::Max(1, MovingPiece.Footprint.Y); ++Y)
+			{
+				for (int32 X = 0; X < FMath::Max(1, MovingPiece.Footprint.X); ++X)
+				{
+					const FBDCellCoord Coord(MovingPiece.Origin.X + X, MovingPiece.Origin.Y + Y);
+					PlacedByCell.Remove(Coord);
+					Grid->SetCellState(Coord, EBDCellState::Free);
+				}
+			}
+
+			// The platform component would put its stamp back on the next tick: tell it
+			// the piece is off the board by clearing its placed footprint into nothing.
+			for (const AActor* Actor : MovingPiece.Actors)
+			{
+				if (UBDPlatformComponent* PlatformComponent = Actor != nullptr ? Actor->FindComponentByClass<UBDPlatformComponent>() : nullptr)
+				{
+					PlatformComponent->ClearPlacedFootprint();
+				}
+			}
+		}
+	}
+
+	SetActorsHidden(MovingPiece.Actors, true);
+	bMoving = true;
+
+	// Held like a fresh selection, facing the way it faced. The data is not written to;
+	// the selection slot simply is not const.
+	CurrentSelection = const_cast<UBDPlaceableData*>(MovingPiece.Data.Get());
+	RotationSteps = MoveOriginRotationSteps;
+	EnsureMatchBinding();
+	EnsurePreview();
+	if (Preview != nullptr)
+	{
+		Preview->SetPlaceable(CurrentSelection);
+	}
+
+	if (bHoveringGrid)
+	{
+		ResolveHover(HoverPoint);
+	}
+	EvaluatePlacement();
+
+	UE_LOG(LogBDGrid, Log, TEXT("Lifted '%s' from %s%s; move tax %d blue vote(s) at %.0f%%."),
+		*GetNameSafe(MovingPiece.Data),
+		MovingPiece.Edges.Num() > 0 ? *MoveOriginEdge.ToString() : *MoveOriginCell.ToString(),
+		MoveOriginSlot != INDEX_NONE ? *FString::Printf(TEXT(" slot %d"), MoveOriginSlot) : TEXT(""),
+		GetMoveCost(), Match != nullptr ? Match->GetMoveTaxRate() * 100.0f : 0.0f);
+
+	return true;
+}
+
+bool UBDPlacementComponent::DropMovingPiece()
+{
+	UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr)
+	{
+		return false;
+	}
+
+	// The same placement paths a fresh piece takes, with the lifted actors riding along.
+	FBDPlacedPiece Piece = MovingPiece;
+	Piece.Edges.Reset();
+	Piece.Platform.Reset();
+	Piece.SlotIndex = INDEX_NONE;
+
+	bool bPlaced;
+	if (IsHoveringSlot())
+	{
+		bPlaced = PlaceSlotPiece(Piece);
+	}
+	else if (IsEdgeSelection())
+	{
+		bPlaced = PlaceEdgePiece(*Grid, Piece);
+	}
+	else
+	{
+		bPlaced = PlaceCellPiece(*Grid, Piece);
+		if (bPlaced)
+		{
+			RemountLiftedPieces(Piece);
+		}
+	}
+
+	return bPlaced;
+}
+
+void UBDPlacementComponent::HoverMoveOrigin()
+{
+	RotationSteps = MoveOriginRotationSteps;
+
+	if (MoveOriginSlot != INDEX_NONE)
+	{
+		// The slot's own location as the cursor point, so the nearest slot is that slot.
+		if (const UBDPlatformComponent* Platform = MoveOriginPlatform.Get())
+		{
+			HoverPoint = Platform->GetSlotWorldTransform(MoveOriginSlot).GetLocation();
+		}
+		HoveredCell = MoveOriginCell;
+		bHoveringGrid = true;
+		EvaluatePlacement();
+		return;
+	}
+
+	if (IsEdgeSelection())
+	{
+		SetHoveredEdgeDirect(MoveOriginEdge);
+		return;
+	}
+
+	SetHoveredCellDirect(MoveOriginCell);
+}
+
+void UBDPlacementComponent::CancelMove()
+{
+	if (!bMoving)
+	{
+		return;
+	}
+
+	// Home is where it stood a moment ago, so the board takes it back as it was. The
+	// validation still runs, because nothing else is allowed to write the board.
+	HoverMoveOrigin();
+	const bool bRestored = bCurrentPlacementValid && DropMovingPiece();
+	if (!bRestored)
+	{
+		UE_LOG(LogBDGrid, Error, TEXT("Could not put '%s' back at %s (%s); the piece is lost."),
+			*GetNameSafe(MovingPiece.Data), *MoveOriginCell.ToString(), *DescribeCurrentRefusal());
+		for (AActor* Actor : MovingPiece.Actors)
+		{
+			if (Actor != nullptr)
+			{
+				Actor->Destroy();
+			}
+		}
+		for (const FBDPlacedPiece& Mounted : MovingMounted)
+		{
+			for (AActor* Actor : Mounted.Actors)
+			{
+				if (Actor != nullptr)
+				{
+					Actor->Destroy();
+				}
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogBDGrid, Log, TEXT("'%s' put back at %s, nothing charged."),
+			*GetNameSafe(MovingPiece.Data), MovingPiece.Edges.Num() > 0 ? *MoveOriginEdge.ToString() : *MoveOriginCell.ToString());
+	}
+
+	bMoving = false;
+	MovingPiece = FBDPlacedPiece();
+	MovingMounted.Reset();
+	CancelSelection();
+}
+
 //~ Input ----------------------------------------------------------------------
 
 void UBDPlacementComponent::HandlePlaceInput()
 {
+	// With nothing in hand a press on a placed piece picks it up; otherwise it places.
+	if (CurrentSelection == nullptr && !bMoving)
+	{
+		TryBeginMoveAtHovered();
+		return;
+	}
+
 	TryPlaceAtHovered();
+}
+
+void UBDPlacementComponent::HandlePlaceReleased()
+{
+	if (!bMoving)
+	{
+		return;
+	}
+
+	// Released over a bad spot: back where it was, nothing charged.
+	if (!TryPlaceAtHovered())
+	{
+		CancelMove();
+	}
 }
 
 void UBDPlacementComponent::HandleRemoveInput()
@@ -966,6 +1873,12 @@ void UBDPlacementComponent::HandleRemoveInput()
 
 void UBDPlacementComponent::HandleCancelInput()
 {
+	if (bMoving)
+	{
+		CancelMove();
+		return;
+	}
+
 	CancelSelection();
 }
 

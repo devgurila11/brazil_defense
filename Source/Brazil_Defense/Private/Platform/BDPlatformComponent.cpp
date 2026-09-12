@@ -184,6 +184,22 @@ bool UBDPlatformComponent::Release(const int32 SlotIndex)
 
 //~ Grid footprint ------------------------------------------------------------
 
+void UBDPlatformComponent::ClearPlacedFootprint()
+{
+	bLifted = true;
+	ClearFootprintFromGrid();
+	UpdateStampedTransform();
+}
+
+void UBDPlatformComponent::SetPlacedFootprint(const FBDCellCoord& Origin, const FIntPoint& Footprint)
+{
+	bLifted = false;
+	bHasPlacedFootprint = true;
+	PlacedOrigin = Origin;
+	PlacedFootprint = FIntPoint(FMath::Max(1, Footprint.X), FMath::Max(1, Footprint.Y));
+	RefreshFootprint();
+}
+
 bool UBDPlatformComponent::GetFootprintOrigin(FBDCellCoord& OutCoord) const
 {
 	const UBDGridSubsystem* Grid = GetGrid();
@@ -191,6 +207,12 @@ bool UBDPlatformComponent::GetFootprintOrigin(FBDCellCoord& OutCoord) const
 	if (Grid == nullptr || Owner == nullptr)
 	{
 		return false;
+	}
+
+	if (bHasPlacedFootprint)
+	{
+		OutCoord = PlacedOrigin;
+		return Grid->IsValidCoord(OutCoord);
 	}
 
 	return Grid->WorldToCell(Owner->GetActorLocation(), OutCoord);
@@ -207,10 +229,11 @@ void UBDPlatformComponent::GetFootprintCells(TArray<FBDCellCoord>& OutCells) con
 		return;
 	}
 
-	// The footprint grows from the cell under the owner towards +X and +Y, so the
-	// owner pivot marks the bottom-left corner of the platform on the grid.
-	const int32 SpanX = FMath::Max(1, GridFootprint.X);
-	const int32 SpanY = FMath::Max(1, GridFootprint.Y);
+	// The footprint grows from the origin cell towards +X and +Y. For an authored
+	// platform the owner pivot is that cell; a placed one was told its cells outright.
+	const FIntPoint Span = bHasPlacedFootprint ? PlacedFootprint : GridFootprint;
+	const int32 SpanX = FMath::Max(1, Span.X);
+	const int32 SpanY = FMath::Max(1, Span.Y);
 	OutCells.Reserve(SpanX * SpanY);
 
 	for (int32 Y = 0; Y < SpanY; ++Y)
@@ -229,7 +252,7 @@ void UBDPlatformComponent::GetFootprintCells(TArray<FBDCellCoord>& OutCells) con
 void UBDPlatformComponent::ApplyFootprintToGrid()
 {
 	UBDGridSubsystem* Grid = GetGrid();
-	if (Grid == nullptr)
+	if (Grid == nullptr || bLifted)
 	{
 		return;
 	}

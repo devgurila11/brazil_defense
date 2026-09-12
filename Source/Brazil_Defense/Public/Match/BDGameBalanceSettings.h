@@ -66,6 +66,24 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Removal", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
 	float BuildingPhaseRefundRatio = 1.0f;
 
+	//~ Moving pieces between waves -------------------------------------------
+	// Rate = Min(MoveTaxMax, MoveTaxInitial + MoveTaxStep * Wave), charged on the build
+	// cost of the piece in blue votes. A percentage rather than a table: moving a cheap
+	// shooter stays cheap and moving a cannon costs, with nothing else to author. The
+	// early waves are close to free so the player learns the maze without being punished.
+
+	UPROPERTY(config, EditAnywhere, Category = "Moving", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float MoveTaxInitial = 0.0f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Moving", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float MoveTaxStep = 0.02f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Moving", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float MoveTaxMax = 0.25f;
+
+	/** Fraction of the build cost charged for moving a piece on a given wave. */
+	float GetMoveTaxRate(int32 Wave) const;
+
 	//~ Game speed ------------------------------------------------------------
 
 	/**

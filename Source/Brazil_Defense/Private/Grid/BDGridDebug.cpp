@@ -88,12 +88,44 @@ namespace BDGridDebug
 		}
 	}
 
-	static void DrawCellStates(const UWorld& World, const UBDGridSubsystem& Grid, const UBDGridSettings& Settings)
+	void DrawCellFill(const UWorld& World, const UBDGridSubsystem& Grid, const FBDCellCoord& Coord, const FColor& Color)
 	{
+		const UBDGridSettings& Settings = UBDGridSettings::Get();
 		const float HalfExtent = Grid.GetCellSize() * 0.5f * Settings.CellFillRatio;
 		const FVector Extent(HalfExtent, HalfExtent, Settings.CellFillHeight * 0.5f);
 		const float CenterHeight = Settings.DrawHeightOffset + Settings.CellFillHeight * 0.5f;
 
+		const FVector Center = Grid.CellToWorld(Coord) + FVector(0.0f, 0.0f, CenterHeight);
+		DrawDebugSolidBox(&World, Center, Extent, Color, bPersistentLines, SingleFrameLifeTime, DepthPriority);
+	}
+
+	void DrawCellRectOutline(const UWorld& World, const UBDGridSubsystem& Grid,
+		const FBDCellCoord& Min, const FBDCellCoord& Max, const FColor& Color, const float Thickness)
+	{
+		const UBDGridSettings& Settings = UBDGridSettings::Get();
+		const FVector Lift(0.0f, 0.0f, Settings.DrawHeightOffset + Settings.CellFillHeight);
+
+		// From the bottom-left corner of Min to the top-right corner of Max.
+		const FVector Low = Grid.CellCornerToWorld(Min) + Lift;
+		const FVector High = Grid.CellCornerToWorld(FBDCellCoord(Max.X + 1, Max.Y + 1)) + Lift;
+
+		const FVector Corners[] = {
+			Low,
+			FVector(High.X, Low.Y, Low.Z),
+			High,
+			FVector(Low.X, High.Y, Low.Z)
+		};
+
+		constexpr int32 CornerCount = UE_ARRAY_COUNT(Corners);
+		for (int32 Index = 0; Index < CornerCount; ++Index)
+		{
+			DrawDebugLine(&World, Corners[Index], Corners[(Index + 1) % CornerCount], Color,
+				bPersistentLines, SingleFrameLifeTime, DepthPriority, Thickness);
+		}
+	}
+
+	static void DrawCellStates(const UWorld& World, const UBDGridSubsystem& Grid, const UBDGridSettings& Settings)
+	{
 		for (int32 Y = 0; Y < Grid.GetSizeY(); ++Y)
 		{
 			for (int32 X = 0; X < Grid.GetSizeX(); ++X)
@@ -101,14 +133,10 @@ namespace BDGridDebug
 				const FBDCellCoord Coord(X, Y);
 
 				FColor FillColor;
-				if (!Settings.TryGetCellStateColor(Grid.GetCellState(Coord), FillColor))
+				if (Settings.TryGetCellStateColor(Grid.GetCellState(Coord), FillColor))
 				{
-					continue;
+					DrawCellFill(World, Grid, Coord, FillColor);
 				}
-
-				const FVector Center = Grid.CellToWorld(Coord) + FVector(0.0f, 0.0f, CenterHeight);
-				DrawDebugSolidBox(&World, Center, Extent, FillColor, bPersistentLines,
-					SingleFrameLifeTime, DepthPriority);
 			}
 		}
 	}

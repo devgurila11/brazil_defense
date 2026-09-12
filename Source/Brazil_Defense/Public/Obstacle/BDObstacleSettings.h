@@ -36,9 +36,13 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Shape", meta = (ClampMin = "0", UIMin = "0"))
 	int32 ClearanceFromSpawnGoal = 3;
 
-	/** Shortest accepted route from a spawn to its goal, in cells. Below this the map is trivial. */
+	/**
+	 * Shortest accepted route from a spawn to its goal, in cells. Below this the map is
+	 * trivial. Calibrated for the six three-cell mouths of the Esplanada, where the
+	 * nearest mouth is 31 cells from the urn on an empty board.
+	 */
 	UPROPERTY(config, EditAnywhere, Category = "Validation", meta = (ClampMin = "1", UIMin = "1"))
-	int32 MinPathLength = 40;
+	int32 MinPathLength = 25;
 
 	/** Longest accepted route, in cells. Above this the board is already close to sealed. */
 	UPROPERTY(config, EditAnywhere, Category = "Validation", meta = (ClampMin = "1", UIMin = "1"))

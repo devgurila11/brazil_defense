@@ -240,6 +240,58 @@ namespace BDPlacementDebug
 			Placement->TryRemoveAtHovered() ? TEXT("removed") : TEXT("nothing of the player there"));
 	}
 
+	static void ExecPickUp(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() != ArgCountAt)
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.PickUp <x> <y>"));
+			return;
+		}
+
+		UBDPlacementComponent* Placement = FindPlacementComponent(World);
+		if (Placement == nullptr)
+		{
+			return;
+		}
+
+		const FBDCellCoord Coord(FCString::Atoi(*Args[0]), FCString::Atoi(*Args[1]));
+		Placement->SetHoveredCellDirect(Coord);
+
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.PickUp %s: %s. Drop with BD.Place.At / AtEdge, or BD.Place.CancelMove."),
+			*Coord.ToString(), Placement->TryBeginMoveAtHovered() ? TEXT("lifted") : TEXT("nothing to lift, or moving not allowed now"));
+	}
+
+	static void ExecPickUpEdge(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() != ArgCountAtEdge)
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.PickUpEdge <x> <y> <dir: 0=+X 1=+Y>"));
+			return;
+		}
+
+		UBDPlacementComponent* Placement = FindPlacementComponent(World);
+		FBDEdgeCoord Edge;
+		if (Placement == nullptr || !ParseEdge(Args, TEXT("BD.Place.PickUpEdge"), Edge))
+		{
+			return;
+		}
+
+		Placement->SetHoveredEdgeDirect(Edge);
+
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.PickUpEdge %s: %s."),
+			*Edge.ToString(), Placement->TryBeginMoveAtHovered() ? TEXT("lifted") : TEXT("nothing to lift, or moving not allowed now"));
+	}
+
+	static void ExecCancelMove(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDPlacementComponent* Placement = FindPlacementComponent(World))
+		{
+			const bool bWasMoving = Placement->IsMoving();
+			Placement->CancelMove();
+			UE_LOG(LogBDGrid, Log, TEXT("BD.Place.CancelMove: %s."), bWasMoving ? TEXT("put back") : TEXT("nothing lifted"));
+		}
+	}
+
 	static void ExecCellState(const TArray<FString>& Args, UWorld* World)
 	{
 		if (Args.Num() != ArgCountAt || World == nullptr)
@@ -290,6 +342,21 @@ namespace BDPlacementDebug
 		TEXT("BD.Place.RemoveAt"),
 		TEXT("BD.Place.RemoveAt <x> <y>: points the hover at a cell and tries to remove what is there."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecRemoveAt));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdPickUp(
+		TEXT("BD.Place.PickUp"),
+		TEXT("BD.Place.PickUp <x> <y>: lifts the piece on a cell (or the nearest slot of a platform there) to move it."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPickUp));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdPickUpEdge(
+		TEXT("BD.Place.PickUpEdge"),
+		TEXT("BD.Place.PickUpEdge <x> <y> <dir: 0=+X 1=+Y>: lifts the fence on an edge to move it."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPickUpEdge));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdCancelMove(
+		TEXT("BD.Place.CancelMove"),
+		TEXT("BD.Place.CancelMove: puts the lifted piece back where it was, for nothing."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecCancelMove));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdCellState(
 		TEXT("BD.Grid.CellState"),

@@ -3,7 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Grid/BDGridTypes.h"
 
+class UBDGridSubsystem;
 class UCanvas;
 class UWorld;
 
@@ -35,6 +37,17 @@ namespace BDGridDebug
 	 * editor world and a running PIE world can both register it without crossing over.
 	 */
 	BRAZIL_DEFENSE_API void DrawCoordLabels(UCanvas& Canvas, const UWorld& World);
+
+	/**
+	 * One cell painted the way the cell state fills are, in any color. Not gated by the
+	 * debug switch: gameplay feedback that paints cells (the urn zone) shares the look
+	 * of the debug fills so the two read as the same board.
+	 */
+	BRAZIL_DEFENSE_API void DrawCellFill(const UWorld& World, const UBDGridSubsystem& Grid, const FBDCellCoord& Coord, const FColor& Color);
+
+	/** Outline of a rectangle of cells, Min to Max inclusive, drawn just above the cell fills. Not gated either. */
+	BRAZIL_DEFENSE_API void DrawCellRectOutline(const UWorld& World, const UBDGridSubsystem& Grid,
+		const FBDCellCoord& Min, const FBDCellCoord& Max, const FColor& Color, float Thickness);
 
 	/** Every grid debug primitive is redrawn each tick, so it only needs to live one frame. */
 	inline constexpr bool bPersistentLines = false;

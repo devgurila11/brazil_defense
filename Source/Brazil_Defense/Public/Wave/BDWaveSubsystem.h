@@ -9,6 +9,7 @@
 
 class ABDEnemyBase;
 class ABDMatchManager;
+class ABDObjective;
 class UBDEnemyData;
 class UBDGridSubsystem;
 class UBDPathfinder;
@@ -45,8 +46,9 @@ struct FBDSpawnPoint
  * respected by them as well.
  *
  * The urn is a run of Goal cells too. A route ends at whichever Goal cell is the
- * closest, so creeps from the top and from the bottom of the board reach different
- * ends of the urn rather than all converging on one cell.
+ * closest, and from there the creep walks to the ABDObjective actor, so creeps from
+ * the top and from the bottom of the board enter the urn from their own side and still
+ * converge on the same point.
  *
  * This is the seam ABDMatchManager was waiting for: arrivals and kills go to its vote
  * counters, and the board being empty again ends the wave.
@@ -83,6 +85,13 @@ public:
 	/** Forces the spawn points and routes to be read again from the grid. */
 	void RefreshRoutes();
 
+	/**
+	 * Where the creeps converge once their route is walked: the ABDObjective actor of the
+	 * level, or the middle of the Goal cells when none is placed, which is logged once.
+	 * @return false when there is neither.
+	 */
+	bool GetObjectiveLocation(FVector& OutLocation);
+
 	//~ Spawning -------------------------------------------------------------
 
 	/**
@@ -105,6 +114,9 @@ public:
 
 	/** Every creep currently out. Dead entries are already dropped. */
 	void GetLivingEnemies(TArray<ABDEnemyBase*>& OutEnemies) const;
+
+	/** The same list without a copy, for the towers scanning it every tick. May hold nulls for a frame. */
+	const TArray<TObjectPtr<ABDEnemyBase>>& GetLivingEnemiesRef() const { return LivingEnemies; }
 
 	//~ Reports from the creeps. Not meant to be called by anything else. -----
 
@@ -142,6 +154,12 @@ private:
 
 	/** Goal cells, cached with the spawn points because every route ends at one of them. */
 	TArray<FBDCellCoord> GoalCells;
+
+	/** The urn actor, found once. Weak: the level owns it. */
+	TWeakObjectPtr<ABDObjective> Objective;
+
+	/** So the missing objective is reported once per world, not once per creep. */
+	bool bWarnedNoObjective = false;
 
 	/** Grid version the spawn points were read at. Anything else means they are stale. */
 	int32 RoutesGridVersion = 0;

@@ -71,6 +71,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetTowersRemaining() const { return TowersRemaining; }
 
+	/** 1 until the urn is placed, then 0. Not a difficulty knob: there is one urn in the game. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetObjectivesRemaining() const { return ObjectivesRemaining; }
+
 	/** Running total of the early call bonus, banked until there is an economy to spend it. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetEarlyCallBonus() const { return EarlyCallBonus; }
@@ -122,6 +126,27 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void AddVotesRed(int32 Votes);
 
+	/** Blue votes are the player's currency as well as their score: spending them lowers both. @return false, and nothing spent, when there are not enough. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	bool SpendVotesBlue(int32 Votes);
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool CanAffordVotesBlue(int32 Votes) const { return Votes <= VotesBlue; }
+
+	//~ Moving pieces between waves --------------------------------------------
+
+	/** Whether a placed piece may be picked up and put elsewhere right now: only while building. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool CanMove() const { return Phase == EBDMatchPhase::Building; }
+
+	/** Fraction of a piece's build cost a move costs on the current wave. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	float GetMoveTaxRate() const;
+
+	/** Blue votes a move of a piece of this build cost charges on the current wave. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetMoveCost(int32 BuildCost) const;
+
 	/**
 	 * Sets how fast the match runs. Only the speeds listed in the balance settings are
 	 * accepted, and the choice persists across waves: a player who asked for 4x meant it.
@@ -137,6 +162,10 @@ public:
 	/** Whether the current phase and budget allow placing a piece of this kind. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool CanPlace(EBDPieceKind Kind) const;
+
+	/** Pieces of this kind still in hand, whatever the phase. 0 for a kind the player never places. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetBudgetRemaining(EBDPieceKind Kind) const;
 
 	/** Charges one piece of this kind to the budget. @return false when it was not allowed. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
@@ -201,6 +230,7 @@ private:
 	int32 DividersRemaining = 0;
 	int32 PlatformsRemaining = 0;
 	int32 TowersRemaining = 0;
+	int32 ObjectivesRemaining = 0;
 	int32 EarlyCallBonus = 0;
 	float GameSpeed = 1.0f;
 	int32 VotesBlue = 0;

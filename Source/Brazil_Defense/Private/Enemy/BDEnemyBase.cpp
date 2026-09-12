@@ -9,6 +9,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Grid/BDGridSubsystem.h"
+#include "Tower/BDTowerBase.h"
 #include "Wave/BDWaveSettings.h"
 #include "Wave/BDWaveSubsystem.h"
 
@@ -148,10 +149,20 @@ FVector ABDEnemyBase::ResolveWaypoint(const FBDCellCoord& Coord) const
 
 void ABDEnemyBase::RebuildWaypoints()
 {
-	Waypoints.Reset(Path.Num());
+	Waypoints.Reset(Path.Num() + 1);
 	for (const FBDCellCoord& Coord : Path)
 	{
 		Waypoints.Add(ResolveWaypoint(Coord));
+	}
+
+	// The route ends on a Goal cell; the creep does not. It walks on to the urn itself,
+	// which stands half a cell off any cell center. Without an objective to walk to the
+	// last cell is the end, and an empty route stays empty.
+	UBDWaveSubsystem* Waves = GetWaves();
+	FVector ObjectiveLocation;
+	if (Path.Num() > 0 && Waves != nullptr && Waves->GetObjectiveLocation(ObjectiveLocation))
+	{
+		Waypoints.Add(ObjectiveLocation);
 	}
 }
 
@@ -179,10 +190,19 @@ void ABDEnemyBase::Tick(const float DeltaSeconds)
 	FVector Location = GetActorLocation();
 	FVector Direction = GetActorForwardVector();
 
+	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
+
 	while (Budget > 0.0f && Waypoints.IsValidIndex(CurrentPathIndex))
 	{
 		const FVector ToTarget = Waypoints[CurrentPathIndex] - Location;
 		const float Distance = ToTarget.Size();
+
+		// The last waypoint is the urn, and the urn has a body: close enough is there.
+		if (CurrentPathIndex == Waypoints.Num() - 1 && Distance <= Settings.ArrivalDistance)
+		{
+			++CurrentPathIndex;
+			break;
+		}
 
 		if (Distance <= Budget)
 		{
@@ -200,7 +220,6 @@ void ABDEnemyBase::Tick(const float DeltaSeconds)
 	SetActorLocation(Location);
 
 	const FRotator WantedRotation = Direction.GetSafeNormal2D().ToOrientationRotator();
-	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
 	SetActorRotation(Settings.TurnRate > 0.0f
 		? FMath::RInterpConstantTo(GetActorRotation(), WantedRotation, DeltaSeconds, Settings.TurnRate)
 		: WantedRotation);
@@ -225,6 +244,28 @@ void ABDEnemyBase::Arrive()
 	}
 
 	Destroy();
+}
+
+void ABDEnemyBase::ApplyDamage(const float Damage, AActor* Source)
+{
+	if (bFinished || Damage <= 0.0f)
+	{
+		return;
+	}
+
+	CurrentHealth -= Damage;
+	UE_LOG(LogBDWave, Verbose, TEXT("%s hit for %.0f by %s, %.0f health left."),
+		*GetName(), Damage, *GetNameSafe(Source), CurrentHealth);
+
+	if (CurrentHealth <= 0.0f)
+	{
+		CurrentHealth = 0.0f;
+		if (ABDTowerBase* Tower = Cast<ABDTowerBase>(Source))
+		{
+			Tower->NotifyKill();
+		}
+		Die();
+	}
 }
 
 void ABDEnemyBase::Kill()

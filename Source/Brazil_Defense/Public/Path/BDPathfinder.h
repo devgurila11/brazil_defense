@@ -58,7 +58,7 @@ public:
 	 *
 	 * The footprint cells are treated as blocked for the duration of the check only:
 	 * the grid is never written to, so a rejected placement leaves no trace. Every
-	 * Spawn cell must keep a path to the Goal.
+	 * Spawn cell must keep a path to the urn, which is any of the Goal cells.
 	 *
 	 * Answers are cached, because this runs every frame while the player hovers a
 	 * piece around and the board only changes when something is actually placed. The
@@ -76,6 +76,14 @@ public:
 	 * their call. Only a spawn losing every way to the goal is refused.
 	 */
 	bool WouldBlockPathEdges(const UBDGridSubsystem* Grid, const TArray<FBDEdgeCoord>& Candidate) const;
+
+	/**
+	 * Whether every Spawn cell can walk to Target on the board as it is. What placing the
+	 * urn asks: a cell no spawn can reach is not a goal, it is a hole. Cached like the
+	 * blocking checks, since it runs every frame while the urn hovers.
+	 * @return false when there is no spawn, or some spawn cannot reach the cell.
+	 */
+	bool CanEverySpawnReach(const UBDGridSubsystem* Grid, FBDCellCoord Target) const;
 
 	/** Whether the last WouldBlockPath call was answered from the cache instead of searching. */
 	bool WasLastBlockCheckCached() const { return bLastBlockCheckWasCached; }
@@ -105,13 +113,15 @@ private:
 		const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride, TArray<FBDCellCoord>* OutPath) const;
 
 	/**
-	 * Finds the spawns and the single goal every blocking check validates against.
+	 * Finds the spawns and the goal cells every blocking check validates against. The
+	 * urn covers several Goal cells and they are one objective: reaching any of them is
+	 * reaching the urn.
 	 * @return false when the board has no premise to check, which is logged as an error.
 	 */
-	static bool GatherSpawnsAndGoal(const UBDGridSubsystem& Grid, TArray<FBDCellCoord>& OutSpawns, FBDCellCoord& OutGoal);
+	static bool GatherSpawnsAndGoals(const UBDGridSubsystem& Grid, TArray<FBDCellCoord>& OutSpawns, TArray<FBDCellCoord>& OutGoals);
 
-	/** Runs the overlaid search from every spawn. @return true when some spawn lost its way to the goal. */
-	bool AnySpawnCutOff(const UBDGridSubsystem& Grid, const TArray<FBDCellCoord>& Spawns, const FBDCellCoord& Goal,
+	/** Runs the overlaid search from every spawn. @return true when some spawn lost every way to the urn. */
+	bool AnySpawnCutOff(const UBDGridSubsystem& Grid, const TArray<FBDCellCoord>& Spawns, const TArray<FBDCellCoord>& Goals,
 		const TBitArray<>* BlockedOverride, const TBitArray<>* BlockedEdgeOverride) const;
 
 	/** Stores a WouldBlockPath answer and returns it, so the callers stay one-liners. */
@@ -144,6 +154,12 @@ private:
 	mutable bool bCachedBlockResult = false;
 	mutable bool bHasCachedBlockResult = false;
 	mutable bool bLastBlockCheckWasCached = false;
+
+	mutable TWeakObjectPtr<const UBDGridSubsystem> CachedReachGrid;
+	mutable FBDCellCoord CachedReachTarget;
+	mutable int32 CachedReachGridVersion = 0;
+	mutable bool bCachedReachResult = false;
+	mutable bool bHasCachedReachResult = false;
 
 	mutable TWeakObjectPtr<const UBDGridSubsystem> CachedEdgeBlockGrid;
 	mutable TArray<FBDEdgeCoord> CachedEdgeBlockCandidate;

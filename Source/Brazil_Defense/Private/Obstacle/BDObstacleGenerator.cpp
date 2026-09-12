@@ -8,6 +8,7 @@
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
 #include "Math/RandomStream.h"
+#include "Objective/BDObjectiveSettings.h"
 #include "Obstacle/BDObstacleSettings.h"
 #include "Path/BDPathfinder.h"
 
@@ -217,19 +218,33 @@ bool UBDObstacleGenerator::GenerateObstacles(UBDGridSubsystem* Grid, const int32
 	UBDPathfinder::GatherCellsWithState(*Grid, EBDCellState::Spawn, Spawns);
 	UBDPathfinder::GatherCellsWithState(*Grid, EBDCellState::Goal, Goals);
 
-	if (Spawns.Num() == 0 || Goals.Num() == 0)
+	if (Spawns.Num() == 0)
 	{
 		UE_LOG(LogBDObstacle, Error,
-			TEXT("The board has %d spawn(s) and %d goal(s), so no layout could be validated and nothing was placed. "
-				 "Author them first: BD.Grid.SetCells then BD.Grid.SaveLayout."),
-			Spawns.Num(), Goals.Num());
+			TEXT("The board has no spawn, so no layout could be validated and nothing was placed. ")
+			TEXT("Author them first: BD.Grid.SetCells then BD.Grid.SaveLayout."));
 		return false;
+	}
+
+	// The urn is placed by the player after the obstacles exist, so on a fresh board there
+	// is no Goal yet. The zone it may go in stands in: every cell of it is kept clear, and
+	// the routes are measured to its middle. A cell of the zone that still ends up walled
+	// off is refused when the player tries to put the urn there, not here.
+	TArray<FBDCellCoord> Protected = Goals;
+	if (Goals.Num() == 0)
+	{
+		const UBDObjectiveSettings& ObjectiveSettings = UBDObjectiveSettings::Get();
+		ObjectiveSettings.GetZoneCells(Protected);
+		Goals.Add(ObjectiveSettings.GetZoneCenter());
+
+		UE_LOG(LogBDObstacle, Log, TEXT("No goal on the board yet: validating against the objective zone, middle %s."),
+			*Goals[0].ToString());
 	}
 
 	const UBDObstacleSettings& Settings = UBDObstacleSettings::Get();
 
 	TArray<FBDCellCoord> Candidates;
-	BuildCandidates(*Grid, Spawns, Goals, FMath::Max(0, Settings.ClearanceFromSpawnGoal), Candidates);
+	BuildCandidates(*Grid, Spawns, Protected, FMath::Max(0, Settings.ClearanceFromSpawnGoal), Candidates);
 
 	const int32 RequestedCount = ObstacleCountOverride >= 0 ? ObstacleCountOverride : Settings.ObstacleCount;
 	const int32 Count = FMath::Min(RequestedCount, Candidates.Num());
@@ -284,6 +299,17 @@ bool UBDObstacleGenerator::GenerateObstacles(UBDGridSubsystem* Grid, const int32
 
 	WriteCells(*Grid, Fallback, EBDCellState::Blocked);
 	GeneratedCells = Fallback;
+
+	if (Fallback.Num() == 0)
+	{
+		// A board with no obstacle is not a dull board, it is a failed generation: the
+		// validation rules or the authored fallback no longer fit this layout.
+		UE_LOG(LogBDObstacle, Error,
+			TEXT("Seed %d: the authored fallback placed no obstacle either. The board is playing empty; ")
+			TEXT("check MinPathLength/MaxPathLength against the layout and author FallbackObstacles."),
+			Seed);
+		return false;
+	}
 
 	UE_LOG(LogBDObstacle, Warning, TEXT("Authored fallback placed %d obstacle(s)."), Fallback.Num());
 	return false;

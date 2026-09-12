@@ -19,3 +19,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBDMatch, Log, All);
 
 /** Enemies, spawn points and the routes they walk. */
 DECLARE_LOG_CATEGORY_EXTERN(LogBDWave, Log, All);
+
+/** Towers, targeting and projectiles. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDTower, Log, All);

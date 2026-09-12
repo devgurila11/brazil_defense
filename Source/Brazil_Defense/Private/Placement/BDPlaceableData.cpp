@@ -3,6 +3,7 @@
 #include "Placement/BDPlaceableData.h"
 
 #include "Grid/BDGridSubsystem.h"
+#include "Tower/BDTowerData.h"
 
 const FPrimaryAssetType UBDPlaceableData::PlaceableAssetType = TEXT("BDPlaceable");
 
@@ -18,7 +19,30 @@ EBDPieceKind UBDPlaceableData::GetPieceKind() const
 		return EBDPieceKind::Divider;
 	}
 
-	return OccupiesAs == EBDCellState::Tower ? EBDPieceKind::Tower : EBDPieceKind::Platform;
+	switch (OccupiesAs)
+	{
+	case EBDCellState::Tower:
+		return EBDPieceKind::Tower;
+
+	case EBDCellState::Goal:
+		return EBDPieceKind::Objective;
+
+	default:
+		return EBDPieceKind::Platform;
+	}
+}
+
+int32 UBDPlaceableData::GetBuildCost() const
+{
+	if (GetPieceKind() == EBDPieceKind::Tower)
+	{
+		if (const UBDTowerData* Data = TowerData.LoadSynchronous())
+		{
+			return Data->BuildCost;
+		}
+	}
+
+	return Cost;
 }
 
 bool UBDPlaceableData::BlocksMovement() const
@@ -41,9 +65,20 @@ bool UBDPlaceableData::IsValidSetup(FString& OutError) const
 		return true;
 	}
 
+	if (OccupiesAs == EBDCellState::Goal)
+	{
+		// The urn stands on one cell: that cell is the Goal, and a goal is a point.
+		if (Footprint != FIntPoint(1, 1))
+		{
+			OutError = TEXT("The objective piece must have a 1x1 footprint.");
+			return false;
+		}
+		return true;
+	}
+
 	if (!UBDGridSubsystem::IsPlayerPlacedState(OccupiesAs))
 	{
-		OutError = TEXT("OccupiesAs is a state the player cannot place. Use Platform or Tower, or make it an edge piece.");
+		OutError = TEXT("OccupiesAs is a state the player cannot place. Use Platform, Tower or Goal, or make it an edge piece.");
 		return false;
 	}
 
