@@ -103,6 +103,7 @@ void UBDWaveSubsystem::Deinitialize()
 		Grid->OnEdgeBlockedChanged.Remove(EdgeBlockedChangedHandle);
 	}
 
+	StopSpawnLoop();
 	LivingEnemies.Empty();
 	SpawnPoints.Empty();
 	GoalCells.Empty();
@@ -184,6 +185,76 @@ void UBDWaveSubsystem::Tick(const float DeltaTime)
 		GetSpawnPoints();
 		DrawRoutes();
 	}
+
+	if (bSpawnLoopRunning)
+	{
+		// DeltaTime is dilated, so the loop follows the game speed like everything else.
+		SpawnLoopTimer += DeltaTime;
+		while (SpawnLoopTimer >= SpawnLoopInterval)
+		{
+			SpawnLoopTimer -= SpawnLoopInterval;
+
+			const int32 Before = SpawnLoopSpawned;
+			SpawnLoopSpawned += SpawnEnemyAtEveryPoint(SpawnLoopData);
+			SpawnLoopPeak = FMath::Max(SpawnLoopPeak, LivingEnemies.Num());
+
+			if (SpawnLoopSpawned == Before)
+			{
+				UE_LOG(LogBDWave, Error, TEXT("Spawn loop stopped: no spawn point could send a creep out."));
+				StopSpawnLoop();
+				return;
+			}
+
+			// One line per LoopLogEvery creeps rather than per creep: the log has to stay readable
+			// under the very load this exists to create.
+			if (SpawnLoopSpawned / LoopLogEvery != Before / LoopLogEvery)
+			{
+				UE_LOG(LogBDWave, Log, TEXT("Spawn loop: %d spawned, %d on the board (peak %d), %d arrived, %d killed, %.1fs."),
+					SpawnLoopSpawned, LivingEnemies.Num(), SpawnLoopPeak, SpawnLoopArrived, SpawnLoopKilled,
+					World != nullptr ? World->GetTimeSeconds() - SpawnLoopStartSeconds : 0.0);
+			}
+		}
+	}
+}
+
+void UBDWaveSubsystem::StartSpawnLoop(const UBDEnemyData* Data, const float Interval)
+{
+	const UWorld* World = GetWorld();
+	if (Data == nullptr || Interval <= 0.0f || World == nullptr || !World->IsGameWorld())
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Spawn loop needs enemy data, an interval above zero and a game world."));
+		return;
+	}
+
+	SpawnLoopData = Data;
+	SpawnLoopInterval = Interval;
+	// Fires on the next tick rather than a full interval from now.
+	SpawnLoopTimer = Interval;
+	SpawnLoopSpawned = 0;
+	SpawnLoopArrived = 0;
+	SpawnLoopKilled = 0;
+	SpawnLoopPeak = LivingEnemies.Num();
+	SpawnLoopStartSeconds = World->GetTimeSeconds();
+	bSpawnLoopRunning = true;
+
+	UE_LOG(LogBDWave, Log, TEXT("Spawn loop started: one %s out of every spawn point every %.2fs, summary every %d creeps."),
+		*Data->GetName(), Interval, LoopLogEvery);
+}
+
+void UBDWaveSubsystem::StopSpawnLoop()
+{
+	if (!bSpawnLoopRunning)
+	{
+		return;
+	}
+
+	bSpawnLoopRunning = false;
+	SpawnLoopData = nullptr;
+
+	const UWorld* World = GetWorld();
+	UE_LOG(LogBDWave, Log, TEXT("Spawn loop stopped after %.1fs: %d spawned, %d arrived, %d killed, peak %d on the board, %d still out."),
+		World != nullptr ? World->GetTimeSeconds() - SpawnLoopStartSeconds : 0.0,
+		SpawnLoopSpawned, SpawnLoopArrived, SpawnLoopKilled, SpawnLoopPeak, LivingEnemies.Num());
 }
 
 //~ Spawn points and routes ----------------------------------------------------
@@ -415,9 +486,12 @@ ABDEnemyBase* UBDWaveSubsystem::SpawnEnemy(const UBDEnemyData* Data, const int32
 	Enemy->InitializeEnemy(Data, Point.Route);
 	LivingEnemies.Add(Enemy);
 
-	UE_LOG(LogBDWave, Log, TEXT("%s (%s) out of spawn point %d at %s, %d cells to the urn. %d creep(s) on the board."),
+	// Under the spawn loop this is the line that would flood the log; the loop summarizes instead.
+	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s (%s) out of spawn point %d at %s, %d cells to the urn. %d creep(s) on the board."),
 		*Enemy->GetName(), *Data->GetName(), SpawnPointIndex, *Point.ExitCell.ToString(),
 		Point.Route.Num(), LivingEnemies.Num());
+	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s (%s) out of spawn point %d, %d cells to the urn."),
+		*Enemy->GetName(), *Data->GetName(), SpawnPointIndex, Point.Route.Num());
 
 	return Enemy;
 }
@@ -481,7 +555,9 @@ void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
 		Match->AddVotesRed(Votes);
 	}
 
-	UE_LOG(LogBDWave, Log, TEXT("%s reached the urn: red +%d."), *Enemy->GetName(), Votes);
+	++SpawnLoopArrived;
+	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s reached the urn: red +%d."), *Enemy->GetName(), Votes);
+	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s reached the urn: red +%d."), *Enemy->GetName(), Votes);
 	ForgetEnemy(Enemy);
 }
 
@@ -500,7 +576,9 @@ void UBDWaveSubsystem::NotifyEnemyDied(ABDEnemyBase* Enemy)
 		Match->AddVotesBlue(Votes);
 	}
 
-	UE_LOG(LogBDWave, Log, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
+	++SpawnLoopKilled;
+	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
+	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
 	ForgetEnemy(Enemy);
 }
 

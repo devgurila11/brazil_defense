@@ -98,6 +98,41 @@ namespace BDWaveDebug
 			Spawned, Waves->GetSpawnPointCount(), *Data->GetName());
 	}
 
+	static constexpr int32 ArgCountSpawnLoopMin = 1;
+	static constexpr int32 ArgCountSpawnLoopMax = 2;
+
+	static void ExecSpawnLoop(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() < ArgCountSpawnLoopMin || Args.Num() > ArgCountSpawnLoopMax)
+		{
+			UE_LOG(LogBDWave, Error, TEXT("Usage: BD.Wave.SpawnLoop <seconds between spawns, 0 to stop> [enemy asset path or name]"));
+			return;
+		}
+
+		UBDWaveSubsystem* Waves = FindWaves(World);
+		if (Waves == nullptr)
+		{
+			return;
+		}
+
+		const float Interval = FCString::Atof(*Args[0]);
+		if (Interval <= 0.0f)
+		{
+			if (!Waves->IsSpawnLoopRunning())
+			{
+				UE_LOG(LogBDWave, Log, TEXT("BD.Wave.SpawnLoop: no loop running."));
+			}
+			Waves->StopSpawnLoop();
+			return;
+		}
+
+		const UBDEnemyData* Data = ResolveEnemy(Args, 1, TEXT("BD.Wave.SpawnLoop"));
+		if (Data != nullptr)
+		{
+			Waves->StartSpawnLoop(Data, Interval);
+		}
+	}
+
 	static void ExecKillAll(const TArray<FString>& Args, UWorld* World)
 	{
 		if (UBDWaveSubsystem* Waves = FindWaves(World))
@@ -184,6 +219,11 @@ namespace BDWaveDebug
 		TEXT("BD.Wave.SpawnAll"),
 		TEXT("BD.Wave.SpawnAll [enemy]: sends one creep out of every spawn point."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSpawnAll));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdSpawnLoop(
+		TEXT("BD.Wave.SpawnLoop"),
+		TEXT("BD.Wave.SpawnLoop <seconds> [enemy]: one creep out of every spawn point every N seconds until BD.Wave.SpawnLoop 0. Load testing."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSpawnLoop));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdKillAll(
 		TEXT("BD.Wave.KillAll"),

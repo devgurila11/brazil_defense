@@ -105,6 +105,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Wave")
 	int32 SpawnEnemyAtEveryPoint(const UBDEnemyData* Data);
 
+	//~ Spawn loop, for load testing ------------------------------------------
+
+	/**
+	 * Sends one creep out of every spawn point every Interval seconds until stopped.
+	 * Debug tooling: the point is dozens of creeps at once, to watch the frame rate and
+	 * whether towers pick sensible targets out of a queue. While it runs the per creep
+	 * log lines drop to Verbose and a summary goes out every LoopLogEvery spawns.
+	 */
+	void StartSpawnLoop(const UBDEnemyData* Data, float Interval);
+	void StopSpawnLoop();
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Wave")
+	bool IsSpawnLoopRunning() const { return bSpawnLoopRunning; }
+
 	/** Kills every creep on the board. Counts as kills: their VotesOnDeath are scored. @return how many were killed. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Wave")
 	int32 KillAll();
@@ -169,6 +183,20 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ABDEnemyBase>> LivingEnemies;
+
+	/** See StartSpawnLoop. */
+	static constexpr int32 LoopLogEvery = 10;
+	bool bSpawnLoopRunning = false;
+	float SpawnLoopInterval = 0.0f;
+	float SpawnLoopTimer = 0.0f;
+	int32 SpawnLoopSpawned = 0;
+	int32 SpawnLoopArrived = 0;
+	int32 SpawnLoopKilled = 0;
+	int32 SpawnLoopPeak = 0;
+	double SpawnLoopStartSeconds = 0.0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<const UBDEnemyData> SpawnLoopData;
 
 	FDelegateHandle GridRebuiltHandle;
 	FDelegateHandle CellStateChangedHandle;
