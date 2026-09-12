@@ -18,6 +18,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnMatchPhaseChanged, EBDMatchPhase /*NewP
 /** Broadcast when a wave goes out. Carries the number of the wave that just started. */
 DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnWaveStarted, int32 /*Wave*/);
 
+/** Broadcast whenever either vote counter moves. Carries the new totals, blue then red. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnVotesChanged, int32 /*Blue*/, int32 /*Red*/);
+
 /**
  * Owns where a match stands: the phase, the wave, the countdown and what the player has
  * left to build with. Nothing else is allowed to decide those.
@@ -25,8 +28,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnWaveStarted, int32 /*Wave*/);
  * Spawned by ABDGameMode when the level does not already carry one, and never spatially
  * loaded when it does: a match manager that streams out is a match that forgets itself.
  *
- * There are no enemies yet, so a wave never ends on its own. OnWaveCleared is the seam
- * where the future spawner will report in; until then BD.Match.ClearWave stands in.
+ * Also keeps the score, which in this game is votes: every creep killed adds its votes to
+ * the blue counter, every creep that reaches the urn adds its votes to the red one.
+ * UBDWaveSubsystem reports both, and reports the board empty through OnWaveCleared.
  */
 UCLASS(meta = (DisplayName = "BD Match Manager"))
 class BRAZIL_DEFENSE_API ABDMatchManager : public AActor
@@ -74,6 +78,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	float GetGameSpeed() const { return GameSpeed; }
 
+	/** Votes scored by the player: the sum of VotesOnDeath of every creep killed. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetVotesBlue() const { return VotesBlue; }
+
+	/** Votes scored against the player: the sum of VotesOnArrival of every creep that reached the urn. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetVotesRed() const { return VotesRed; }
+
 	/** True once the first wave has gone out and the maze is locked in. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool IsBuildLocked() const { return CurrentWave >= 1; }
@@ -96,9 +108,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void CallWaveEarly();
 
-	/** Reported by whatever owns the creeps once the board is empty again. */
+	/** Reported by UBDWaveSubsystem once the board is empty again. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void OnWaveCleared();
+
+	//~ Votes, reported by the wave subsystem -----------------------------------
+
+	/** A creep was killed: its votes go to the player. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void AddVotesBlue(int32 Votes);
+
+	/** A creep reached the urn: its votes go against the player. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void AddVotesRed(int32 Votes);
 
 	/**
 	 * Sets how fast the match runs. Only the speeds listed in the balance settings are
@@ -136,6 +158,7 @@ public:
 
 	FBDOnMatchPhaseChanged OnPhaseChanged;
 	FBDOnWaveStarted OnWaveStarted;
+	FBDOnVotesChanged OnVotesChanged;
 
 	/** Seed the board was generated from, so a match can be handed over as a number. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Brazil Defense|Match")
@@ -180,4 +203,6 @@ private:
 	int32 TowersRemaining = 0;
 	int32 EarlyCallBonus = 0;
 	float GameSpeed = 1.0f;
+	int32 VotesBlue = 0;
+	int32 VotesRed = 0;
 };

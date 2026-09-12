@@ -1,13 +1,11 @@
 // Brazil Defense. Console access to the placement gesture, for testing it without a mouse.
 
-#include "AssetRegistry/AssetRegistryModule.h"
-#include "AssetRegistry/IAssetRegistry.h"
+#include "BDDebugAssetLookup.h"
 #include "BDLog.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
-#include "Misc/PackageName.h"
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementComponent.h"
 
@@ -89,39 +87,6 @@ namespace BDPlacementDebug
 			Placeable->Footprint.X, Placeable->Footprint.Y, *StateEnum->GetNameStringByValue(StateValue));
 	}
 
-	/**
-	 * Resolves a placeable from a full path or from its bare asset name. The name form
-	 * walks the asset registry, so the console does not need the /Game/... prefix typed.
-	 */
-	static UBDPlaceableData* FindPlaceableAsset(const FString& PathOrName)
-	{
-		if (PathOrName.Contains(TEXT("/")))
-		{
-			// "/Game/BD/Data/DA_Divider" and "/Game/BD/Data/DA_Divider.DA_Divider" both work.
-			FString ObjectPath = PathOrName;
-			if (!ObjectPath.Contains(TEXT(".")))
-			{
-				ObjectPath += TEXT(".") + FPackageName::GetShortName(ObjectPath);
-			}
-			return LoadObject<UBDPlaceableData>(nullptr, *ObjectPath);
-		}
-
-		const IAssetRegistry& Registry = FAssetRegistryModule::GetRegistry();
-		TArray<FAssetData> Assets;
-		Registry.GetAssetsByClass(UBDPlaceableData::StaticClass()->GetClassPathName(), Assets, /*bSearchSubClasses*/ true);
-
-		const FName WantedName(*PathOrName);
-		for (const FAssetData& Asset : Assets)
-		{
-			if (Asset.AssetName == WantedName)
-			{
-				return Cast<UBDPlaceableData>(Asset.GetAsset());
-			}
-		}
-
-		return nullptr;
-	}
-
 	static void ExecSelect(const TArray<FString>& Args, UWorld* World)
 	{
 		if (Args.Num() != ArgCountSelect)
@@ -136,7 +101,7 @@ namespace BDPlacementDebug
 			return;
 		}
 
-		UBDPlaceableData* Placeable = FindPlaceableAsset(Args[0]);
+		UBDPlaceableData* Placeable = BDDebugAssetLookup::FindByPathOrName<UBDPlaceableData>(Args[0]);
 		if (Placeable == nullptr)
 		{
 			UE_LOG(LogBDGrid, Error, TEXT("BD.Place.Select: no UBDPlaceableData found for '%s'."), *Args[0]);

@@ -252,6 +252,32 @@ void ABDMatchManager::OnWaveCleared()
 	StartBuildingPhase();
 }
 
+void ABDMatchManager::AddVotesBlue(const int32 Votes)
+{
+	if (Votes <= 0)
+	{
+		return;
+	}
+
+	VotesBlue += Votes;
+	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
+
+	UE_LOG(LogBDMatch, Verbose, TEXT("Blue +%d votes, now %d blue / %d red."), Votes, VotesBlue, VotesRed);
+}
+
+void ABDMatchManager::AddVotesRed(const int32 Votes)
+{
+	if (Votes <= 0)
+	{
+		return;
+	}
+
+	VotesRed += Votes;
+	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
+
+	UE_LOG(LogBDMatch, Verbose, TEXT("Red +%d votes, now %d blue / %d red."), Votes, VotesBlue, VotesRed);
+}
+
 bool ABDMatchManager::SetGameSpeed(const float Speed)
 {
 	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
@@ -420,11 +446,11 @@ namespace BDMatchCommands
 		}
 
 		UE_LOG(LogBDMatch, Log,
-			TEXT("Phase %s | wave %d | %.1fs to next | dividers %d | platforms %d | towers %d | speed %.0fx | bonus %d"),
+			TEXT("Phase %s | wave %d | %.1fs to next | dividers %d | platforms %d | towers %d | speed %.0fx | bonus %d | votes %d blue / %d red"),
 			*StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())),
 			Match->GetCurrentWave(), Match->GetTimeUntilNextWave(),
 			Match->GetDividersRemaining(), Match->GetPlatformsRemaining(), Match->GetTowersRemaining(),
-			Match->GetGameSpeed(), Match->GetEarlyCallBonus());
+			Match->GetGameSpeed(), Match->GetEarlyCallBonus(), Match->GetVotesBlue(), Match->GetVotesRed());
 	}
 
 	static void ExecCallWave(const TArray<FString>& Args, UWorld* World)
@@ -483,6 +509,6 @@ namespace BDMatchCommands
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdClearWave(
 		TEXT("BD.Match.ClearWave"),
-		TEXT("BD.Match.ClearWave: stands in for the spawner reporting the board empty."),
+		TEXT("BD.Match.ClearWave: reports the board empty without waiting for the creeps to leave it."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecClearWave));
 }

@@ -1,0 +1,534 @@
+// Brazil Defense. Where the creeps come from, which way they walk and who is still out.
+
+#include "Wave/BDWaveSubsystem.h"
+
+#include "BDLog.h"
+#include "DrawDebugHelpers.h"
+#include "Enemy/BDEnemyBase.h"
+#include "Enemy/BDEnemyData.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "Grid/BDGridDebug.h"
+#include "Grid/BDGridSettings.h"
+#include "Grid/BDGridSubsystem.h"
+#include "HAL/IConsoleManager.h"
+#include "Match/BDMatchManager.h"
+#include "Path/BDPathfinder.h"
+#include "Stats/Stats.h"
+#include "Wave/BDWaveSettings.h"
+
+namespace BDWavePrivate
+{
+	/** Draws the route of every spawn point. Off by default: the routes are a tuning aid, not gameplay. */
+	static int32 GShowRoutes = 0;
+
+	static FAutoConsoleVariableRef CVarShowRoutes(
+		TEXT("BD.Path.ShowRoutes"),
+		GShowRoutes,
+		TEXT("1 draws the route from every spawn point to the urn, one color per point. 0 to hide."),
+		ECVF_Cheat);
+
+	/**
+	 * Groups cells into runs of four-adjacent cells. Cells are visited in the order given,
+	 * so with row major input the runs come out in row major order of their first cell,
+	 * which keeps the spawn point indices stable across sessions.
+	 */
+	static void GroupAdjacent(const TArray<FBDCellCoord>& Cells, TArray<TArray<FBDCellCoord>>& OutGroups)
+	{
+		OutGroups.Reset();
+
+		TSet<FBDCellCoord> Remaining(Cells);
+		for (const FBDCellCoord& Seed : Cells)
+		{
+			if (!Remaining.Contains(Seed))
+			{
+				continue;
+			}
+
+			TArray<FBDCellCoord>& Group = OutGroups.AddDefaulted_GetRef();
+			TArray<FBDCellCoord> Frontier;
+			Frontier.Add(Seed);
+			Remaining.Remove(Seed);
+
+			while (Frontier.Num() > 0)
+			{
+				const FBDCellCoord Cell = Frontier.Pop(EAllowShrinking::No);
+				Group.Add(Cell);
+
+				const FBDCellCoord Neighbours[] = {
+					FBDCellCoord(Cell.X + 1, Cell.Y), FBDCellCoord(Cell.X - 1, Cell.Y),
+					FBDCellCoord(Cell.X, Cell.Y + 1), FBDCellCoord(Cell.X, Cell.Y - 1) };
+
+				for (const FBDCellCoord& Neighbour : Neighbours)
+				{
+					if (Remaining.Remove(Neighbour) > 0)
+					{
+						Frontier.Add(Neighbour);
+					}
+				}
+			}
+
+			Group.Sort([](const FBDCellCoord& A, const FBDCellCoord& B)
+			{
+				return A.Y != B.Y ? A.Y < B.Y : A.X < B.X;
+			});
+		}
+	}
+}
+
+void UBDWaveSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	// Required by UTickableWorldSubsystem: ticking only starts once this runs.
+	Super::Initialize(Collection);
+
+	// The grid is read, never written, so it must be there first.
+	Collection.InitializeDependency<UBDGridSubsystem>();
+	Collection.InitializeDependency<UBDPathfinder>();
+
+	if (UBDGridSubsystem* Grid = GetGrid())
+	{
+		GridRebuiltHandle = Grid->OnGridRebuilt.AddUObject(this, &UBDWaveSubsystem::HandleGridRebuilt);
+		CellStateChangedHandle = Grid->OnCellStateChanged.AddUObject(this, &UBDWaveSubsystem::HandleCellStateChanged);
+		EdgeBlockedChangedHandle = Grid->OnEdgeBlockedChanged.AddUObject(this, &UBDWaveSubsystem::HandleEdgeBlockedChanged);
+	}
+}
+
+void UBDWaveSubsystem::Deinitialize()
+{
+	if (UBDGridSubsystem* Grid = GetGrid())
+	{
+		Grid->OnGridRebuilt.Remove(GridRebuiltHandle);
+		Grid->OnCellStateChanged.Remove(CellStateChangedHandle);
+		Grid->OnEdgeBlockedChanged.Remove(EdgeBlockedChangedHandle);
+	}
+
+	LivingEnemies.Empty();
+	SpawnPoints.Empty();
+	GoalCells.Empty();
+
+	Super::Deinitialize();
+}
+
+TStatId UBDWaveSubsystem::GetStatId() const
+{
+	RETURN_QUICK_DECLARE_CYCLE_STAT(UBDWaveSubsystem, STATGROUP_Tickables);
+}
+
+UBDWaveSubsystem* UBDWaveSubsystem::Get(const UObject* WorldContextObject)
+{
+	const UWorld* World = GEngine != nullptr
+		? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+
+	return World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+}
+
+UBDGridSubsystem* UBDWaveSubsystem::GetGrid() const
+{
+	const UWorld* World = GetWorld();
+	return World != nullptr ? World->GetSubsystem<UBDGridSubsystem>() : nullptr;
+}
+
+UBDPathfinder* UBDWaveSubsystem::GetPathfinder() const
+{
+	const UWorld* World = GetWorld();
+	return World != nullptr ? World->GetSubsystem<UBDPathfinder>() : nullptr;
+}
+
+ABDMatchManager* UBDWaveSubsystem::GetMatch() const
+{
+	return ABDMatchManager::Get(GetWorld());
+}
+
+//~ Grid changes ---------------------------------------------------------------
+
+void UBDWaveSubsystem::MarkBoardChanged()
+{
+	bRoutesDirty = true;
+
+	// Rerouted right here rather than on the next tick: the creeps tick before this
+	// subsystem does, and a creep must not get one frame of walking through a fence that
+	// is already on the board. Nothing blocking can be placed while a wave is out, so in
+	// play this only ever runs on an empty board and costs nothing; the console is the
+	// one thing that fences creeps in mid walk.
+	if (LivingEnemies.Num() > 0)
+	{
+		GetSpawnPoints();
+		RerouteLivingEnemies();
+	}
+}
+
+void UBDWaveSubsystem::HandleGridRebuilt()
+{
+	MarkBoardChanged();
+}
+
+void UBDWaveSubsystem::HandleCellStateChanged(const FBDCellCoord& Coord, const EBDCellState NewState)
+{
+	MarkBoardChanged();
+}
+
+void UBDWaveSubsystem::HandleEdgeBlockedChanged(const FBDEdgeCoord& Edge, const bool bBlocked)
+{
+	MarkBoardChanged();
+}
+
+void UBDWaveSubsystem::Tick(const float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	const UWorld* World = GetWorld();
+	if (BDWavePrivate::GShowRoutes != 0 && World != nullptr && BDGridDebug::ShouldDrawInWorld(*World))
+	{
+		GetSpawnPoints();
+		DrawRoutes();
+	}
+}
+
+//~ Spawn points and routes ----------------------------------------------------
+
+const TArray<FBDSpawnPoint>& UBDWaveSubsystem::GetSpawnPoints()
+{
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (bRoutesDirty || (Grid != nullptr && Grid->GetVersion() != RoutesGridVersion))
+	{
+		RefreshRoutes();
+	}
+
+	return SpawnPoints;
+}
+
+int32 UBDWaveSubsystem::GetSpawnPointCount()
+{
+	return GetSpawnPoints().Num();
+}
+
+void UBDWaveSubsystem::RefreshRoutes()
+{
+	BuildSpawnPoints();
+	bRoutesDirty = false;
+}
+
+void UBDWaveSubsystem::BuildSpawnPoints()
+{
+	SpawnPoints.Reset();
+	GoalCells.Reset();
+
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr)
+	{
+		return;
+	}
+
+	RoutesGridVersion = Grid->GetVersion();
+
+	TArray<FBDCellCoord> SpawnCells;
+	UBDPathfinder::GatherCellsWithState(*Grid, EBDCellState::Spawn, SpawnCells);
+	UBDPathfinder::GatherCellsWithState(*Grid, EBDCellState::Goal, GoalCells);
+
+	TArray<TArray<FBDCellCoord>> Runs;
+	BDWavePrivate::GroupAdjacent(SpawnCells, Runs);
+
+	int32 Unreachable = 0;
+	for (TArray<FBDCellCoord>& Run : Runs)
+	{
+		FBDSpawnPoint& Point = SpawnPoints.AddDefaulted_GetRef();
+		Point.Cells = MoveTemp(Run);
+		Point.ExitCell = Point.Cells[Point.Cells.Num() / 2];
+
+		if (!FindRouteToGoal(Point.ExitCell, Point.Route))
+		{
+			++Unreachable;
+		}
+	}
+
+	if (SpawnPoints.Num() == 0 || GoalCells.Num() == 0)
+	{
+		UE_LOG(LogBDWave, Warning, TEXT("Routes read off a grid with %d spawn point(s) and %d goal cell(s): nothing can walk."),
+			SpawnPoints.Num(), GoalCells.Num());
+	}
+	else if (Unreachable > 0)
+	{
+		UE_LOG(LogBDWave, Warning, TEXT("%d of %d spawn point(s) have no route to the urn (grid version %d)."),
+			Unreachable, SpawnPoints.Num(), RoutesGridVersion);
+	}
+	else
+	{
+		UE_LOG(LogBDWave, Verbose, TEXT("%d spawn point(s) routed to the urn (grid version %d)."),
+			SpawnPoints.Num(), RoutesGridVersion);
+	}
+}
+
+bool UBDWaveSubsystem::FindRouteToGoal(const FBDCellCoord& From, TArray<FBDCellCoord>& OutRoute) const
+{
+	OutRoute.Reset();
+
+	const UBDGridSubsystem* Grid = GetGrid();
+	const UBDPathfinder* Pathfinder = GetPathfinder();
+	if (Grid == nullptr || Pathfinder == nullptr)
+	{
+		return false;
+	}
+
+	// The urn is a few cells wide. A search per goal cell is a handful of searches of a
+	// few dozen microseconds, and it lets each spawn end at the near side of the urn.
+	TArray<FBDCellCoord> Candidate;
+	for (const FBDCellCoord& Goal : GoalCells)
+	{
+		if (Pathfinder->FindPath(Grid, From, Goal, Candidate) && (OutRoute.Num() == 0 || Candidate.Num() < OutRoute.Num()))
+		{
+			OutRoute = Candidate;
+		}
+	}
+
+	return OutRoute.Num() > 0;
+}
+
+void UBDWaveSubsystem::RerouteLivingEnemies()
+{
+	int32 Rerouted = 0;
+	TArray<FBDCellCoord> Route;
+	for (ABDEnemyBase* Enemy : LivingEnemies)
+	{
+		if (Enemy == nullptr || Enemy->HasArrived())
+		{
+			continue;
+		}
+
+		// From the cell it is heading to: the crossing under way is finished first, so
+		// the creep never reverses in the middle of an edge.
+		const FBDCellCoord Heading = Enemy->GetHeadingCell();
+		if (FindRouteToGoal(Heading, Route))
+		{
+			const int32 CellsLeftBefore = Enemy->GetPath().Num() - Enemy->GetCurrentPathIndex();
+			Enemy->SetPath(Route);
+			++Rerouted;
+
+			UE_LOG(LogBDWave, Verbose, TEXT("%s rerouted from %s: %d cells left, was %d."),
+				*Enemy->GetName(), *Heading.ToString(), Route.Num(), CellsLeftBefore);
+		}
+		else
+		{
+			// Only possible when the player fenced a cell in with a creep inside it, which
+			// the blocking check allows on purpose. It stays put; nothing else to do.
+			UE_LOG(LogBDWave, Warning, TEXT("%s at %s has no route to the urn after the board changed; it stops there."),
+				*Enemy->GetName(), *Heading.ToString());
+			Enemy->SetPath({ Heading });
+		}
+	}
+
+	UE_LOG(LogBDWave, Log, TEXT("Board changed (grid version %d): %d creep(s) rerouted."), RoutesGridVersion, Rerouted);
+}
+
+//~ Spawning -------------------------------------------------------------------
+
+ABDEnemyBase* UBDWaveSubsystem::SpawnEnemy(const UBDEnemyData* Data, const int32 SpawnPointIndex)
+{
+	UWorld* World = GetWorld();
+	if (World == nullptr || !World->IsGameWorld())
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Creeps can only be spawned in a game world."));
+		return nullptr;
+	}
+
+	if (Data == nullptr)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("SpawnEnemy called with no enemy data."));
+		return nullptr;
+	}
+
+	const TArray<FBDSpawnPoint>& Points = GetSpawnPoints();
+	if (!Points.IsValidIndex(SpawnPointIndex))
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Spawn point %d does not exist; the board has %d."), SpawnPointIndex, Points.Num());
+		return nullptr;
+	}
+
+	const FBDSpawnPoint& Point = Points[SpawnPointIndex];
+	if (Point.Route.Num() == 0)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Spawn point %d at %s has no route to the urn."), SpawnPointIndex, *Point.ExitCell.ToString());
+		return nullptr;
+	}
+
+	UClass* EnemyClass = Data->EnemyClass.IsNull() ? ABDEnemyBase::StaticClass() : Data->EnemyClass.LoadSynchronous();
+	if (EnemyClass == nullptr)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Enemy class %s of %s failed to load."), *Data->EnemyClass.ToString(), *Data->GetName());
+		return nullptr;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	const UBDGridSubsystem* Grid = GetGrid();
+	const FVector SpawnLocation = Grid != nullptr ? Grid->CellToWorld(Point.ExitCell) : FVector::ZeroVector;
+
+	ABDEnemyBase* Enemy = World->SpawnActor<ABDEnemyBase>(EnemyClass, SpawnLocation, FRotator::ZeroRotator, SpawnParams);
+	if (Enemy == nullptr)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Failed to spawn %s at spawn point %d."), *EnemyClass->GetName(), SpawnPointIndex);
+		return nullptr;
+	}
+
+	// The route goes in before the creep ticks once: SpawnActor returns before the first tick.
+	Enemy->SpawnPointIndex = SpawnPointIndex;
+	Enemy->InitializeEnemy(Data, Point.Route);
+	LivingEnemies.Add(Enemy);
+
+	UE_LOG(LogBDWave, Log, TEXT("%s (%s) out of spawn point %d at %s, %d cells to the urn. %d creep(s) on the board."),
+		*Enemy->GetName(), *Data->GetName(), SpawnPointIndex, *Point.ExitCell.ToString(),
+		Point.Route.Num(), LivingEnemies.Num());
+
+	return Enemy;
+}
+
+int32 UBDWaveSubsystem::SpawnEnemyAtEveryPoint(const UBDEnemyData* Data)
+{
+	const int32 PointCount = GetSpawnPointCount();
+
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < PointCount; ++Index)
+	{
+		if (SpawnEnemy(Data, Index) != nullptr)
+		{
+			++Spawned;
+		}
+	}
+
+	return Spawned;
+}
+
+int32 UBDWaveSubsystem::KillAll()
+{
+	// Kill removes the creep from LivingEnemies through its report, so walk a copy.
+	TArray<ABDEnemyBase*> Enemies;
+	GetLivingEnemies(Enemies);
+
+	for (ABDEnemyBase* Enemy : Enemies)
+	{
+		Enemy->Kill();
+	}
+
+	return Enemies.Num();
+}
+
+void UBDWaveSubsystem::GetLivingEnemies(TArray<ABDEnemyBase*>& OutEnemies) const
+{
+	OutEnemies.Reset(LivingEnemies.Num());
+	for (ABDEnemyBase* Enemy : LivingEnemies)
+	{
+		if (Enemy != nullptr)
+		{
+			OutEnemies.Add(Enemy);
+		}
+	}
+}
+
+//~ Reports from the creeps ----------------------------------------------------
+
+void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
+{
+	if (Enemy == nullptr || !LivingEnemies.Contains(Enemy))
+	{
+		return;
+	}
+
+	const UBDEnemyData* Data = Enemy->GetData();
+	const int32 Votes = Data != nullptr ? Data->VotesOnArrival : 0;
+
+	if (ABDMatchManager* Match = GetMatch())
+	{
+		Match->AddVotesRed(Votes);
+	}
+
+	UE_LOG(LogBDWave, Log, TEXT("%s reached the urn: red +%d."), *Enemy->GetName(), Votes);
+	ForgetEnemy(Enemy);
+}
+
+void UBDWaveSubsystem::NotifyEnemyDied(ABDEnemyBase* Enemy)
+{
+	if (Enemy == nullptr || !LivingEnemies.Contains(Enemy))
+	{
+		return;
+	}
+
+	const UBDEnemyData* Data = Enemy->GetData();
+	const int32 Votes = Data != nullptr ? Data->VotesOnDeath : 0;
+
+	if (ABDMatchManager* Match = GetMatch())
+	{
+		Match->AddVotesBlue(Votes);
+	}
+
+	UE_LOG(LogBDWave, Log, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
+	ForgetEnemy(Enemy);
+}
+
+void UBDWaveSubsystem::NotifyEnemyRemoved(ABDEnemyBase* Enemy)
+{
+	// A creep that already arrived or died is no longer in the list; this is for the ones
+	// that vanished some other way, which score nothing.
+	if (Enemy != nullptr && LivingEnemies.Contains(Enemy))
+	{
+		UE_LOG(LogBDWave, Verbose, TEXT("%s removed from the board without arriving or dying."), *Enemy->GetName());
+		ForgetEnemy(Enemy);
+	}
+}
+
+void UBDWaveSubsystem::ForgetEnemy(ABDEnemyBase* Enemy)
+{
+	LivingEnemies.Remove(Enemy);
+
+	if (LivingEnemies.Num() > 0)
+	{
+		return;
+	}
+
+	// Creeps spawned from the console during the building phase leave a board that was
+	// never "in a wave"; only a wave actually out is cleared.
+	ABDMatchManager* Match = GetMatch();
+	if (Match != nullptr && Match->GetPhase() == EBDMatchPhase::WaveActive)
+	{
+		Match->OnWaveCleared();
+	}
+}
+
+//~ Debug ----------------------------------------------------------------------
+
+void UBDWaveSubsystem::DrawRoutes() const
+{
+	const UWorld* World = GetWorld();
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (World == nullptr || Grid == nullptr)
+	{
+		return;
+	}
+
+	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
+	const UBDGridSettings& GridSettings = UBDGridSettings::Get();
+	const FVector HeightOffset(0.0f, 0.0f, Settings.RouteDrawHeightOffset);
+
+	for (int32 Index = 0; Index < SpawnPoints.Num(); ++Index)
+	{
+		const FBDSpawnPoint& Point = SpawnPoints[Index];
+
+		if (Point.Route.Num() == 0)
+		{
+			DrawDebugSphere(World, Grid->CellToWorld(Point.ExitCell) + HeightOffset,
+				Settings.RouteBlockedMarkerRadius, GridSettings.PathEndpointSegments, Settings.RouteBlockedColor,
+				BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority, GridSettings.LineThickness);
+			continue;
+		}
+
+		const FColor Color = Settings.GetRouteColor(Index);
+		for (int32 Step = 0; Step < Point.Route.Num() - 1; ++Step)
+		{
+			DrawDebugLine(World,
+				Grid->CellToWorld(Point.Route[Step]) + HeightOffset,
+				Grid->CellToWorld(Point.Route[Step + 1]) + HeightOffset,
+				Color, BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime,
+				BDGridDebug::DepthPriority, Settings.RouteLineThickness);
+		}
+	}
+}
