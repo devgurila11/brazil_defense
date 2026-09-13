@@ -14,9 +14,11 @@ class UFont;
 /**
  * Draws the scoreboard of the match in the top left corner of the viewport, every frame,
  * while BD.HUD.Debug is on: the two vote counters in their colors, the wave and the
- * countdown, the mouths of the wave and how many creeps are out. The same numbers
- * BD.Votes.Status and BD.Wave.Status log, read from the same places, so what is on
- * screen and what is in the log can be checked against each other.
+ * countdown, the mouths of the wave and how many creeps are out; the candidate and
+ * its health while one walks, and the frozen count while a kill's pause runs. The same
+ * numbers BD.Votes.Status, BD.Wave.Status and BD.Candidate.Status log, read from the
+ * same places, so what is on screen and what is in the log can be checked against
+ * each other.
  *
  * A test overlay, not the HUD: no localisation, no art, no widgets. Drawn on the canvas
  * of UDebugDrawService the way UBDGridDebugDrawer draws its labels, so it lives in every

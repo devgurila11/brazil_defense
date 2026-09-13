@@ -2,8 +2,10 @@
 
 #include "Debug/BDDebugScoreboard.h"
 
+#include "Candidate/BDCandidateSubsystem.h"
 #include "CanvasItem.h"
 #include "Debug/DebugDrawService.h"
+#include "Enemy/BDCandidate.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
@@ -22,7 +24,7 @@ namespace BDDebugScoreboardPrivate
 	static FAutoConsoleVariableRef CVarScoreboard(
 		TEXT("BD.HUD.Debug"),
 		GScoreboard,
-		TEXT("1 draws the test scoreboard in the top left corner: votes, wave, countdown, mouths of the wave, creeps out. 0 to hide."),
+		TEXT("1 draws the test scoreboard in the top left corner: votes, wave, countdown, mouths of the wave, creeps out, the candidate and the frozen count. 0 to hide."),
 		ECVF_Cheat);
 
 	/** Same show flags as the grid labels: PIE and standalone viewports, plus Simulate. */
@@ -178,6 +180,23 @@ void UBDDebugScoreboard::Draw(UCanvas* Canvas, APlayerController* PlayerControll
 	Y += DrawLine(*Canvas, *Font, Margin, Y, FString::Printf(TEXT("Bocas: %s%svivos: %d"),
 		*Mouths, Separator, Waves != nullptr ? Waves->GetLivingEnemyCount() : 0), TextColor);
 
-	// The candidate line ("CANDIDATO  HP x/y") and the frozen count ("APURACAO CONGELADA
-	// Ns") go here once the candidate exists. There is no such system on the board yet.
+	// Lines 4 and 5, only when there is something to say: the candidate on the board
+	// with its health, and the count frozen after its death with the seconds left.
+	const UBDCandidateSubsystem* Candidates = World->GetSubsystem<UBDCandidateSubsystem>();
+	if (Candidates == nullptr)
+	{
+		return;
+	}
+
+	if (const ABDCandidate* Candidate = Candidates->GetCandidate())
+	{
+		Y += DrawLine(*Canvas, *Font, Margin, Y, FString::Printf(TEXT("CANDIDATO  HP %.0f/%.0f"),
+			Candidate->GetCurrentHealth(), Candidate->GetMaxHealth()), RedColor);
+	}
+
+	if (Candidates->IsCountFrozen())
+	{
+		Y += DrawLine(*Canvas, *Font, Margin, Y, FString::Printf(TEXT("APURA\u00C7\u00C3O CONGELADA  %ds"),
+			FMath::CeilToInt(Candidates->GetPauseRemaining())), TextColor);
+	}
 }

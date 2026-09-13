@@ -25,3 +25,9 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBDTower, Log, All);
 
 /** Debug tooling: automatic test setups and the like. */
 DECLARE_LOG_CATEGORY_EXTERN(LogBDDebug, Log, All);
+
+/** The red candidate: when it comes out, how it ends and the pause its death buys. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDCandidate, Log, All);
+
+/** Screens, options, saved settings and the texts of the interface. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDUI, Log, All);

@@ -22,6 +22,8 @@
 #include "Platform/BDPlatformComponent.h"
 #include "Tower/BDTowerBase.h"
 #include "Tower/BDTowerData.h"
+#include "UI/BDUISubsystem.h"
+#include "Engine/GameInstance.h"
 #include "UObject/UObjectIterator.h"
 #include "Grid/BDGridSettings.h"
 
@@ -1526,8 +1528,11 @@ void UBDPlacementComponent::ForgetSlotPiecesOn(const FBDPlacedPiece& PlatformPie
 			ForgetPiece(*GetGrid(), Piece);
 			if (Match != nullptr && Piece.Data != nullptr)
 			{
-				// A defender taken back is a defender held again, even when it is the platform that went.
+				// A defender taken back is a defender held again, even when it is the platform
+				// that went. Nothing is paid for it: it was not sold, it is back in the hand.
 				Match->RefundRemoval(Piece.Data->GetPieceKind());
+				UE_LOG(LogBDMatch, Log, TEXT("'%s' back in the hand with its platform, nothing paid: %d left to place."),
+					*Piece.Data->GetName(), Match->GetBudgetRemaining(Piece.Data->GetPieceKind()));
 			}
 		}
 	}
@@ -1608,25 +1613,120 @@ bool UBDPlacementComponent::TryRemoveAtHovered()
 
 	// Copied before touching the maps, which are about to drop the entry this points at.
 	const FBDPlacedPiece Piece = *Found;
+	return SellPiece(Piece);
+}
+
+const FBDPlacedPiece* UBDPlacementComponent::FindPieceOfActor(const AActor* Actor) const
+{
+	if (Actor == nullptr)
+	{
+		return nullptr;
+	}
+
+	for (const FBDPlacedPiece& Piece : PlacedOnSlots)
+	{
+		if (Piece.Actors.Contains(Actor))
+		{
+			return &Piece;
+		}
+	}
+
+	for (const TPair<FBDCellCoord, FBDPlacedPiece>& Entry : PlacedByCell)
+	{
+		if (Entry.Value.Actors.Contains(Actor))
+		{
+			return &Entry.Value;
+		}
+	}
+
+	for (const TPair<FBDEdgeCoord, FBDPlacedPiece>& Entry : PlacedByEdge)
+	{
+		if (Entry.Value.Actors.Contains(Actor))
+		{
+			return &Entry.Value;
+		}
+	}
+
+	return nullptr;
+}
+
+const UBDPlaceableData* UBDPlacementComponent::FindPlaceableOfActor(const AActor* Actor) const
+{
+	const FBDPlacedPiece* Piece = FindPieceOfActor(Actor);
+	return Piece != nullptr ? Piece->Data.Get() : nullptr;
+}
+
+bool UBDPlacementComponent::TrySellActor(AActor* Actor)
+{
+	const FBDPlacedPiece* Found = FindPieceOfActor(Actor);
+	if (Found == nullptr || GetGrid() == nullptr)
+	{
+		return false;
+	}
+
+	// A lifted piece is not on the board to be sold.
+	if (bMoving)
+	{
+		CancelMove();
+	}
+
+	const FBDPlacedPiece Piece = *Found;
+	if (SelectedDefender.Get() == Actor)
+	{
+		SelectedDefender.Reset();
+	}
+
+	return SellPiece(Piece);
+}
+
+bool UBDPlacementComponent::SellPiece(const FBDPlacedPiece& Piece)
+{
+	UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr)
+	{
+		return false;
+	}
 
 	const EBDPieceKind Kind = Piece.Data != nullptr ? Piece.Data->GetPieceKind() : EBDPieceKind::Platform;
 	ABDMatchManager* Match = GetMatch();
 	if (Match != nullptr && !Match->CanRemove(Kind))
 	{
-		UE_LOG(LogBDGrid, Verbose, TEXT("Removal of '%s' refused: the maze is locked in."),
+		UE_LOG(LogBDGrid, Verbose, TEXT("Removal of '%s' refused: the urn is not taken back."),
 			*GetNameSafe(Piece.Data));
 		return false;
 	}
 
+	FString Where;
+	if (Piece.IsOnSlot())
+	{
+		const UBDPlatformComponent* Platform = Piece.Platform.Get();
+		Where = FString::Printf(TEXT("slot %d of %s"), Piece.SlotIndex, *GetNameSafe(Platform != nullptr ? Platform->GetOwner() : nullptr));
+	}
+	else
+	{
+		Where = Piece.Edges.Num() > 0 ? Piece.Edges[0].ToString() : Piece.Origin.ToString();
+	}
+
+	// The platform's passengers come off first, inside ForgetPiece, and go back to the
+	// hand; only the piece under the cursor is sold.
 	ForgetPiece(*Grid, Piece);
 
 	if (Match != nullptr)
 	{
 		Match->RefundRemoval(Kind);
-	}
 
-	UE_LOG(LogBDGrid, Verbose, TEXT("Removed '%s' from %s."), *GetNameSafe(Piece.Data),
-		Piece.Edges.Num() > 0 ? *Piece.Edges[0].ToString() : *Piece.Origin.ToString());
+		// Selling pays part of the build cost back in blue votes, which is the score: a
+		// piece sold is a piece that lifts the scoreboard, on purpose.
+		const int32 BuildCost = Piece.Data != nullptr ? Piece.Data->GetBuildCost() : 0;
+		const int32 Refund = Match->RefundSale(Kind, BuildCost);
+		UE_LOG(LogBDMatch, Log, TEXT("Sold '%s' at %s for %d blue vote(s) (%.0f%% of %d): now %d blue / %d red."),
+			*GetNameSafe(Piece.Data), *Where, Refund, Match->GetSellRefundRatio(Kind) * 100.0f, BuildCost,
+			Match->GetVotesBlue(), Match->GetVotesRed());
+	}
+	else
+	{
+		UE_LOG(LogBDGrid, Verbose, TEXT("Removed '%s' from %s."), *GetNameSafe(Piece.Data), *Where);
+	}
 
 	EvaluatePlacement();
 	return true;
@@ -2039,7 +2139,20 @@ void UBDPlacementComponent::HandleCancelInput()
 		return;
 	}
 
-	CancelSelection();
+	if (CurrentSelection != nullptr || SelectedDefender.IsValid())
+	{
+		CancelSelection();
+		SelectDefender(nullptr);
+		return;
+	}
+
+	// Nothing in hand and nothing selected: Escape is the game menu.
+	const UWorld* World = GetWorld();
+	UBDUISubsystem* UI = World != nullptr && World->GetGameInstance() != nullptr ? World->GetGameInstance()->GetSubsystem<UBDUISubsystem>() : nullptr;
+	if (UI != nullptr)
+	{
+		UI->TogglePauseMenu();
+	}
 }
 
 void UBDPlacementComponent::HandleRotateInput(const FInputActionValue& Value)

@@ -3,9 +3,11 @@
 #include "Tower/BDTowerBase.h"
 
 #include "BDLog.h"
+#include "Candidate/BDCandidateSubsystem.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Enemy/BDCandidate.h"
 #include "Enemy/BDEnemyBase.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -346,7 +348,8 @@ ABDEnemyBase* ABDTowerBase::AcquireTarget(const float RangeSquared) const
 
 	// Only First today: the creep furthest along its route is the one about to score,
 	// so it is the one worth the shot. The other priorities fall back to it until they
-	// are written, rather than silently doing nothing.
+	// are written, rather than silently doing nothing. The candidate outranks every
+	// priority: in range, it is the target, whatever else is there.
 	ABDEnemyBase* Best = nullptr;
 	int32 BestProgress = -1;
 
@@ -355,6 +358,11 @@ ABDEnemyBase* ABDTowerBase::AcquireTarget(const float RangeSquared) const
 		if (!IsValidTarget(Enemy, RangeSquared))
 		{
 			continue;
+		}
+
+		if (Enemy->IsCandidate())
+		{
+			return Enemy;
 		}
 
 		const int32 Progress = Enemy->GetCurrentPathIndex();
@@ -435,6 +443,21 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 		Target = AcquireTarget(RangeSquared);
 		if (Target != nullptr)
 		{
+			CurrentTarget = Target;
+			AcquisitionRemaining = Data->AcquisitionDelay;
+		}
+	}
+	else if (!Target->IsCandidate())
+	{
+		// A held target is not held against the candidate: the moment it comes into
+		// range every defender switches to it, recognition and all.
+		const UBDCandidateSubsystem* Candidates = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
+		ABDEnemyBase* Candidate = Candidates != nullptr ? Candidates->GetCandidate() : nullptr;
+		if (Candidate != nullptr && IsValidTarget(Candidate, RangeSquared))
+		{
+			UE_LOG(LogBDTower, Verbose, TEXT("%s drops %s for the candidate."), *GetName(), *Target->GetName());
+			DropTarget();
+			Target = Candidate;
 			CurrentTarget = Target;
 			AcquisitionRemaining = Data->AcquisitionDelay;
 		}

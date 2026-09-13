@@ -11,6 +11,7 @@
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
 #include "Match/BDMatchManager.h"
+#include "Player/BDGameMode.h"
 #include "Math/RandomStream.h"
 #include "Misc/CommandLine.h"
 #include "Objective/BDObjectiveSettings.h"
@@ -26,15 +27,15 @@
 
 namespace BDAutoSetupPrivate
 {
-	/** On by default while the game is being balanced: every Play starts with a defense to look at. */
-	static int32 GAutoSetup = 1;
+	/** Off by default: the real flow starts from an empty board. A balancing session switches it on. */
+	static int32 GAutoSetup = 0;
 	static int32 GAutoSetupSeed = 0;
 	static int32 GAutoSetupLevel = 1;
 
 	static FAutoConsoleVariableRef CVarAutoSetup(
 		TEXT("BD.Debug.AutoSetup"),
 		GAutoSetup,
-		TEXT("1 builds a full random defense when a game world starts. 0 to start from an empty board."),
+		TEXT("1 builds a full random defense when a game world starts; also switched on by -BDAutoSetup=1 or -BDAutoSetupSeed=N on the command line. 0 (default) starts from an empty board."),
 		ECVF_Cheat);
 
 	static FAutoConsoleVariableRef CVarAutoSetupSeed(
@@ -103,15 +104,25 @@ void UBDDebugAutoSetup::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
 
-	// The command line wins over the console variable, so a headless run can pin both.
+	// Never on its own: only the console variable or the command line switch it on, and
+	// naming a seed on the command line is asking for it. The real flow starts empty.
 	int32 Enabled = BDAutoSetupPrivate::GAutoSetup;
-	FParse::Value(FCommandLine::Get(), TEXT("BDAutoSetup="), Enabled);
 	int32 Seed = BDAutoSetupPrivate::GAutoSetupSeed;
-	FParse::Value(FCommandLine::Get(), TEXT("BDAutoSetupSeed="), Seed);
+	if (FParse::Value(FCommandLine::Get(), TEXT("BDAutoSetupSeed="), Seed))
+	{
+		Enabled = 1;
+	}
+	FParse::Value(FCommandLine::Get(), TEXT("BDAutoSetup="), Enabled);
 	int32 Level = BDAutoSetupPrivate::GAutoSetupLevel;
 	FParse::Value(FCommandLine::Get(), TEXT("BDAutoSetupLevel="), Level);
 
 	if (Enabled == 0)
+	{
+		return;
+	}
+
+	// Only a world with a match: the menu level has no board to set up.
+	if (ABDMatchManager::Get(&InWorld) == nullptr && InWorld.GetAuthGameMode<ABDGameMode>() == nullptr)
 	{
 		return;
 	}

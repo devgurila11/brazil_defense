@@ -1,6 +1,6 @@
 # Brazil Defense — comandos de console
 
-Atualizado: 12/09/2026
+Atualizado: 13/09/2026
 
 Todos na aba **Cmd** do Output Log (não Python).
 Marcados com 🔧 rodam **só no editor**, com o Play parado.
@@ -69,6 +69,16 @@ Placar de teste no canto superior esquerdo: votos azul/vermelho, onda e
 contagem, bocas da onda e creeps vivos. Os mesmos números de
 `BD.Votes.Status` e `BD.Wave.Status`. O autossetup liga sozinho.
 
+```
+BD.Debug.AutoSetup 1
+```
+Defesa aleatória completa (urna, plataformas, defensores, cercas) ao
+começar um mundo de jogo. **Desligado por padrão** — o fluxo real
+começa com o tabuleiro vazio e a urna na mão. Ligue antes do Play numa
+sessão de balanceamento; `BD.Debug.AutoSetup.Seed N` fixa a seed, e
+`BD.Debug.AutoSetup.Run` roda na hora. Ele também liga o FreezeTimer e
+os debugs. Linha de comando: `-BDAutoSetupSeed=N` (já liga).
+
 ---
 
 ## 2. Posicionar a urna — sempre primeiro
@@ -115,10 +125,22 @@ Remover funciona com qualquer peça selecionada.
 ```
 BD.Place.At <x> <y>
 BD.Place.AtEdge <x> <y> <dir>
-BD.Place.RemoveAt <x> <y>
-BD.Place.RemoveAtEdge <x> <y> <dir>
+BD.Place.Sell <x> <y>
+BD.Place.SellAtEdge <x> <y> <dir>
 ```
-Colocação por console. `dir`: 0 = +X, 1 = +Y.
+Colocação e venda por console. `dir`: 0 = +X, 1 = +Y.
+(`BD.Place.RemoveAt` / `RemoveAtEdge` continuam valendo, são a mesma coisa.)
+
+Nada no tabuleiro é permanente: qualquer peça (menos a urna) pode ser
+vendida em qualquer fase. Vender devolve a peça ao orçamento e paga
+**votos azuis**: 100% do BuildCost antes da onda 1, 50% a partir dela
+(`SellRefundRatio`); divisória mantém 100% até a onda 3
+(`DividerRemovalGraceWave`). Mover entre ondas cobra a MoveTax de
+sempre. Vender uma plataforma paga a plataforma e os personagens
+montados voltam ao orçamento sem pagar nada. Plataforma e divisória
+continuam sem poder ser **colocadas** de novo depois da onda 1 — só
+vendidas ou movidas. A linha `Sold '...' for N blue vote(s)` sai em
+`LogBDMatch`.
 
 ```
 BD.Place.SelectTransient <fx> <fy> <Estado>
@@ -176,7 +198,111 @@ BD.Match.Speed 4
 
 ```
 BD.Votes.Status
+BD.Votes.AddBlue <n>
+BD.Votes.AddRed <n>
 ```
+No fim de cada onda o log traz `Wave N cleared. Votes: blue B, red R.`
+em `LogBDMatch` — é por essa linha que uma partida se audita depois.
+
+---
+
+## 5b. Candidato vermelho
+
+Surge sozinho quando **vermelho > azul** (e já houve pelo menos um voto
+vermelho). Checado a cada mudança de voto. Cubo vermelho 3×3×4, lento,
+mirado por todo defensor que o tiver no alcance. Barra de HP em cima
+dele via debug. Nunca há dois ao mesmo tempo.
+
+- **Chega na urna** → `Defeat`, tabuleiro congelado (time dilation 0).
+  `BD.Match.SetPhase Building` destrava e rebobina.
+- **Morre** → nenhum voto azul; saída de ondas pausa por 30 s, a
+  contagem regressiva segura, o contador vermelho congela (chegadas
+  nesse intervalo não contam). Se o placar seguir invertido, volta na
+  próxima onda.
+
+```
+BD.Votes.AddRed 50
+```
+Jeito rápido de inverter o placar e vê-lo surgir.
+
+```
+BD.Candidate.Spawn
+```
+Força a saída, sem consultar o placar.
+
+```
+BD.Candidate.Status
+```
+Candidato em campo (boca, HP, célula, tempo vivo), pausa restante,
+placar e se está invertido, quantos já saíram na partida.
+
+Log em `LogBDCandidate`: `CANDIDATE out on wave N from mouth M with
+H health`, `CANDIDATE killed on wave N after Ts alive`, `Pause started` /
+`Pause over`, `CANDIDATE reached the urn ... DEFEAT`.
+
+Overlay (`BD.HUD.Debug 1`): `CANDIDATO  HP x/y` enquanto vivo e
+`APURAÇÃO CONGELADA  Ns` durante a pausa.
+
+Parâmetros em Project Settings > Brazil Defense - Balance > Candidate:
+`CandidateHealthMultiplier` (40 × o HP do creep da onda),
+`CandidateSpeed` (0.5 células/s), `CandidateKillPauseSeconds` (30).
+O asset é `DA_Candidate`, apontado em Brazil Defense - Waves >
+`CandidateEnemy`.
+
+---
+
+## 5c. Interface (esqueleto cru, UMG por código)
+
+Fluxo ao abrir o jogo (`-game` ou Standalone): mapa `MainMenu` →
+Splash "Gurila Games" (2 s, qualquer tecla pula) → Loading → Menu
+(Play / Options / Quit). Play faz fade e abre a Esplanada com o HUD.
+No **PIE da Esplanada** o HUD sobe direto (o `BDGameMode` chama).
+
+HUD: placar azul/vermelho no topo, onda e cronômetro, botões 1x/2x/4x,
+bocas da onda. Clique num defensor: painel à direita com stats,
+**Upgrade (custo)** e **Vender (+reembolso)**, cada um com o placar
+resultante — em vermelho quando o gasto inverte a liderança. Peça na
+mão: nome, custo, área e o motivo da recusa; ao mover, o custo da taxa
+e o placar resultante. Candidato: barra de HP no topo, aviso ao surgir
+e `APURAÇÃO CONGELADA Ns` na pausa. O overlay `BD.HUD.Debug` continua
+existindo por cima, independente.
+
+Textos: `Content/BD/Text/BD_en.csv` e `BD_pt.csv` (`Key,SourceString`),
+uma string table por idioma. Chave faltando aparece na tela como a
+própria chave. Idioma troca em runtime e todo texto refaz na hora.
+
+Opções (gráficos / áudio / idioma) persistem em `Saved/SaveGames/
+BDSettings.sav`, aplicadas e salvas a cada mudança. Resolução e modo
+de janela não são aplicados dentro do editor (só em janela própria).
+Os sliders de volume passam por `SMix_Settings` sobre `SC_Master` /
+`SC_Music` / `SC_Effects` (`Content/BD/Audio`) — ainda não há som no
+projeto; qualquer som posto nessas classes já obedece.
+
+```
+BD.UI.Status
+BD.UI.Language <en|pt>
+BD.UI.Options
+BD.UI.Pause
+BD.UI.Volume <music|effects|mute> <valor>
+BD.UI.Play
+BD.UI.Menu
+```
+Mesmas ações dos botões, para testar sem mouse. `BD.UI.Menu` volta ao
+mapa do menu a partir do jogo.
+
+Menu de pausa no jogo: botão **Menu** (canto superior esquerdo do HUD)
+ou **Esc** sem nada na mão (o primeiro Esc cancela a peça/seleção, o
+segundo abre o menu). Partida pausada enquanto aberto: Continuar /
+Options / Menu principal / Sair.
+
+Câmera da partida: fixa, derivada do grid (fica atrás do lado longo,
+olhando o centro do tabuleiro). Altura, inclinação, FOV e lado em
+Project Settings > Brazil Defense - Camera. Não há mais pawn voador;
+no PIE a câmera também é essa.
+
+Parâmetros em Project Settings > Brazil Defense - Interface: mapas,
+duração do splash / loading / fade, aviso do candidato, classes de som
+e os CSVs de texto.
 
 ---
 

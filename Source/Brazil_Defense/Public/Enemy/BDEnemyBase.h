@@ -53,8 +53,17 @@ public:
 	 * Called once by the wave subsystem right after spawning, before the first tick.
 	 * Applies the data (health, mesh) and the route.
 	 * @param HealthScale multiplier of the wave on MaxHealth: waves get tougher, the data does not change.
+	 * @param MaxHealthOverride when above zero, the health outright, data and scale ignored. The candidate is sized this way.
 	 */
-	void InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDCellCoord>& InPath, float HealthScale = 1.0f);
+	void InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDCellCoord>& InPath, float HealthScale = 1.0f, float MaxHealthOverride = 0.0f);
+
+	/**
+	 * Whether this is the red candidate rather than a creep of the wave: shot before
+	 * anything else by every defender that sees it, and not waited for when the wave
+	 * asks whether the board is empty. See ABDCandidate.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	virtual bool IsCandidate() const { return false; }
 
 	/** Health this creep spawned with, wave scaling applied. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
@@ -155,6 +164,9 @@ protected:
 
 	/** Same as Arrive for a kill. */
 	virtual void Die();
+
+	/** Walking speed before the per creep variance, in cells per second. The data's, unless a child answers otherwise. */
+	virtual float GetBaseMoveSpeed() const;
 
 private:
 	UBDGridSubsystem* GetGrid() const;

@@ -8,6 +8,7 @@
 #include "Enemy/BDEnemyData.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Materials/MaterialInterface.h"
 #include "Grid/BDGridSubsystem.h"
 #include "Tower/BDTowerBase.h"
 #include "Wave/BDWaveSettings.h"
@@ -86,10 +87,12 @@ UBDWaveSubsystem* ABDEnemyBase::GetWaves() const
 	return World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
 }
 
-void ABDEnemyBase::InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDCellCoord>& InPath, const float HealthScale)
+void ABDEnemyBase::InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDCellCoord>& InPath, const float HealthScale, const float MaxHealthOverride)
 {
 	Data = InData;
-	MaxHealth = Data != nullptr ? Data->MaxHealth * FMath::Max(0.0f, HealthScale) : 0.0f;
+	MaxHealth = MaxHealthOverride > 0.0f
+		? MaxHealthOverride
+		: (Data != nullptr ? Data->MaxHealth * FMath::Max(0.0f, HealthScale) : 0.0f);
 	CurrentHealth = MaxHealth;
 	IncomingDamage = 0.0f;
 	CurrentSpeed = 0.0f;
@@ -180,6 +183,14 @@ void ABDEnemyBase::ApplyMesh()
 
 	Mesh->SetStaticMesh(LoadedMesh);
 	Mesh->SetRelativeScale3D(Data->MeshScale);
+
+	if (UMaterialInterface* Material = Data->MeshMaterial.LoadSynchronous())
+	{
+		for (int32 Slot = 0; Slot < Mesh->GetNumMaterials(); ++Slot)
+		{
+			Mesh->SetMaterial(Slot, Material);
+		}
+	}
 
 	// Rest the mesh on the root, so the root is the floor contact whatever the pivot of
 	// the asset is: the engine cylinder is centered, an imported creep may not be.
@@ -442,7 +453,7 @@ void ABDEnemyBase::Tick(const float DeltaSeconds)
 	const float Breath = SpeedBreathPeriod > 0.0f
 		? SpeedBreathFrac * FMath::Sin(SpeedBreathPhase + UE_TWO_PI * Age / SpeedBreathPeriod)
 		: 0.0f;
-	const float MaxSpeed = Data->MoveSpeed * CellSize * FMath::Max(0.1f, SpeedScale + Breath);
+	const float MaxSpeed = GetBaseMoveSpeed() * CellSize * FMath::Max(0.1f, SpeedScale + Breath);
 	const float Acceleration = Data->Acceleration * CellSize;
 	CurrentSpeed = Acceleration > 0.0f ? FMath::Min(MaxSpeed, CurrentSpeed + Acceleration * DeltaSeconds) : MaxSpeed;
 
@@ -490,6 +501,11 @@ void ABDEnemyBase::Tick(const float DeltaSeconds)
 	{
 		Arrive();
 	}
+}
+
+float ABDEnemyBase::GetBaseMoveSpeed() const
+{
+	return Data != nullptr ? Data->MoveSpeed : 0.0f;
 }
 
 void ABDEnemyBase::Arrive()

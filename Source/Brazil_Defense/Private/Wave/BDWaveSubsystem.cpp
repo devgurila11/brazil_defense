@@ -3,6 +3,7 @@
 #include "Wave/BDWaveSubsystem.h"
 
 #include "BDLog.h"
+#include "Candidate/BDCandidateSubsystem.h"
 #include "DrawDebugHelpers.h"
 #include "Enemy/BDEnemyBase.h"
 #include "Enemy/BDEnemyData.h"
@@ -202,13 +203,7 @@ void UBDWaveSubsystem::EnsureMatchBinding()
 
 void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 {
-	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
-	const UBDEnemyData* Data = Settings.WaveEnemy.LoadSynchronous();
-	if (Data == nullptr)
-	{
-		Data = Settings.DebugEnemy.LoadSynchronous();
-	}
-
+	const UBDEnemyData* Data = UBDWaveSettings::Get().ResolveWaveEnemy();
 	if (Data == nullptr)
 	{
 		UE_LOG(LogBDWave, Error, TEXT("Wave %d has no enemy to send: set Wave Enemy in Project Settings > Brazil Defense - Waves."), Wave);
@@ -371,7 +366,9 @@ void UBDWaveSubsystem::Tick(const float DeltaTime)
 
 	EnsureMatchBinding();
 
-	if (WaveSpawnsRemaining > 0)
+	// Held during the pause a candidate kill buys: the timer does not run, so the wave
+	// picks up its rhythm where it left it rather than dumping the backlog at once.
+	if (WaveSpawnsRemaining > 0 && !IsSpawningHeld())
 	{
 		WaveSpawnTimer += DeltaTime;
 		const float Interval = FMath::Max(0.0f, WaveSpawnInterval);
@@ -694,6 +691,11 @@ void UBDWaveSubsystem::RerouteLivingEnemies()
 
 ABDEnemyBase* UBDWaveSubsystem::SpawnEnemy(const UBDEnemyData* Data, const int32 SpawnPointIndex)
 {
+	return SpawnEnemyAs(nullptr, Data, SpawnPointIndex, 0.0f);
+}
+
+ABDEnemyBase* UBDWaveSubsystem::SpawnEnemyAs(const TSubclassOf<ABDEnemyBase> EnemyClassOverride, const UBDEnemyData* Data, const int32 SpawnPointIndex, const float MaxHealthOverride)
+{
 	UWorld* World = GetWorld();
 	if (World == nullptr || !World->IsGameWorld())
 	{
@@ -721,7 +723,9 @@ ABDEnemyBase* UBDWaveSubsystem::SpawnEnemy(const UBDEnemyData* Data, const int32
 		return nullptr;
 	}
 
-	UClass* EnemyClass = Data->EnemyClass.IsNull() ? ABDEnemyBase::StaticClass() : Data->EnemyClass.LoadSynchronous();
+	UClass* EnemyClass = EnemyClassOverride != nullptr
+		? EnemyClassOverride.Get()
+		: (Data->EnemyClass.IsNull() ? ABDEnemyBase::StaticClass() : Data->EnemyClass.LoadSynchronous());
 	if (EnemyClass == nullptr)
 	{
 		UE_LOG(LogBDWave, Error, TEXT("Enemy class %s of %s failed to load."), *Data->EnemyClass.ToString(), *Data->GetName());
@@ -754,7 +758,7 @@ ABDEnemyBase* UBDWaveSubsystem::SpawnEnemy(const UBDEnemyData* Data, const int32
 	}
 
 	const ABDMatchManager* Match = GetMatch();
-	Enemy->InitializeEnemy(Data, OwnRoute, Match != nullptr ? Match->GetHealthScale() : 1.0f);
+	Enemy->InitializeEnemy(Data, OwnRoute, Match != nullptr ? Match->GetHealthScale() : 1.0f, MaxHealthOverride);
 	LivingEnemies.Add(Enemy);
 
 	// The spread of the wave is how many different routes it was dealt; the wave summary
@@ -825,6 +829,26 @@ int32 UBDWaveSubsystem::KillAll()
 	}
 
 	return Enemies.Num();
+}
+
+int32 UBDWaveSubsystem::GetLivingWaveCreepCount() const
+{
+	int32 Count = 0;
+	for (const ABDEnemyBase* Enemy : LivingEnemies)
+	{
+		if (Enemy != nullptr && !Enemy->IsCandidate())
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+bool UBDWaveSubsystem::IsSpawningHeld() const
+{
+	const UWorld* World = GetWorld();
+	const UBDCandidateSubsystem* Candidates = World != nullptr ? World->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
+	return Candidates != nullptr && Candidates->IsCountFrozen();
 }
 
 void UBDWaveSubsystem::GetLivingEnemies(TArray<ABDEnemyBase*>& OutEnemies) const
@@ -909,7 +933,9 @@ void UBDWaveSubsystem::ForgetEnemy(ABDEnemyBase* Enemy)
 {
 	LivingEnemies.Remove(Enemy);
 
-	if (LivingEnemies.Num() > 0)
+	// The candidate is not a creep of the wave: it walks for minutes and the waves keep
+	// coming while it does, so a board with only the candidate left on it is empty here.
+	if (GetLivingWaveCreepCount() > 0)
 	{
 		return;
 	}

@@ -7,6 +7,8 @@
 #include "Grid/BDGridTypes.h"
 #include "BDObjectiveSettings.generated.h"
 
+class UBDPlaceableData;
+
 /**
  * The zone of the board the urn may stand in, as an inclusive rectangle of cells, and
  * the look of that zone while the player is holding the urn.
@@ -25,6 +27,10 @@ public:
 	//~ Zone -----------------------------------------------------------------
 	// Inclusive on both ends: MinX..MaxX by MinY..MaxY. The far end of the Esplanada,
 	// so every spawn mouth has a real walk ahead of it whatever the player picks.
+
+	/** The urn as a placeable, put in the player's hand when a match starts on a board with no urn. */
+	UPROPERTY(config, EditAnywhere, Category = "Objective", meta = (AllowedClasses = "/Script/Brazil_Defense.BDPlaceableData"))
+	TSoftObjectPtr<UBDPlaceableData> ObjectivePlaceable;
 
 	UPROPERTY(config, EditAnywhere, Category = "Zone", meta = (ClampMin = "0", UIMin = "0"))
 	int32 MinX = 40;

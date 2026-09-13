@@ -118,6 +118,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Wave")
 	ABDEnemyBase* SpawnEnemy(const UBDEnemyData* Data, int32 SpawnPointIndex);
 
+	/**
+	 * The same, with the class and the health chosen by the caller rather than read off
+	 * the data: this is how the candidate is sent out.
+	 * @param EnemyClassOverride null takes the class of the data, as SpawnEnemy does.
+	 * @param MaxHealthOverride above zero replaces the data health and the wave scale.
+	 */
+	ABDEnemyBase* SpawnEnemyAs(TSubclassOf<ABDEnemyBase> EnemyClassOverride, const UBDEnemyData* Data, int32 SpawnPointIndex, float MaxHealthOverride);
+
 	/** Spawns one creep at every spawn point. @return how many were spawned. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Wave")
 	int32 SpawnEnemyAtEveryPoint(const UBDEnemyData* Data);
@@ -151,6 +159,14 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Wave")
 	int32 GetLivingEnemyCount() const { return LivingEnemies.Num(); }
+
+	/** Creeps of the wave still out, the candidate not counted: what has to leave the board for the wave to clear. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Wave")
+	int32 GetLivingWaveCreepCount() const;
+
+	/** Whether the wave is holding its creeps back: the pause a candidate kill buys. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Wave")
+	bool IsSpawningHeld() const;
 
 	/** Every creep currently out. Dead entries are already dropped. */
 	void GetLivingEnemies(TArray<ABDEnemyBase*>& OutEnemies) const;

@@ -161,9 +161,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	bool TryPlaceAtHovered();
 
-	/** Takes back whatever the player put under the cursor. @return false when there is nothing of theirs there. */
+	/**
+	 * Sells whatever the player put under the cursor: the piece comes off the board, its
+	 * budget comes back per the match rules and part of its build cost is paid back in
+	 * blue votes (ABDMatchManager::RefundSale). A platform takes its passengers with it,
+	 * back to the hand for nothing.
+	 * @return false when there is nothing of theirs there, or the match will not let it go.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	bool TryRemoveAtHovered();
+
+	/** Sells the piece one of whose actors this is, wherever the cursor may be. The HUD's sell button. @return false when it is not a placed piece. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
+	bool TrySellActor(AActor* Actor);
+
+	/** The placeable a placed actor was spawned from, or null when the actor is not a placed piece. For the HUD to price a sale. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
+	const UBDPlaceableData* FindPlaceableOfActor(const AActor* Actor) const;
 
 	//~ Moving ---------------------------------------------------------------
 
@@ -391,6 +405,12 @@ private:
 
 	/** The piece under the cursor, preferring the fence when the cursor is nearer to it than to the cell center. */
 	const FBDPlacedPiece* FindPieceUnderHover() const;
+
+	/** The placed piece one of whose actors this is, or null. */
+	const FBDPlacedPiece* FindPieceOfActor(const AActor* Actor) const;
+
+	/** Takes a placed piece off the board, returns it to the hand and pays its sale. Behind TryRemoveAtHovered and TrySellActor. */
+	bool SellPiece(const FBDPlacedPiece& Piece);
 	void ForgetPiece(UBDGridSubsystem& Grid, const FBDPlacedPiece& Piece);
 
 	void EnsurePreview();

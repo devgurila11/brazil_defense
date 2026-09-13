@@ -171,25 +171,26 @@ namespace BDPlacementDebug
 			bPlaced ? TEXT("succeeded") : TEXT("rejected"));
 	}
 
+	/** Removing is selling: BD.Place.SellAtEdge and BD.Place.RemoveAtEdge are the same gesture. */
 	static void ExecRemoveAtEdge(const TArray<FString>& Args, UWorld* World)
 	{
 		if (Args.Num() != ArgCountAtEdge)
 		{
-			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.RemoveAtEdge <x> <y> <dir: 0=+X 1=+Y>"));
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.SellAtEdge <x> <y> <dir: 0=+X 1=+Y>"));
 			return;
 		}
 
 		UBDPlacementComponent* Placement = FindPlacementComponent(World);
 		FBDEdgeCoord Edge;
-		if (Placement == nullptr || !ParseEdge(Args, TEXT("BD.Place.RemoveAtEdge"), Edge))
+		if (Placement == nullptr || !ParseEdge(Args, TEXT("BD.Place.SellAtEdge"), Edge))
 		{
 			return;
 		}
 
 		Placement->SetHoveredEdgeDirect(Edge);
 
-		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.RemoveAtEdge %s: %s."), *Edge.ToString(),
-			Placement->TryRemoveAtHovered() ? TEXT("removed") : TEXT("nothing of the player there"));
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.SellAtEdge %s: %s."), *Edge.ToString(),
+			Placement->TryRemoveAtHovered() ? TEXT("sold") : TEXT("nothing of the player there, or not removable now"));
 	}
 
 	static void ExecPlaceAt(const TArray<FString>& Args, UWorld* World)
@@ -219,11 +220,12 @@ namespace BDPlacementDebug
 			bPlaced ? TEXT("succeeded") : TEXT("rejected"));
 	}
 
+	/** Removing is selling: BD.Place.Sell and BD.Place.RemoveAt are the same gesture. */
 	static void ExecRemoveAt(const TArray<FString>& Args, UWorld* World)
 	{
 		if (Args.Num() != ArgCountAt)
 		{
-			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.RemoveAt <x> <y>"));
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.Sell <x> <y>"));
 			return;
 		}
 
@@ -236,8 +238,8 @@ namespace BDPlacementDebug
 		const FBDCellCoord Coord(FCString::Atoi(*Args[0]), FCString::Atoi(*Args[1]));
 		Placement->SetHoveredCellDirect(Coord);
 
-		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.RemoveAt %s: %s."), *Coord.ToString(),
-			Placement->TryRemoveAtHovered() ? TEXT("removed") : TEXT("nothing of the player there"));
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.Sell %s: %s."), *Coord.ToString(),
+			Placement->TryRemoveAtHovered() ? TEXT("sold") : TEXT("nothing of the player there, or not removable now"));
 	}
 
 	static void ExecPickUp(const TArray<FString>& Args, UWorld* World)
@@ -333,14 +335,24 @@ namespace BDPlacementDebug
 		TEXT("BD.Place.AtEdge <x> <y> <dir: 0=+X 1=+Y>: points the hover at an edge and tries to place the selected fence."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPlaceAtEdge));
 
+	static FAutoConsoleCommandWithWorldAndArgs CmdSellAtEdge(
+		TEXT("BD.Place.SellAtEdge"),
+		TEXT("BD.Place.SellAtEdge <x> <y> <dir: 0=+X 1=+Y>: sells the fence on an edge, paying part of its build cost back in blue votes."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecRemoveAtEdge));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdSell(
+		TEXT("BD.Place.Sell"),
+		TEXT("BD.Place.Sell <x> <y>: sells the piece on a cell, paying part of its build cost back in blue votes. A platform returns its passengers to the hand."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecRemoveAt));
+
 	static FAutoConsoleCommandWithWorldAndArgs CmdRemoveAtEdge(
 		TEXT("BD.Place.RemoveAtEdge"),
-		TEXT("BD.Place.RemoveAtEdge <x> <y> <dir: 0=+X 1=+Y>: points the hover at an edge and tries to remove the fence there."),
+		TEXT("BD.Place.RemoveAtEdge <x> <y> <dir: 0=+X 1=+Y>: same as BD.Place.SellAtEdge."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecRemoveAtEdge));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdRemoveAt(
 		TEXT("BD.Place.RemoveAt"),
-		TEXT("BD.Place.RemoveAt <x> <y>: points the hover at a cell and tries to remove what is there."),
+		TEXT("BD.Place.RemoveAt <x> <y>: same as BD.Place.Sell."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecRemoveAt));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdPickUp(

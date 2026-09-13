@@ -3,6 +3,7 @@
 #include "Match/BDMatchManager.h"
 
 #include "BDLog.h"
+#include "Candidate/BDCandidateSubsystem.h"
 #include "Components/SceneComponent.h"
 #include "Day/BDDayCycleComponent.h"
 #include "Engine/Engine.h"
@@ -135,6 +136,19 @@ void ABDMatchManager::SetPhase(const EBDMatchPhase NewPhase)
 	}
 
 	Phase = NewPhase;
+
+	// A match that is over freezes the board where it stands: the clock is the one
+	// place every system reads, so it is the one place to stop them all. Rewinding to
+	// Building from the console brings the chosen speed back.
+	if (IsMatchOver())
+	{
+		UGameplayStatics::SetGlobalTimeDilation(this, 0.0f);
+	}
+	else if (!FMath::IsNearlyEqual(UGameplayStatics::GetGlobalTimeDilation(this), GameSpeed))
+	{
+		UGameplayStatics::SetGlobalTimeDilation(this, GameSpeed);
+	}
+
 	OnPhaseChanged.Broadcast(NewPhase);
 }
 
@@ -166,6 +180,13 @@ void ABDMatchManager::Tick(const float DeltaSeconds)
 		return;
 	}
 
+	// The pause a candidate kill buys holds the next wave back, countdown included.
+	const UBDCandidateSubsystem* Candidates = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
+	if (Candidates != nullptr && Candidates->IsCountFrozen())
+	{
+		return;
+	}
+
 	// DeltaSeconds already carries the global time dilation, which is the whole point of
 	// running the speed control through it: this countdown needs no idea it exists.
 	TimeUntilNextWave -= DeltaSeconds;
@@ -189,9 +210,11 @@ void ABDMatchManager::StartWave()
 
 	OnWaveStarted.Broadcast(CurrentWave);
 
-	UE_LOG(LogBDMatch, Log, TEXT("Wave %d is out. Dividers are %s removable."),
+	UE_LOG(LogBDMatch, Log, TEXT("Wave %d is out. Selling pays %.0f%% (dividers %.0f%%), moving costs %.0f%%."),
 		CurrentWave,
-		CanRemove(EBDPieceKind::Divider) ? TEXT("still") : TEXT("no longer"));
+		GetSellRefundRatio(EBDPieceKind::Platform) * 100.0f,
+		GetSellRefundRatio(EBDPieceKind::Divider) * 100.0f,
+		GetMoveTaxRate() * 100.0f);
 }
 
 void ABDMatchManager::CallWaveEarly()
@@ -300,8 +323,22 @@ void ABDMatchManager::OnWaveCleared()
 		return;
 	}
 
-	UE_LOG(LogBDMatch, Log, TEXT("Wave %d cleared."), CurrentWave);
+	// The one line a match is audited by afterwards: the scoreboard at the end of every wave.
+	UE_LOG(LogBDMatch, Log, TEXT("Wave %d cleared. Votes: blue %d, red %d."), CurrentWave, VotesBlue, VotesRed);
 	StartBuildingPhase();
+}
+
+void ABDMatchManager::DeclareDefeat(const FString& Reason)
+{
+	if (IsMatchOver())
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("Defeat declared (%s) but the match is already over."), *Reason);
+		return;
+	}
+
+	UE_LOG(LogBDMatch, Log, TEXT("DEFEAT on wave %d: %s. Board frozen. Votes: blue %d, red %d."),
+		CurrentWave, *Reason, VotesBlue, VotesRed);
+	SetPhase(EBDMatchPhase::Defeat);
 }
 
 void ABDMatchManager::AddVotesBlue(const int32 Votes)
@@ -321,6 +358,16 @@ void ABDMatchManager::AddVotesRed(const int32 Votes)
 {
 	if (Votes <= 0)
 	{
+		return;
+	}
+
+	// While the count is frozen after a candidate kill, an arrival scores nothing: that
+	// is what the kill bought.
+	const UBDCandidateSubsystem* Candidates = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
+	if (Candidates != nullptr && Candidates->IsCountFrozen())
+	{
+		UE_LOG(LogBDMatch, Log, TEXT("Red +%d not counted: the count is frozen for %.0fs more. Still %d blue / %d red."),
+			Votes, Candidates->GetPauseRemaining(), VotesBlue, VotesRed);
 		return;
 	}
 
@@ -360,6 +407,23 @@ bool ABDMatchManager::WouldInvertScoreboard(const int32 Cost) const
 	return VotesBlue >= VotesRed && VotesBlue - Cost < VotesRed;
 }
 
+float ABDMatchManager::GetSellRefundRatio(const EBDPieceKind Kind) const
+{
+	return UBDGameBalanceSettings::Get().GetSellRefundRatio(Kind, CurrentWave);
+}
+
+int32 ABDMatchManager::GetSellRefund(const EBDPieceKind Kind, const int32 BuildCost) const
+{
+	return FMath::RoundToInt(FMath::Max(0, BuildCost) * GetSellRefundRatio(Kind));
+}
+
+int32 ABDMatchManager::RefundSale(const EBDPieceKind Kind, const int32 BuildCost)
+{
+	const int32 Refund = GetSellRefund(Kind, BuildCost);
+	AddVotesBlue(Refund);
+	return Refund;
+}
+
 float ABDMatchManager::GetMoveTaxRate() const
 {
 	return UBDGameBalanceSettings::Get().GetMoveTaxRate(CurrentWave);
@@ -380,6 +444,13 @@ bool ABDMatchManager::SetGameSpeed(const float Speed)
 	}
 
 	GameSpeed = Speed;
+	if (IsMatchOver())
+	{
+		// Kept for when the match is rewound; a frozen board stays frozen.
+		UE_LOG(LogBDMatch, Log, TEXT("Game speed %.0fx noted; the board stays frozen until the match is rewound."), Speed);
+		return true;
+	}
+
 	UGameplayStatics::SetGlobalTimeDilation(this, Speed);
 
 	UE_LOG(LogBDMatch, Log, TEXT("Game speed %.0fx."), Speed);
@@ -461,56 +532,21 @@ bool ABDMatchManager::CanRemove(const EBDPieceKind Kind) const
 		return false;
 	}
 
-	if (Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character)
-	{
-		return true;
-	}
-
-	if (Kind == EBDPieceKind::Objective)
-	{
-		// The urn is put down once. Everything the player builds afterwards is built
-		// around it, so taking it back would invalidate the whole maze.
-		return false;
-	}
-
-	if (!IsBuildLocked())
-	{
-		return true;
-	}
-
-	// Past the first wave the maze is set. Dividers keep a grace window, because the early
-	// waves are the only read the player has on their own maze and a match lost to a choice
-	// made blind is not difficulty. Platforms get no such window.
-	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
-	return Kind == EBDPieceKind::Divider && CurrentWave <= Balance.DividerRemovalGraceWave;
+	// The urn is put down once. Everything the player builds afterwards is built around
+	// it, so taking it back would invalidate the whole maze. Everything else can be sold
+	// at any point of the match: a player who saw the truck is in the wrong place has to
+	// be able to fix it, paying for it. Nothing on the board is permanent.
+	return Kind != EBDPieceKind::Objective;
 }
 
 void ABDMatchManager::RefundRemoval(const EBDPieceKind Kind)
 {
-	int32* Budget = FindBudget(Kind);
-	if (Budget == nullptr)
+	// A piece taken back is a piece held again, whenever it happens. What the sale of it
+	// was worth is a separate matter, settled in votes by RefundSale.
+	if (int32* Budget = FindBudget(Kind))
 	{
-		return;
-	}
-
-	if (Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character)
-	{
-		// A defender taken back is a defender held again, whenever it happens.
 		++(*Budget);
-		return;
 	}
-
-	if (IsBuildLocked())
-	{
-		// Inside the grace window the piece comes off the board but nothing comes back:
-		// a correction, not a strategy.
-		return;
-	}
-
-	// Budgets are counts today, so the ratio can only round to a whole piece. It is a
-	// fraction because the economy that will replace these counters spends currency.
-	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
-	*Budget += FMath::RoundToInt(Balance.BuildingPhaseRefundRatio);
 }
 
 namespace BDMatchCommands

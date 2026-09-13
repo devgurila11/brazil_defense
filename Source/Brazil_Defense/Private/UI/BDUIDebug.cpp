@@ -1,0 +1,167 @@
+// Brazil Defense. Console access to the interface, for driving it without a mouse.
+
+#include "BDLog.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
+#include "UI/BDLocalization.h"
+#include "UI/BDSettingsSubsystem.h"
+#include "UI/BDUISubsystem.h"
+
+namespace BDUIDebug
+{
+	template <typename TSubsystem>
+	static TSubsystem* Find(const UWorld* World)
+	{
+		const UGameInstance* GameInstance = World != nullptr ? World->GetGameInstance() : nullptr;
+		TSubsystem* Subsystem = GameInstance != nullptr ? GameInstance->GetSubsystem<TSubsystem>() : nullptr;
+		if (Subsystem == nullptr)
+		{
+			UE_LOG(LogBDUI, Error, TEXT("This command needs a running game instance."));
+		}
+		return Subsystem;
+	}
+
+	static void ExecLanguage(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() != 1)
+		{
+			UE_LOG(LogBDUI, Error, TEXT("Usage: BD.UI.Language <en|pt>"));
+			return;
+		}
+
+		UBDSettingsSubsystem* Settings = Find<UBDSettingsSubsystem>(World);
+		if (Settings == nullptr)
+		{
+			return;
+		}
+
+		const EBDLanguage Language = Args[0].StartsWith(TEXT("pt"), ESearchCase::IgnoreCase) ? EBDLanguage::Portuguese : EBDLanguage::English;
+		Settings->SetLanguage(Language);
+		UE_LOG(LogBDUI, Log, TEXT("BD.UI.Language: %s. Sample: Menu.Play = \"%s\", HUD.Score.Blue = \"%s\"."),
+			BDLoc::GetCultureCode(Language), *BDLoc::Text(TEXT("Menu.Play")).ToString(), *BDLoc::Text(TEXT("HUD.Score.Blue")).ToString());
+	}
+
+	static void ExecOptions(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDUISubsystem* UI = Find<UBDUISubsystem>(World))
+		{
+			if (UI->IsOptionsOpen())
+			{
+				UI->CloseOptions();
+			}
+			else
+			{
+				UI->OpenOptions();
+			}
+		}
+	}
+
+	static void ExecPause(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDUISubsystem* UI = Find<UBDUISubsystem>(World))
+		{
+			UI->TogglePauseMenu();
+		}
+	}
+
+	static void ExecPlay(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDUISubsystem* UI = Find<UBDUISubsystem>(World))
+		{
+			UI->PlayGame();
+		}
+	}
+
+	static void ExecMenu(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDUISubsystem* UI = Find<UBDUISubsystem>(World))
+		{
+			UI->ReturnToMenu();
+		}
+	}
+
+	static void ExecStatus(const TArray<FString>& Args, UWorld* World)
+	{
+		const UBDUISubsystem* UI = Find<UBDUISubsystem>(World);
+		const UBDSettingsSubsystem* Settings = Find<UBDSettingsSubsystem>(World);
+		if (UI == nullptr || Settings == nullptr)
+		{
+			return;
+		}
+
+		const UBDSettingsSave& Saved = Settings->Get();
+		UE_LOG(LogBDUI, Log, TEXT("BD.UI.Status: screen %s, options %s, game menu %s | quality %d, %dx%d, window %d, vsync %s | music %d, effects %d, muted %s | language %s."),
+			*StaticEnum<EBDScreen>()->GetNameStringByValue(static_cast<int64>(UI->GetCurrentScreen())),
+			UI->IsOptionsOpen() ? TEXT("open") : TEXT("closed"),
+			UI->IsPauseMenuOpen() ? TEXT("open") : TEXT("closed"),
+			Saved.QualityLevel, Saved.Resolution.X, Saved.Resolution.Y, static_cast<int32>(Saved.WindowMode), Saved.bVSync ? TEXT("on") : TEXT("off"),
+			Saved.MusicVolume, Saved.EffectsVolume, Saved.bMuted ? TEXT("yes") : TEXT("no"),
+			BDLoc::GetCultureCode(Saved.Language));
+	}
+
+	static void ExecVolume(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() != 2)
+		{
+			UE_LOG(LogBDUI, Error, TEXT("Usage: BD.UI.Volume <music|effects|mute> <0..100 | 0|1>"));
+			return;
+		}
+
+		UBDSettingsSubsystem* Settings = Find<UBDSettingsSubsystem>(World);
+		if (Settings == nullptr)
+		{
+			return;
+		}
+
+		const int32 Value = FCString::Atoi(*Args[1]);
+		if (Args[0].Equals(TEXT("music"), ESearchCase::IgnoreCase))
+		{
+			Settings->SetMusicVolume(Value);
+		}
+		else if (Args[0].Equals(TEXT("effects"), ESearchCase::IgnoreCase))
+		{
+			Settings->SetEffectsVolume(Value);
+		}
+		else
+		{
+			Settings->SetMuted(Value != 0);
+		}
+		ExecStatus(Args, World);
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdLanguage(
+		TEXT("BD.UI.Language"),
+		TEXT("BD.UI.Language <en|pt>: switches the interface language, saved like the options panel does."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecLanguage));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdOptions(
+		TEXT("BD.UI.Options"),
+		TEXT("BD.UI.Options: opens the options panel, or closes it when open."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecOptions));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdPause(
+		TEXT("BD.UI.Pause"),
+		TEXT("BD.UI.Pause: opens the in-game menu (match paused), or closes it when open. Escape with nothing in hand does the same."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPause));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdPlay(
+		TEXT("BD.UI.Play"),
+		TEXT("BD.UI.Play: what the Play button does: fades out and opens the game level."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPlay));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdMenu(
+		TEXT("BD.UI.Menu"),
+		TEXT("BD.UI.Menu: fades out and returns to the menu level."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecMenu));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdVolume(
+		TEXT("BD.UI.Volume"),
+		TEXT("BD.UI.Volume <music|effects|mute> <value>: sets a volume or the mute, saved like the options panel does."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecVolume));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(
+		TEXT("BD.UI.Status"),
+		TEXT("BD.UI.Status: logs the current screen and the saved settings."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecStatus));
+}

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "Grid/BDGridTypes.h"
 #include "Match/BDMatchTypes.h"
 #include "BDGameBalanceSettings.generated.h"
 
@@ -50,22 +51,48 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Waves", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float EarlyCallBonusPerSecond = 2.0f;
 
-	//~ Removal rules ---------------------------------------------------------
+	//~ Selling ---------------------------------------------------------------
+	// Nothing on the board is permanent. Any piece can be sold at any point; what changes
+	// is how much of its build cost comes back in blue votes: all of it before the first
+	// wave, when the player is still trying things out, and a share of it afterwards.
 
 	/**
-	 * Last wave on which a divider may still be taken back, at no refund.
-	 *
-	 * Dividers turn permanent when the first wave goes out, which is the point of the
-	 * building phase. The grace window exists because the first waves are also the only
-	 * information the player has about their own maze: losing a match to a choice made
-	 * blind is not difficulty. Refund is zero so it stays a correction, not a strategy.
+	 * Last wave on which a divider still sells for the full refund rather than the
+	 * reduced one. The first waves are the only information the player has about their
+	 * own maze, and a match lost to a fence placed blind is not difficulty. 0 gives
+	 * dividers no window.
 	 */
 	UPROPERTY(config, EditAnywhere, Category = "Removal", meta = (ClampMin = "0", UIMin = "0"))
 	int32 DividerRemovalGraceWave = 3;
 
-	/** Fraction refunded when taking a piece back during the building phase, before wave 1. */
+	/** Fraction refunded when selling a piece before wave 1, and a divider inside its grace window. */
 	UPROPERTY(config, EditAnywhere, Category = "Removal", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
 	float BuildingPhaseRefundRatio = 1.0f;
+
+	/** Fraction of the build cost paid back in blue votes when a piece is sold once the first wave has gone out. */
+	UPROPERTY(config, EditAnywhere, Category = "Removal", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float SellRefundRatio = 0.5f;
+
+	/** Fraction of the build cost paid back for selling a piece of this kind on a given wave. */
+	float GetSellRefundRatio(EBDPieceKind Kind, int32 Wave) const;
+
+	//~ The red candidate ------------------------------------------------------
+	// The climax of a match. When the red counter passes the blue one, a candidate walks
+	// out of a mouth: slow, huge, shot by every defender that sees it. If it reaches the
+	// urn the match is lost. If it dies the count freezes for a while and the waves hold,
+	// and it comes back on the next wave if the scoreboard is still inverted.
+
+	/** Health of the candidate as a multiple of the health of the creeps of the wave it comes out on. */
+	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "1.0", UIMin = "1.0"))
+	float CandidateHealthMultiplier = 40.0f;
+
+	/** Walking speed of the candidate, in cells per second. 0 leaves the speed of its enemy data. */
+	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float CandidateSpeed = 0.5f;
+
+	/** Seconds the waves hold and the red count stays frozen after the candidate is killed. */
+	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float CandidateKillPauseSeconds = 30.0f;
 
 	//~ Wave scaling -----------------------------------------------------------
 

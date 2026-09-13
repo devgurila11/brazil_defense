@@ -42,6 +42,16 @@ float UBDGameBalanceSettings::GetHealthScale(const int32 Wave) const
 	return FMath::Pow(FMath::Max(1.0f, HealthScaleGrowth), static_cast<float>(SafeWave - 1));
 }
 
+float UBDGameBalanceSettings::GetSellRefundRatio(const EBDPieceKind Kind, const int32 Wave) const
+{
+	if (Wave < 1 || (Kind == EBDPieceKind::Divider && Wave <= DividerRemovalGraceWave))
+	{
+		return BuildingPhaseRefundRatio;
+	}
+
+	return SellRefundRatio;
+}
+
 float UBDGameBalanceSettings::GetWaveSpawnInterval(const int32 Wave) const
 {
 	return FMath::Max(WaveSpawnIntervalMin, WaveSpawnIntervalBase * FMath::Pow(WaveSpawnIntervalDecay, static_cast<float>(FMath::Max(0, Wave))));

@@ -7,6 +7,7 @@
 #include "BDEnemyData.generated.h"
 
 class ABDEnemyBase;
+class UMaterialInterface;
 class UStaticMesh;
 
 /**
@@ -66,4 +67,8 @@ public:
 	/** Scale applied to Mesh. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr"))
 	FVector MeshScale = FVector::OneVector;
+
+	/** Material put on every slot of Mesh, so a placeholder shape can still be told apart by color. Optional. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr"))
+	TSoftObjectPtr<UMaterialInterface> MeshMaterial;
 };

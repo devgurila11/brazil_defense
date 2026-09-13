@@ -45,6 +45,16 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Waves", meta = (AllowedClasses = "/Script/Brazil_Defense.BDEnemyData"))
 	TSoftObjectPtr<UBDEnemyData> WaveEnemy;
 
+	/** The enemy a wave sends out: WaveEnemy, or DebugEnemy while that is unset. Loads it. Null when neither is set. */
+	const UBDEnemyData* ResolveWaveEnemy() const;
+
+	/**
+	 * The red candidate. Its enemy class is expected to be ABDCandidate or a child; the
+	 * health on the asset is ignored, the candidate is as tough as the balance says.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Waves", meta = (AllowedClasses = "/Script/Brazil_Defense.BDEnemyData"))
+	TSoftObjectPtr<UBDEnemyData> CandidateEnemy;
+
 	//~ Ground ---------------------------------------------------------------
 
 	/**

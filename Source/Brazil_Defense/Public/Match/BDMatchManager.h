@@ -133,6 +133,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void OnWaveCleared();
 
+	/**
+	 * Ends the match as a loss: the phase goes to Defeat and the board freezes where it
+	 * stands. Nothing after it moves until the match is rewound from the console.
+	 * @param Reason for the log, e.g. "the candidate reached the urn".
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void DeclareDefeat(const FString& Reason);
+
+	/** Whether the match is over, won or lost. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool IsMatchOver() const { return Phase == EBDMatchPhase::Defeat || Phase == EBDMatchPhase::Victory; }
+
 	//~ Votes, reported by the wave subsystem -----------------------------------
 
 	/** A creep was killed: its votes go to the player. */
@@ -201,13 +213,33 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	bool ConsumeBudget(EBDPieceKind Kind);
 
-	/** Whether a piece of this kind may still be taken back right now. */
+	/** Whether a piece of this kind may be taken back right now: everything but the urn, at any point. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool CanRemove(EBDPieceKind Kind) const;
 
-	/** Gives back whatever the current rules refund for taking a piece of this kind back. */
+	/** Puts a piece of this kind back in the hand. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void RefundRemoval(EBDPieceKind Kind);
+
+	//~ Selling ------------------------------------------------------------------
+	// Nothing on the board is permanent: any piece can be sold, and the price of having
+	// been wrong is the part of the build cost that does not come back. All of it comes
+	// back before the first wave, half once the waves run, and a divider keeps the full
+	// refund through the grace window: see UBDGameBalanceSettings::GetSellRefundRatio.
+	// Building does not charge votes yet; selling already pays them, because the player
+	// tries things and undoes them.
+
+	/** Fraction of the build cost selling a piece of this kind pays back on the current wave. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	float GetSellRefundRatio(EBDPieceKind Kind) const;
+
+	/** Blue votes selling a piece of this kind and build cost pays back right now. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetSellRefund(EBDPieceKind Kind, int32 BuildCost) const;
+
+	/** Pays the sale of a piece into the blue counter. @return the votes paid. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	int32 RefundSale(EBDPieceKind Kind, int32 BuildCost);
 
 	/** The day cycle driven by this match. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
