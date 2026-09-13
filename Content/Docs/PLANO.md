@@ -191,7 +191,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-13 — push do fim do dia** (desde f1f3c9b):
+- **2026-09-13 — e484367 / 8d2f5d5** (desde f1f3c9b):
   - Linha `Wave N cleared. Votes: blue B, red R.` no log a cada onda.
   - Candidato vermelho completo (seção 4): `ABDCandidate`,
     `UBDCandidateSubsystem`, `DA_Candidate` (cubo 3×3×4 vermelho),
