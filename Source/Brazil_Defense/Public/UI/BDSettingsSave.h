@@ -61,6 +61,12 @@ public:
 	UPROPERTY()
 	bool bMuted = false;
 
+	//~ Controls -----------------------------------------------------------------
+
+	/** A and D the other way round for the match camera. */
+	UPROPERTY()
+	bool bInvertCameraSideways = false;
+
 	//~ Language ----------------------------------------------------------------
 
 	UPROPERTY()

@@ -112,6 +112,7 @@ void UBDDayCycleComponent::SetWave(const int32 Wave)
 	}
 
 	TargetAlpha = ComputeAlphaForWave(Wave);
+	UE_LOG(LogBDMatch, Log, TEXT("Day cycle: wave %d is %.0f%% through the day (%d waves per day)."), Wave, TargetAlpha * 100.0f, WavesPerCycle);
 }
 
 void UBDDayCycleComponent::SetAlphaImmediate(const float Alpha)

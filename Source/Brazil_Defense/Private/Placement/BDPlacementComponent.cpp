@@ -148,12 +148,8 @@ void UBDPlacementComponent::BindInput(UInputComponent* InputComponent)
 		EnhancedInput->BindAction(Action, ETriggerEvent::Started, this, &UBDPlacementComponent::HandleCancelInput);
 	}
 
-	// The wheel is an axis, so this one arrives as Triggered with a value rather than
-	// as a one shot Started.
-	if (UInputAction* Action = Settings.RotateAction.LoadSynchronous())
-	{
-		EnhancedInput->BindAction(Action, ETriggerEvent::Triggered, this, &UBDPlacementComponent::HandleRotateInput);
-	}
+	// The rotate action is not bound any more: the mapping context put it on the wheel,
+	// which the camera needs for its height. The controller turns the piece with R.
 
 	AddMappingContext();
 }

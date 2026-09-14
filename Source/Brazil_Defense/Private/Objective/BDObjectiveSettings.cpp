@@ -16,7 +16,7 @@ const UBDObjectiveSettings& UBDObjectiveSettings::Get()
 
 bool UBDObjectiveSettings::IsInZone(const FBDCellCoord& Coord) const
 {
-	return Coord.X >= MinX && Coord.X <= MaxX && Coord.Y >= MinY && Coord.Y <= MaxY;
+	return !bRestrictToZone || (Coord.X >= MinX && Coord.X <= MaxX && Coord.Y >= MinY && Coord.Y <= MaxY);
 }
 
 FBDCellCoord UBDObjectiveSettings::GetZoneCenter() const
@@ -27,6 +27,13 @@ FBDCellCoord UBDObjectiveSettings::GetZoneCenter() const
 void UBDObjectiveSettings::GetZoneCells(TArray<FBDCellCoord>& OutCells) const
 {
 	OutCells.Reset();
+
+	// With no zone to keep clear, only its middle is protected, as the likely goal.
+	if (!bRestrictToZone)
+	{
+		OutCells.Add(GetZoneCenter());
+		return;
+	}
 	for (int32 Y = MinY; Y <= MaxY; ++Y)
 	{
 		for (int32 X = MinX; X <= MaxX; ++X)

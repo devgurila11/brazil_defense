@@ -215,6 +215,9 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 	const int32 PointCount = GetSpawnPointCount();
 	const int32 PerPoint = UBDGameBalanceSettings::Get().GetCreepsPerSpawnPoint(Wave);
 
+	// The buses shuffle along the edge first, then the draw picks among them.
+	WanderSpawnPoints(Wave);
+
 	// Which mouths open is drawn per wave; how many creeps come out is not. The total
 	// stays PerPoint x every mouth of the board, so a wave out of two mouths is the same
 	// horde as a wave out of six, arriving in a thicker stream.
@@ -249,6 +252,118 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 		Wave, WaveSpawnsRemaining, *Data->GetName(), PerPoint, PointCount,
 		UBDGameBalanceSettings::Get().GetHealthScale(Wave), WaveSpawnInterval,
 		ActiveSpawnPoints.Num(), *Mouths);
+}
+
+void UBDWaveSubsystem::WanderSpawnPoints(const int32 Wave)
+{
+	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr || Balance.MouthWanderMaxCells <= 0 || Balance.MouthWanderChance <= 0.0f)
+	{
+		return;
+	}
+
+	// Its own draw, from the seed and the wave, so the same match wanders the same way.
+	const ABDMatchManager* Match = GetMatch();
+	const int32 Seed = Match != nullptr ? Match->ObstacleSeed : 0;
+	FRandomStream Stream(static_cast<int32>(HashCombine(HashCombine(::GetTypeHash(Seed), ::GetTypeHash(Wave)), 0x5EEDu)));
+
+	const TArray<FBDSpawnPoint> Points = GetSpawnPoints();
+	const int32 SizeX = Grid->GetSizeX();
+	const int32 SizeY = Grid->GetSizeY();
+	int32 Moved = 0;
+
+	for (int32 PointIndex = 0; PointIndex < Points.Num(); ++PointIndex)
+	{
+		const FBDSpawnPoint& Point = Points[PointIndex];
+		if (Point.Cells.Num() == 0 || Stream.FRand() > Balance.MouthWanderChance)
+		{
+			continue;
+		}
+
+		// The mouth slides along the edge it sits on: X along the top and bottom rows, Y
+		// along the left and right columns. A mouth not on any edge stays put.
+		const FBDCellCoord& First = Point.Cells[0];
+		const bool bOnRow = First.Y == 0 || First.Y == SizeY - 1;
+		const bool bOnColumn = First.X == 0 || First.X == SizeX - 1;
+		if (!bOnRow && !bOnColumn)
+		{
+			continue;
+		}
+		const bool bAlongX = bOnRow && (!bOnColumn || Point.Cells.Num() == 1 || Point.Cells[1].Y == First.Y);
+
+		// Up to a few tries at a random slide, first one that fits wins.
+		for (int32 Try = 0; Try < 6; ++Try)
+		{
+			int32 Shift = Stream.RandRange(-Balance.MouthWanderMaxCells, Balance.MouthWanderMaxCells);
+			if (Shift == 0)
+			{
+				continue;
+			}
+
+			TArray<FBDCellCoord> NewCells;
+			bool bFits = true;
+			for (const FBDCellCoord& Cell : Point.Cells)
+			{
+				const FBDCellCoord Moved2(Cell.X + (bAlongX ? Shift : 0), Cell.Y + (bAlongX ? 0 : Shift));
+				const bool bOwn = Point.Cells.Contains(Moved2);
+				if (!Grid->IsValidCoord(Moved2) || (!bOwn && Grid->GetCellState(Moved2) != EBDCellState::Free))
+				{
+					bFits = false;
+					break;
+				}
+				// Not up against another mouth: two runs touching would read as one.
+				for (int32 Other = 0; Other < Points.Num() && bFits; ++Other)
+				{
+					if (Other == PointIndex)
+					{
+						continue;
+					}
+					for (const FBDCellCoord& OtherCell : Points[Other].Cells)
+					{
+						if (FMath::Abs(OtherCell.X - Moved2.X) + FMath::Abs(OtherCell.Y - Moved2.Y) <= 1)
+						{
+							bFits = false;
+							break;
+						}
+					}
+				}
+				if (!bFits)
+				{
+					break;
+				}
+				NewCells.Add(Moved2);
+			}
+			if (!bFits)
+			{
+				continue;
+			}
+
+			// Applied, then checked for a route; undone when the new spot is walled off.
+			for (const FBDCellCoord& Cell : Point.Cells) { Grid->SetCellState(Cell, EBDCellState::Free); }
+			for (const FBDCellCoord& Cell : NewCells) { Grid->SetCellState(Cell, EBDCellState::Spawn); }
+
+			TArray<FBDCellCoord> Route;
+			if (GoalCells.Num() > 0 && !FindRouteToGoal(NewCells[NewCells.Num() / 2], Route))
+			{
+				for (const FBDCellCoord& Cell : NewCells) { Grid->SetCellState(Cell, EBDCellState::Free); }
+				for (const FBDCellCoord& Cell : Point.Cells) { Grid->SetCellState(Cell, EBDCellState::Spawn); }
+				continue;
+			}
+
+			UE_LOG(LogBDWave, Log, TEXT("Mouth %d slid %+d cell(s) along its edge: exit %s -> %s."),
+				PointIndex, Shift, *Point.ExitCell.ToString(), *NewCells[NewCells.Num() / 2].ToString());
+			++Moved;
+			break;
+		}
+	}
+
+	if (Moved > 0)
+	{
+		// The grid changed under the routes: read the mouths again before anything is drawn.
+		bRoutesDirty = true;
+		GetSpawnPoints();
+	}
 }
 
 void UBDWaveSubsystem::DrawActiveSpawnPoints(const int32 Wave)

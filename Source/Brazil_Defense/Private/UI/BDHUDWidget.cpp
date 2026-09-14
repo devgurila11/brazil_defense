@@ -21,8 +21,10 @@
 #include "HAL/IConsoleManager.h"
 #include "Match/BDMatchManager.h"
 #include "Misc/App.h"
+#include "Objective/BDObjectiveSettings.h"
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementComponent.h"
+#include "Placement/BDPlacementSettings.h"
 #include "Tower/BDTowerBase.h"
 #include "Tower/BDTowerData.h"
 #include "UI/BDUISettings.h"
@@ -258,6 +260,55 @@ void UBDHUDWidget::BuildTree()
 	EndSlot->SetAutoSize(true);
 	EndSlot->SetPosition(FVector2D::ZeroVector);
 
+	//~ Left: what can be built. The urn first, then the palette in its order; the number
+	// keys follow the same order.
+	BuildBox = MakeBox(ColorPanel, 12.0f);
+	UVerticalBox* BuildColumn = MakeColumn();
+	BuildTitle = MakeText(SmallFontSize, ColorMuted);
+	BuildColumn->AddChildToVerticalBox(BuildTitle);
+	UrnButton = MakeButton(UrnLabel, SmallFontSize);
+	UrnButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuildUrn);
+	UVerticalBoxSlot* UrnSlot = BuildColumn->AddChildToVerticalBox(UrnButton);
+	UrnSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
+	UrnSlot->SetHorizontalAlignment(HAlign_Fill);
+	for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
+	{
+		if (PaletteData.Num() >= MaxPaletteButtons)
+		{
+			break;
+		}
+		if (UBDPlaceableData* Data = Entry.LoadSynchronous())
+		{
+			PaletteData.Add(Data);
+		}
+	}
+	for (int32 Index = 0; Index < PaletteData.Num(); ++Index)
+	{
+		BuildButtons[Index] = MakeButton(BuildLabels[Index], SmallFontSize);
+		UVerticalBoxSlot* BuildSlot = BuildColumn->AddChildToVerticalBox(BuildButtons[Index]);
+		BuildSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
+		BuildSlot->SetHorizontalAlignment(HAlign_Fill);
+	}
+	if (PaletteData.Num() > 0) { BuildButtons[0]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild0); }
+	if (PaletteData.Num() > 1) { BuildButtons[1]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild1); }
+	if (PaletteData.Num() > 2) { BuildButtons[2]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild2); }
+	if (PaletteData.Num() > 3) { BuildButtons[3]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild3); }
+	if (PaletteData.Num() > 4) { BuildButtons[4]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild4); }
+	if (PaletteData.Num() > 5) { BuildButtons[5]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild5); }
+	if (PaletteData.Num() > 6) { BuildButtons[6]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild6); }
+	if (PaletteData.Num() > 7) { BuildButtons[7]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild7); }
+	if (PaletteData.Num() > 8) { BuildButtons[8]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild8); }
+	BuildBox->AddChild(BuildColumn);
+
+	USizeBox* BuildSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	BuildSizeBox->SetWidthOverride(PanelWidth * 0.75f);
+	BuildSizeBox->AddChild(BuildBox);
+	UCanvasPanelSlot* BuildSlotOnCanvas = Canvas->AddChildToCanvas(BuildSizeBox);
+	BuildSlotOnCanvas->SetAnchors(FAnchors(0.0f, 0.0f));
+	BuildSlotOnCanvas->SetAlignment(FVector2D(0.0f, 0.0f));
+	BuildSlotOnCanvas->SetAutoSize(true);
+	BuildSlotOnCanvas->SetPosition(FVector2D(Margin, Margin + 48.0f));
+
 	//~ Top left: the game menu and the save, side by side.
 	UHorizontalBox* CornerRow = MakeRow();
 	UButton* MenuButton = MakeButton(MenuLabel, SmallFontSize);
@@ -294,7 +345,9 @@ void UBDHUDWidget::RefreshTexts()
 	EndlessLabel->SetText(Loc(TEXT("HUD.End.Endless")));
 	EndMenuLabel->SetText(Loc(TEXT("HUD.End.MainMenu")));
 	LoadLabel->SetText(Loc(TEXT("HUD.End.Load")));
+	BuildTitle->SetText(Loc(TEXT("HUD.Build")));
 	UpdateSaveButton();
+	UpdateBuildPanel();
 
 	// Everything else carries numbers and is written on tick, in the current language.
 	UpdateScoreboard();
@@ -380,6 +433,7 @@ void UBDHUDWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTi
 	UpdateDefenderPanel();
 	UpdatePlacementPanel();
 	UpdateCandidate(static_cast<float>(FApp::GetDeltaTime()));
+	UpdateBuildPanel();
 }
 
 //~ Always visible -------------------------------------------------------------------
@@ -571,7 +625,7 @@ void UBDHUDWidget::UpdateDefenderPanel()
 	const FBDTowerLevel* Level = Tower->GetCurrentLevel();
 
 	FFormatNamedArguments Args;
-	Args.Add(TEXT("Name"), Data->DisplayName.IsEmpty() ? FText::FromString(Data->GetName()) : Data->DisplayName);
+	Args.Add(TEXT("Name"), BDLoc::PieceName(Data));
 	Args.Add(TEXT("Level"), Tower->GetTowerLevel());
 	Args.Add(TEXT("Damage"), FMath::RoundToInt(Tower->GetEffectiveDamage()));
 	Args.Add(TEXT("Range"), FText::AsNumber(Tower->GetEffectiveRangeCells(), &FNumberFormattingOptions().SetMaximumFractionalDigits(1)));
@@ -629,7 +683,7 @@ void UBDHUDWidget::UpdatePlacementPanel()
 	PlacementBox->SetVisibility(ESlateVisibility::Visible);
 
 	FFormatNamedArguments Args;
-	Args.Add(TEXT("Name"), Selection->DisplayName.IsEmpty() ? FText::FromString(Selection->GetName()) : Selection->DisplayName);
+	Args.Add(TEXT("Name"), BDLoc::PieceName(Selection));
 	Args.Add(TEXT("Cost"), Selection->GetBuildCost());
 	if (Selection->bOccupiesEdge)
 	{
@@ -775,6 +829,80 @@ void UBDHUDWidget::UpdateSaveButton()
 	SaveLabel->SetText(BDLoc::Format(TEXT("HUD.Save"), Args));
 	SaveButton->SetIsEnabled(Match != nullptr && Match->CanSaveMatch());
 }
+
+//~ Build panel ---------------------------------------------------------------------
+
+void UBDHUDWidget::UpdateBuildPanel()
+{
+	using namespace BDHUDPrivate;
+
+	const ABDMatchManager* Match = GetMatch();
+	const UBDPlacementComponent* Placement = GetPlacement();
+	const UBDPlaceableData* Held = Placement != nullptr ? Placement->GetCurrentSelection() : nullptr;
+	const bool bOver = Match == nullptr || Match->IsMatchOver();
+
+	// The urn: there until it is down, then gone.
+	const UBDPlaceableData* Urn = UBDObjectiveSettings::Get().ObjectivePlaceable.Get();
+	const bool bUrnLeft = Match != nullptr && Match->GetObjectivesRemaining() > 0;
+	UrnButton->SetVisibility(bUrnLeft ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	if (bUrnLeft)
+	{
+		UrnLabel->SetText(Urn != nullptr ? BDLoc::PieceName(Urn) : Loc(TEXT("HUD.Build.Urn")));
+		UrnLabel->SetColorAndOpacity(FSlateColor(Held != nullptr && Held == Urn ? ColorHighlight : FLinearColor::White));
+		UrnButton->SetIsEnabled(!bOver);
+	}
+
+	for (int32 Index = 0; Index < PaletteData.Num(); ++Index)
+	{
+		const UBDPlaceableData* Data = PaletteData[Index];
+		const EBDPieceKind Kind = Data->GetPieceKind();
+		FFormatNamedArguments Args;
+		Args.Add(TEXT("Key"), Index + 1);
+		Args.Add(TEXT("Name"), BDLoc::PieceName(Data));
+		Args.Add(TEXT("Count"), Match != nullptr ? Match->GetBudgetRemaining(Kind) : 0);
+		BuildLabels[Index]->SetText(BDLoc::Format(TEXT("HUD.Build.Entry"), Args));
+		BuildLabels[Index]->SetColorAndOpacity(FSlateColor(Held == Data ? ColorHighlight : FLinearColor::White));
+		// Placeable now, by the match's rules for the kind: the urn first, dividers only before wave 1.
+		BuildButtons[Index]->SetIsEnabled(!bOver && Match != nullptr && Match->CanPlace(Kind));
+	}
+}
+
+void UBDHUDWidget::SelectBuild(const int32 Index)
+{
+	UBDPlacementComponent* Placement = GetPlacement();
+	if (Placement == nullptr || !PaletteData.IsValidIndex(Index))
+	{
+		return;
+	}
+
+	// Clicking the piece already in hand puts it down again.
+	if (Placement->GetCurrentSelection() == PaletteData[Index])
+	{
+		Placement->CancelSelection();
+		return;
+	}
+	Placement->SelectPlaceable(PaletteData[Index]);
+}
+
+void UBDHUDWidget::HandleBuildUrn()
+{
+	UBDPlacementComponent* Placement = GetPlacement();
+	UBDPlaceableData* Urn = UBDObjectiveSettings::Get().ObjectivePlaceable.LoadSynchronous();
+	if (Placement != nullptr && Urn != nullptr)
+	{
+		Placement->SelectPlaceable(Urn);
+	}
+}
+
+void UBDHUDWidget::HandleBuild0() { SelectBuild(0); }
+void UBDHUDWidget::HandleBuild1() { SelectBuild(1); }
+void UBDHUDWidget::HandleBuild2() { SelectBuild(2); }
+void UBDHUDWidget::HandleBuild3() { SelectBuild(3); }
+void UBDHUDWidget::HandleBuild4() { SelectBuild(4); }
+void UBDHUDWidget::HandleBuild5() { SelectBuild(5); }
+void UBDHUDWidget::HandleBuild6() { SelectBuild(6); }
+void UBDHUDWidget::HandleBuild7() { SelectBuild(7); }
+void UBDHUDWidget::HandleBuild8() { SelectBuild(8); }
 
 void UBDHUDWidget::HandleSave()
 {

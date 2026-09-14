@@ -138,6 +138,13 @@ void UBDOptionsWidget::BuildTree()
 	MutedBox->OnCheckStateChanged.AddDynamic(this, &UBDOptionsWidget::HandleMutedChanged);
 	AddRow(Column, MutedLabel, MutedBox);
 
+	//~ Controls
+	AddSection(Column, ControlsHeading);
+
+	InvertSidewaysBox = WidgetTree->ConstructWidget<UCheckBox>(UCheckBox::StaticClass());
+	InvertSidewaysBox->OnCheckStateChanged.AddDynamic(this, &UBDOptionsWidget::HandleInvertSidewaysChanged);
+	AddRow(Column, InvertSidewaysLabel, InvertSidewaysBox);
+
 	//~ Language
 	AddSection(Column, LanguageHeading);
 
@@ -205,6 +212,8 @@ void UBDOptionsWidget::RefreshTexts()
 	MusicLabel->SetText(Loc(TEXT("Options.MusicVolume")));
 	EffectsLabel->SetText(Loc(TEXT("Options.EffectsVolume")));
 	MutedLabel->SetText(Loc(TEXT("Options.Muted")));
+	ControlsHeading->SetText(Loc(TEXT("Options.Controls")));
+	InvertSidewaysLabel->SetText(Loc(TEXT("Options.InvertSideways")));
 	LanguageLabel->SetText(Loc(TEXT("Options.LanguageSelect")));
 	BackLabel->SetText(Loc(TEXT("Options.Back")));
 
@@ -276,6 +285,7 @@ void UBDOptionsWidget::SyncFromSettings()
 	EffectsSlider->SetValue(static_cast<float>(Saved.EffectsVolume));
 	EffectsValue->SetText(FText::AsNumber(Saved.EffectsVolume));
 	MutedBox->SetIsChecked(Saved.bMuted);
+	InvertSidewaysBox->SetIsChecked(Saved.bInvertCameraSideways);
 
 	LanguageList->SetSelectedIndex(FMath::Clamp(static_cast<int32>(Saved.Language), 0, static_cast<int32>(EBDLanguage::Count) - 1));
 
@@ -378,6 +388,19 @@ void UBDOptionsWidget::HandleMutedChanged(const bool bChecked)
 	if (UBDSettingsSubsystem* Subsystem = GetSettings())
 	{
 		Subsystem->SetMuted(bChecked);
+	}
+}
+
+void UBDOptionsWidget::HandleInvertSidewaysChanged(const bool bChecked)
+{
+	if (bSyncing)
+	{
+		return;
+	}
+
+	if (UBDSettingsSubsystem* Subsystem = GetSettings())
+	{
+		Subsystem->SetInvertCameraSideways(bChecked);
 	}
 }
 

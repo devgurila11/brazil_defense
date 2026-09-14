@@ -302,6 +302,20 @@ void UBDSettingsSubsystem::SetMuted(const bool bMuted)
 	Save();
 }
 
+//~ Controls ------------------------------------------------------------------------
+
+void UBDSettingsSubsystem::SetInvertCameraSideways(const bool bInvert)
+{
+	if (Settings == nullptr)
+	{
+		return;
+	}
+
+	// Read by the controller every tick; nothing to apply here.
+	Settings->bInvertCameraSideways = bInvert;
+	Save();
+}
+
 //~ Language ------------------------------------------------------------------------
 
 void UBDSettingsSubsystem::ApplyLanguage()

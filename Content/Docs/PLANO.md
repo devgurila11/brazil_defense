@@ -191,6 +191,48 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-14 (tarde) — (commit abaixo)** (desde e9967ba):
+  - Primeiro teste real do jogador. Faltava o essencial: **paleta de
+    construção** no HUD (`Palette` em `BDPlacementSettings`, painel à
+    esquerda, teclas 1–9 e U para a urna). Sem ela não havia como pegar
+    peça nenhuma.
+  - **Câmera livre** (seção 10 na prática): WASD desliza o ponto olhado
+    dentro do tabuleiro; roda = altura entre 30 m e a visão geral; Q/E ou
+    botão do meio giram a vista, livre no chão e travada de volta ao subir
+    (`MaxYawAtMinHeight`, `YawLimitExponent`) para nunca mostrar a borda do
+    mundo; Home reseta; Page Up/Down altura por tecla. Opção "Inverter
+    câmera A/D" em Opções › Controles. R / Shift+R giram a peça; o
+    `IA_Rotate` na roda deixou de ser ligado.
+  - **Regra nova (seção 5):** a urna vai em qualquer célula livre e
+    alcançável (`bRestrictToZone=false`); a zona só orienta o gerador de
+    obstáculos.
+  - **Regra nova (seção 5):** bocas móveis — antes de cada onda cada boca
+    tem `MouthWanderChance` (75%) de deslizar até `MouthWanderMaxCells` (5)
+    células pela própria borda, sem sair dela, sem célula ocupada, sem
+    encostar noutra boca e sempre com rota até a urna. Sorteio por seed +
+    onda.
+  - **Regra nova (seção 8):** vitória na onda 50 (default de classe;
+    os DA sobrescrevem). Montagem inicial 120 s como default.
+  - **Balanceamento (seção 7/11):** `BD.Balance.Report` compara a horda
+    de cada onda com a melhor defesa que o orçamento compra
+    (`ReferenceMaxLevel` 5, `ReferenceEngagementEfficiency` 50%) e diz o
+    growth que empata na onda de vitória. A curva
+    `CF_HealthScaleByWave` travava em ×26,7 da onda 30 em diante; ficou
+    estacionada no `DefaultGame.ini` e a exponencial entrou com
+    `HealthScaleGrowth = 1.035` (empate na onda 50 para rota de 43
+    células; labirinto mais longo vence).
+  - Dia/noite: 10 ondas por dia (era 20) e uma linha de log por onda com a
+    posição no dia. Linha do alvo das torres ligada por padrão
+    (`BD.Tower.ShowTarget`). `BD.Path.Debug` desligado por padrão — a
+    esfera com linha era lida como marcador de jogo.
+  - Painéis com cantos arredondados (`BoxCornerRadius`). Nomes de peças
+    pela string table (`Piece.<asset>`), inglês e português.
+  - Logo do splash reimportado de `logo/T_Logo_Golias.png` (2048²).
+  - **Pendente no editor:** `FirstWaveDelay` e `WavesToWin` nos três
+    `DA_Difficulty_*` (sobrescrevem os defaults); conferir as curvas
+    `CF_Sun*` se a noite persistir além de 50% do dia (log mostra);
+    `ReferenceEngagementEfficiency` quando houver sensação de jogo.
+
 - **2026-09-14 — 81b91cd** (desde dac5d17):
   - Janela fora do editor (pendência do dia 13): `ApplyGraphics` só passa
     pela resolução com tamanho explícito, tela cheia ou troca de modo

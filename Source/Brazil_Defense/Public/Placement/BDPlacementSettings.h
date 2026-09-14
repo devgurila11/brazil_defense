@@ -6,6 +6,7 @@
 #include "Engine/DeveloperSettings.h"
 #include "BDPlacementSettings.generated.h"
 
+class UBDPlaceableData;
 class UInputAction;
 class UInputMappingContext;
 class UMaterialInterface;
@@ -23,6 +24,14 @@ public:
 	UBDPlacementSettings();
 
 	static const UBDPlacementSettings& Get();
+
+	//~ Palette ------------------------------------------------------------
+	// What the player can pick up, in the order the HUD shows it and the number keys
+	// select it (1 is the first). The urn is not listed: it comes from the objective
+	// settings and has its own button.
+
+	UPROPERTY(config, EditAnywhere, Category = "Palette", meta = (AllowedClasses = "/Script/Brazil_Defense.BDPlaceableData"))
+	TArray<TSoftObjectPtr<UBDPlaceableData>> Palette;
 
 	//~ Input ----------------------------------------------------------------
 

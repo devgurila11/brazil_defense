@@ -81,6 +81,16 @@ UButton* UBDWidgetBase::MakeButton(TObjectPtr<UTextBlock>& OutLabel, const int32
 UBorder* UBDWidgetBase::MakeBox(const FLinearColor& Background, const float InPadding) const
 {
 	UBorder* Box = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+
+	// Every panel of the game is a rounded box: the corner is the one bit of style the
+	// raw layer already commits to.
+	FSlateBrush Brush;
+	Brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+	Brush.TintColor = FSlateColor(FLinearColor::White);
+	Brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+	Brush.OutlineSettings.CornerRadii = FVector4(BoxCornerRadius, BoxCornerRadius, BoxCornerRadius, BoxCornerRadius);
+	Brush.OutlineSettings.Width = 0.0f;
+	Box->SetBrush(Brush);
 	Box->SetBrushColor(Background);
 	Box->SetPadding(FMargin(InPadding));
 	return Box;

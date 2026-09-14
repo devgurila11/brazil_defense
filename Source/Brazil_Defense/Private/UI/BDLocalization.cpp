@@ -2,6 +2,11 @@
 
 #include "UI/BDLocalization.h"
 
+#include "Internationalization/StringTableRegistry.h"
+#include "Internationalization/StringTableCore.h"
+#include "Tower/BDTowerData.h"
+#include "Placement/BDPlaceableData.h"
+
 #include "BDLog.h"
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/StringTableRegistry.h"
@@ -59,6 +64,43 @@ FText BDLoc::Text(const TCHAR* Key)
 FText BDLoc::Format(const TCHAR* Key, const FFormatNamedArguments& Args)
 {
 	return FText::Format(Text(Key), Args);
+}
+
+bool BDLoc::HasText(const TCHAR* Key)
+{
+	Initialize();
+	const FStringTableConstPtr Table = FStringTableRegistry::Get().FindStringTable(BDLocPrivate::CurrentTableId());
+	return Table.IsValid() && Table->FindEntry(Key).IsValid();
+}
+
+FText BDLoc::PieceName(const UBDPlaceableData* Data)
+{
+	if (Data == nullptr)
+	{
+		return FText::GetEmpty();
+	}
+
+	const FString Key = FString::Printf(TEXT("Piece.%s"), *Data->GetName());
+	if (HasText(*Key))
+	{
+		return Text(*Key);
+	}
+	return Data->DisplayName.IsEmpty() ? FText::FromString(Data->GetName()) : Data->DisplayName;
+}
+
+FText BDLoc::PieceName(const UBDTowerData* Data)
+{
+	if (Data == nullptr)
+	{
+		return FText::GetEmpty();
+	}
+
+	const FString Key = FString::Printf(TEXT("Piece.%s"), *Data->GetName());
+	if (HasText(*Key))
+	{
+		return Text(*Key);
+	}
+	return Data->DisplayName.IsEmpty() ? FText::FromString(Data->GetName()) : Data->DisplayName;
 }
 
 EBDLanguage BDLoc::GetLanguage()

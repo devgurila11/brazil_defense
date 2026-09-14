@@ -54,7 +54,7 @@ public:
 
 	/** Waves it takes to come back round to dawn. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cycle", meta = (ClampMin = "1", UIMin = "1"))
-	int32 WavesPerCycle = 20;
+	int32 WavesPerCycle = 10;
 
 	/** How fast the cycle slides towards the position of a new wave, in alpha per second. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cycle", meta = (ClampMin = "0.001", UIMin = "0.001"))

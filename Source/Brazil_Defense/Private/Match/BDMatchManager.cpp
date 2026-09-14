@@ -19,6 +19,11 @@
 #include "Save/BDMatchSave.h"
 #include "Save/BDProgressSave.h"
 #include "Wave/BDWaveSubsystem.h"
+#include "Wave/BDWaveSettings.h"
+#include "Enemy/BDEnemyData.h"
+#include "Placement/BDPlaceableData.h"
+#include "Placement/BDPlacementSettings.h"
+#include "Tower/BDTowerData.h"
 #include "Match/BDGameBalanceSettings.h"
 #include "Obstacle/BDObstacleGenerator.h"
 #include "Tower/BDTowerBase.h"
@@ -1078,4 +1083,93 @@ namespace BDMatchCommands
 		TEXT("BD.Progress.Reset"),
 		TEXT("BD.Progress.Reset: forgets every win."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecProgressReset));
+
+	/**
+	 * The horde of a wave against the best defense the budgets buy: every defender of the
+	 * palette at the reference level, hitting for the reference fraction of the time a
+	 * creep spends on the average route. Ratio under 1 means the defense out-damages the
+	 * wave; the last line says what health growth would make the winning wave a draw.
+	 */
+	static void ExecBalanceReport(const TArray<FString>& Args, UWorld* World)
+	{
+		const ABDMatchManager* Match = FindMatch(World);
+		UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+		const UBDEnemyData* Enemy = UBDWaveSettings::Get().ResolveWaveEnemy();
+		if (Match == nullptr || Waves == nullptr || Enemy == nullptr)
+		{
+			UE_LOG(LogBDMatch, Error, TEXT("BD.Balance.Report needs a match, the wave subsystem and a wave enemy."));
+			return;
+		}
+
+		const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+		const UBDDifficultyData* Difficulty = Match->GetDifficultyData();
+
+		// The defense: budget x DPS at the reference level, per kind, from the palette.
+		float TowerDps = 0.0f;
+		int32 TowerKinds = 0;
+		float CharacterDps = 0.0f;
+		int32 CharacterKinds = 0;
+		for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
+		{
+			const UBDPlaceableData* Data = Entry.LoadSynchronous();
+			const UBDTowerData* TowerData = Data != nullptr ? Data->TowerData.LoadSynchronous() : nullptr;
+			const FBDTowerLevel* Base = TowerData != nullptr ? TowerData->GetLevel(1) : nullptr;
+			if (Base == nullptr)
+			{
+				continue;
+			}
+			const float Dps = Base->Damage * Base->FireRate * Balance.GetUpgradeDamageScale(Balance.ReferenceMaxLevel);
+			if (Data->GetPieceKind() == EBDPieceKind::Tower) { TowerDps += Dps; ++TowerKinds; }
+			else if (Data->GetPieceKind() == EBDPieceKind::Character) { CharacterDps += Dps; ++CharacterKinds; }
+		}
+		const int32 TowerBudget = Difficulty != nullptr ? Difficulty->TowerBudget : 0;
+		const int32 CharacterBudget = Difficulty != nullptr ? Difficulty->CharacterBudget : 0;
+		const float DefenseDps = (TowerKinds > 0 ? TowerBudget * TowerDps / TowerKinds : 0.0f)
+			+ (CharacterKinds > 0 ? CharacterBudget * CharacterDps / CharacterKinds : 0.0f);
+
+		// The route: average length over the mouths that have one, at the creep's speed.
+		const TArray<FBDSpawnPoint>& Points = Waves->GetSpawnPoints();
+		int32 RouteCells = 0;
+		int32 Routed = 0;
+		for (const FBDSpawnPoint& Point : Points)
+		{
+			if (Point.Route.Num() > 0) { RouteCells += Point.Route.Num(); ++Routed; }
+		}
+		const float AverageRoute = Routed > 0 ? static_cast<float>(RouteCells) / Routed : 0.0f;
+		const float RouteSeconds = Enemy->MoveSpeed > 0.0f ? AverageRoute / Enemy->MoveSpeed : 0.0f;
+		const float CapacityPerWave = DefenseDps * RouteSeconds * Balance.ReferenceEngagementEfficiency;
+
+		UE_LOG(LogBDMatch, Log, TEXT("Balance: defense %.0f dps at level %d (%d towers, %d characters), route %.0f cells = %.0fs at %.2f cells/s, efficiency %.0f%% -> %.0f damage per wave."),
+			DefenseDps, Balance.ReferenceMaxLevel, TowerBudget, CharacterBudget, AverageRoute, RouteSeconds, Enemy->MoveSpeed,
+			Balance.ReferenceEngagementEfficiency * 100.0f, CapacityPerWave);
+
+		const int32 WavesToWin = Match->GetWavesToWin();
+		const int32 Only = Args.Num() == 1 ? FCString::Atoi(*Args[0]) : 0;
+		for (int32 Wave = 1; Wave <= FMath::Max(WavesToWin, Only); ++Wave)
+		{
+			if (Only == 0 ? (Wave != 1 && Wave != WavesToWin && Wave % 5 != 0) : Wave != Only)
+			{
+				continue;
+			}
+			const int32 Creeps = Balance.GetCreepsPerSpawnPoint(Wave) * Points.Num();
+			const float Health = Enemy->MaxHealth * Balance.GetHealthScale(Wave);
+			const float Horde = Creeps * Health;
+			UE_LOG(LogBDMatch, Log, TEXT("  wave %2d: %3d creeps x %6.0f hp = %8.0f | ratio to defense %.2f"),
+				Wave, Creeps, Health, Horde, CapacityPerWave > 0.0f ? Horde / CapacityPerWave : 0.0f);
+		}
+
+		// What the exponential fallback would need so the winning wave comes out even.
+		const int32 FinalCreeps = Balance.GetCreepsPerSpawnPoint(WavesToWin) * Points.Num();
+		if (FinalCreeps > 0 && Enemy->MaxHealth > 0.0f && CapacityPerWave > 0.0f && WavesToWin > 1)
+		{
+			const float NeededScale = CapacityPerWave / (FinalCreeps * Enemy->MaxHealth);
+			UE_LOG(LogBDMatch, Log, TEXT("  a draw on wave %d needs health x%.2f there: HealthScaleGrowth %.4f per wave (curve unset), or the curve ending at %.2f."),
+				WavesToWin, NeededScale, FMath::Pow(NeededScale, 1.0f / (WavesToWin - 1)), NeededScale);
+		}
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdBalanceReport(
+		TEXT("BD.Balance.Report"),
+		TEXT("BD.Balance.Report [wave]: horde health per wave against the best defense the budgets buy, and the growth that would make the winning wave even."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecBalanceReport));
 }

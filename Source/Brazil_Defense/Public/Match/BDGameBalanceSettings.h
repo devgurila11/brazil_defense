@@ -158,6 +158,33 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "0", UIMin = "0"))
 	int32 MaxActiveSpawnPoints = 0;
 
+	//~ Wandering mouths ---------------------------------------------------------
+	// The buses do not park: before a wave goes out each mouth may slide along its edge
+	// of the board by a few cells, so the maze the player built for one entrance meets
+	// the horde a little to the side of it. Never off the edge, never onto a taken cell,
+	// never into another mouth, and never somewhere without a route to the urn.
+
+	/** Chance, per mouth per wave, that it moves at all. 0 parks them. */
+	UPROPERTY(config, EditAnywhere, Category = "Wandering Mouths", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float MouthWanderChance = 0.75f;
+
+	/** Farthest a mouth slides in one wave, in cells along its edge. */
+	UPROPERTY(config, EditAnywhere, Category = "Wandering Mouths", meta = (ClampMin = "0", UIMin = "0"))
+	int32 MouthWanderMaxCells = 5;
+
+	//~ Balance reference --------------------------------------------------------
+	// Numbers BD.Balance.Report uses to compare the horde of a wave with the best defense
+	// the budgets allow: every defender at ReferenceMaxLevel, hitting a fraction of the
+	// time creeps spend on the route.
+
+	/** Level a fully developed defense is assumed to reach. */
+	UPROPERTY(config, EditAnywhere, Category = "Balance Reference", meta = (ClampMin = "1", UIMin = "1"))
+	int32 ReferenceMaxLevel = 5;
+
+	/** Fraction of the route time a defender is assumed to spend actually hitting something. */
+	UPROPERTY(config, EditAnywhere, Category = "Balance Reference", meta = (ClampMin = "0.05", ClampMax = "1.0", UIMin = "0.05", UIMax = "1.0"))
+	float ReferenceEngagementEfficiency = 0.5f;
+
 	//~ Upgrades ---------------------------------------------------------------
 	// Cost of level N = UpgradeCostBase x UpgradeCostGrowth ^ (N - 1); damage at level N =
 	// Damage x (1 + DamageGrowthPerLevel x (N - 1)). Calibrated so a level 5 defender costs

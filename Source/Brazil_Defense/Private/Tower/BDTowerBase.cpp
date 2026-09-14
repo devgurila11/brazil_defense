@@ -25,7 +25,8 @@
 namespace BDTowerPrivate
 {
 	static int32 GShowRange = 0;
-	static int32 GShowTarget = 0;
+	// On for now: the line from a defender to its creep is how the player sees who is shooting.
+	static int32 GShowTarget = 1;
 
 	static FAutoConsoleVariableRef CVarShowRange(
 		TEXT("BD.Tower.ShowRange"),

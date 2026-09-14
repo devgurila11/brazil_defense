@@ -16,8 +16,8 @@
 
 namespace BDPathfinderPrivate
 {
-	/** Draws the last path found. On by default, but idle until a search actually runs. */
-	static int32 GPathDebugEnabled = 1;
+	/** Draws the last path found. Off by default: in the game it read as a marker the player could act on. */
+	static int32 GPathDebugEnabled = 0;
 
 	static FAutoConsoleVariableRef CVarPathDebug(
 		TEXT("BD.Path.Debug"),

@@ -53,8 +53,10 @@ protected:
 	/** A button with one text inside. The label comes back so RefreshTexts can fill it. */
 	UButton* MakeButton(TObjectPtr<UTextBlock>& OutLabel, int32 FontSize = 18) const;
 
-	/** A padded box with a solid color behind whatever is put in it. */
+	/** A padded box with a solid color behind whatever is put in it. Rounded corners, always. */
 	UBorder* MakeBox(const FLinearColor& Background, float InPadding = 12.0f) const;
+
+	static constexpr float BoxCornerRadius = 10.0f;
 
 	UVerticalBox* MakeColumn() const;
 	UHorizontalBox* MakeRow() const;

@@ -160,6 +160,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetWavesToWin() const;
 
+	/** The difficulty asset this match runs on, after the fallback to the class defaults. */
+	const UBDDifficultyData* GetDifficultyData() const { return DifficultyData; }
+
 	/** Prisoners the win on this difficulty frees. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetPrisonersFreed() const;

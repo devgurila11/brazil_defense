@@ -218,6 +218,10 @@ void UBDObjectiveSubsystem::DrawZone() const
 	}
 
 	const UBDObjectiveSettings& Settings = UBDObjectiveSettings::Get();
+	if (!Settings.bRestrictToZone)
+	{
+		return;
+	}
 
 	// Clipped to the grid, so a zone authored past the edge does not paint thin air.
 	const FBDCellCoord Min(FMath::Max(0, Settings.MinX), FMath::Max(0, Settings.MinY));

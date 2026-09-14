@@ -53,6 +53,10 @@ public:
 
 	void SetMuted(bool bMuted);
 
+	//~ Controls -----------------------------------------------------------------
+
+	void SetInvertCameraSideways(bool bInvert);
+
 	//~ Language ----------------------------------------------------------------
 
 	void SetLanguage(EBDLanguage Language);

@@ -195,6 +195,9 @@ private:
 	/** Reads the runs of Spawn cells off the grid and pathfinds each to the closest Goal cell. */
 	void BuildSpawnPoints();
 
+	/** Slides mouths along their edge before a wave, by the balance settings. Rewrites Spawn cells on the grid. */
+	void WanderSpawnPoints(int32 Wave);
+
 	/**
 	 * Route from a cell to any Goal cell: the shortest, or the cheapest over a cost map.
 	 * @param Cost the creep's own map, or null for the uniform cost the spawn points keep.

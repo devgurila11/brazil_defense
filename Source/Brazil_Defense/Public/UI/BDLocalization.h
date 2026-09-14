@@ -28,6 +28,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnLanguageChanged, EBDLanguage /*NewLangu
  * Nothing user facing is ever typed into code: a key that is missing from a table
  * shows up on screen as the key itself, which is the point.
  */
+class UBDPlaceableData;
+class UBDTowerData;
+
 namespace BDLoc
 {
 	/** Registers the tables. Safe to call more than once; done on first use as well. */
@@ -38,6 +41,19 @@ namespace BDLoc
 
 	/** Same, with format arguments: the table entry is the format pattern. */
 	BRAZIL_DEFENSE_API FText Format(const TCHAR* Key, const FFormatNamedArguments& Args);
+
+	/** Whether the current table has a key. */
+	BRAZIL_DEFENSE_API bool HasText(const TCHAR* Key);
+
+	/**
+	 * The name of a piece in the current language: the table entry "Piece.<asset name>"
+	 * when there is one, else the asset's own display name, else the asset name. The
+	 * display name typed into an asset is one language; the table is every language.
+	 */
+	BRAZIL_DEFENSE_API FText PieceName(const UBDPlaceableData* Data);
+
+	/** The same for a defender, whose name lives on its tower data. */
+	BRAZIL_DEFENSE_API FText PieceName(const UBDTowerData* Data);
 
 	BRAZIL_DEFENSE_API EBDLanguage GetLanguage();
 

@@ -32,6 +32,14 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Objective", meta = (AllowedClasses = "/Script/Brazil_Defense.BDPlaceableData"))
 	TSoftObjectPtr<UBDPlaceableData> ObjectivePlaceable;
 
+	/**
+	 * Whether the urn is held to the zone below. Off, it goes on any free cell that every
+	 * mouth can reach, and the zone only tells the obstacle generator where a goal is
+	 * likely to be. Off by default: the player decides how deep the urn sits.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Zone")
+	bool bRestrictToZone = false;
+
 	UPROPERTY(config, EditAnywhere, Category = "Zone", meta = (ClampMin = "0", UIMin = "0"))
 	int32 MinX = 40;
 

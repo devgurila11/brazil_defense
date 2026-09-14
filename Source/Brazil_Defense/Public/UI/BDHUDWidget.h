@@ -112,6 +112,33 @@ private:
 	/** The save button: its count, and whether a save may be taken now. */
 	void UpdateSaveButton();
 
+	/** The build panel: one button per piece of the palette, with what is left of it, and the urn. */
+	void UpdateBuildPanel();
+
+	UFUNCTION()
+	void HandleBuildUrn();
+
+	UFUNCTION()
+	void HandleBuild0();
+	UFUNCTION()
+	void HandleBuild1();
+	UFUNCTION()
+	void HandleBuild2();
+	UFUNCTION()
+	void HandleBuild3();
+	UFUNCTION()
+	void HandleBuild4();
+	UFUNCTION()
+	void HandleBuild5();
+	UFUNCTION()
+	void HandleBuild6();
+	UFUNCTION()
+	void HandleBuild7();
+	UFUNCTION()
+	void HandleBuild8();
+
+	void SelectBuild(int32 Index);
+
 	//~ Always visible
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> BlueScore;
@@ -202,6 +229,31 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> SaveButton;
+
+	//~ Build panel
+	static constexpr int32 MaxPaletteButtons = 9;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> BuildBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> BuildTitle;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> UrnButton;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> UrnLabel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> BuildButtons[MaxPaletteButtons];
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> BuildLabels[MaxPaletteButtons];
+
+	/** The palette entries behind the buttons, loaded once. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UBDPlaceableData>> PaletteData;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> SaveLabel;

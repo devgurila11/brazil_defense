@@ -59,6 +59,9 @@ private:
 	void HandleMutedChanged(bool bChecked);
 
 	UFUNCTION()
+	void HandleInvertSidewaysChanged(bool bChecked);
+
+	UFUNCTION()
 	void HandleLanguageChanged(FString Item, ESelectInfo::Type SelectInfo);
 
 	UFUNCTION()
@@ -123,6 +126,15 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UCheckBox> MutedBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ControlsHeading;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> InvertSidewaysLabel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UCheckBox> InvertSidewaysBox;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> LanguageLabel;

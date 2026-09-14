@@ -79,11 +79,11 @@ public:
 
 	/** Seconds of building time before the first wave goes out. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Waves", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
-	float FirstWaveDelay = 60.0f;
+	float FirstWaveDelay = 120.0f;
 
 	/** Waves the player has to clear to win. The match goes on past it as endless, if the player asks. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Victory", meta = (ClampMin = "1", UIMin = "1"))
-	int32 WavesToWin = 20;
+	int32 WavesToWin = 50;
 
 	/** Prisoners a win on this difficulty sets free: the reward the ending is told with. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Victory", meta = (ClampMin = "0", UIMin = "0"))
