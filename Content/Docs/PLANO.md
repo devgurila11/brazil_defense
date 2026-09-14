@@ -227,7 +227,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-14 (noite) — ainda sem push** (desde fa2c178):
+- **2026-09-14 (noite) — 5d0cdd3** (desde fa2c178):
   - Relógio do dia (seção 9): `DawnHour` e faixas de fase nas settings
     do ciclo, `EBDDayPhase`, hora/fase/texto no componente; animação do
     sol em segundos reais (`BlendSpeed` 0.03); 16 ondas por dia; linha
