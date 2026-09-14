@@ -72,6 +72,8 @@ Custos e reembolsos:
   (chegadas nesse período não contam). Não zera nem iguala o placar —
   dá fôlego para reforçar. Se o placar seguir invertido, ele volta.
 - Só um por vez.
+- Enquanto ele está no board não há vitória: as ondas seguem saindo até
+  ele morrer (vitória, se a onda-alvo já foi limpa) ou chegar (derrota).
 
 ---
 
@@ -83,8 +85,15 @@ Custos e reembolsos:
   delas com cercas.
 - A cada onda, sorteia quantas e quais bocas ficam ativas. O total de
   creeps não muda — menos bocas = fluxo mais concentrado.
-- URNA posicionada pelo jogador numa zona restrita (X 40-47, Y 6-15).
-  Define a célula-objetivo. Fica travada quando a onda 1 começa.
+- BOCAS MÓVEIS: antes de cada onda cada boca tem 75% de chance de
+  deslizar 1–5 células pela própria borda (nunca para dentro, nunca
+  sobre célula ocupada, nunca colada noutra boca, sempre com rota até
+  a urna). Se o jogador construiu na frente da saída, a boca deixa de
+  ser saída e vai para a posição aberta mais próxima na borda.
+- URNA posicionada pelo jogador em qualquer célula livre e alcançável
+  (a zona X 40-47, Y 6-15 virou só orientação para o gerador de
+  obstáculos). Define a célula-objetivo. Fica travada quando a onda 1
+  começa.
 
 ---
 
@@ -130,9 +139,14 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 ## 8. Vitória, dificuldade e saves
 
-- VITÓRIA: sobreviver a X ondas, libertando presos. Easy solta 1,
-  Normal 2, Hard 3.
-- Vencer fecha a partida mas o endless continua disponível (leaderboard).
+- VITÓRIA: sobreviver a 100 ondas (`WavesToWin` por dificuldade),
+  libertando presos. Easy solta 1, Normal 2, Hard 3. Pensado para
+  cinco evoluções de torre/personagem e mais tipos de inimigo.
+- Vencer congela o board como a derrota e oferece seguir em endless:
+  as ondas continuam escalando até uma derrota; a vitória fica.
+- Play → tela de dificuldade (resumo do DA, marca de vencida, linha do
+  bônus) → partida. O progresso (dificuldades vencidas) persiste em
+  `BDProgress.sav`.
 - Dificuldades encadeadas: vencer Easy dá bônus inicial no Normal, e
   assim por diante. Começar direto no Hard, sem bônus, é quase
   impossível — de propósito.
@@ -140,18 +154,31 @@ arquibancada 180°) — só entra com indicador visual claro.
   escalada das ondas, número de obstáculos fixos.
 - SAVES como recurso limitado: Easy 3, Normal 2, Hard 1. O jogador
   escolhe QUANDO salvar — salvar cedo garante pouco, salvar tarde é
-  arriscado. Restaura o estado completo (níveis, votos, tabuleiro) no
-  começo da onda salva.
+  arriscado. Um ponto de restauração por jogo, sobrescrito a cada save;
+  só entre ondas; o contador salvo já vem descontado. Restaura o estado
+  completo (níveis, votos, tabuleiro, bocas, seed) no começo da onda
+  salva. Carrega-se do painel de derrota ou do "Continue" no menu.
+- Balanceamento: `BD.Balance.Report` compara a horda de cada onda com a
+  melhor defesa que o orçamento compra (nível de referência 5, 50% de
+  eficiência) e diz o growth que empata na onda de vitória. A vida dos
+  creeps segue `HealthScaleGrowth` exponencial (1.035) enquanto a curva
+  fica estacionada; recalibrar quando houver conteúdo real.
 
 ---
 
 ## 9. Ambientação
 
 - Ciclo dia/noite atrelado à onda (não ao tempo real, por causa do
-  acelerador). A luz conta o progresso: amanhecer no início, noite nas
-  ondas finais. Postes acendem ao entardecer.
+  acelerador): 16 ondas por dia, o alpha 0 é 06:00. A animação do sol
+  entre uma onda e outra corre em segundos reais — 2x/4x não a
+  aceleram. Fases por hora (ajustáveis nas settings): nascer do sol
+  05–08, dia 08–17, pôr do sol 17–19, fim de tarde 19–20:30, noite.
+  O HUD mostra "fase · hora" enquanto o sol se move e some 3 s depois.
+  Postes acendem ao entardecer.
 - Ônibus de caravana marcam as bocas ativas e escondem a borda do mapa.
-- Urna com som de votação a cada chegada.
+- Urna com som de votação a cada chegada, ao ar livre (falloff natural
+  a partir da urna, absorção do ar, sem oclusão), com intervalo mínimo
+  entre bipes para uma leva grande não sobrepor dezenas de toques.
 - Velocidade de jogo 1x / 2x / 4x, persistente entre ondas, via time
   dilation global.
 
@@ -161,8 +188,17 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 - Splash com a marca (Gurila Games) → loading → menu principal com
   fundo cinemático (cinecut futuro) → Play com fade → jogo.
-- Menu: Play, Options (gráficos / áudio / idioma), Quit.
+- Menu: Play, Continue (quando há save), Options (gráficos / áudio /
+  controles / idioma), Quit.
 - Configurações persistidas em SaveGame.
+- Câmera da partida: começa na visão geral e o jogador a move — WASD
+  desliza o ponto olhado dentro do tabuleiro; roda = altura entre 30 m
+  e a visão geral; Q/E ou botão do meio giram a vista, livre no chão e
+  travada de volta ao subir (a borda do mundo nunca aparece de cima);
+  Home reseta. A/D invertíveis em Opções. R gira a peça na mão.
+- Paleta de construção no HUD (urna + peças, com o que resta de cada
+  uma), teclas 1–9 e U. Painéis com cantos arredondados; nomes de
+  peças pela string table.
 - HUD estiloso com ícones e animação — construído em camadas:
   funcional primeiro, arte depois, animação por último.
 
@@ -190,6 +226,35 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
+
+- **2026-09-14 (noite) — ainda sem push** (desde fa2c178):
+  - Relógio do dia (seção 9): `DawnHour` e faixas de fase nas settings
+    do ciclo, `EBDDayPhase`, hora/fase/texto no componente; animação do
+    sol em segundos reais (`BlendSpeed` 0.03); 16 ondas por dia; linha
+    "fase · hora" no HUD enquanto o sol anda + 3 s.
+  - Bocas com saída bloqueada (seção 5): antes do sorteio, boca com
+    peça ou cerca à frente da saída vai para a posição aberta mais
+    próxima na borda (`IsExitOpen`, `TryShiftSpawnPoint`); aviso no log
+    se não houver.
+  - Vitória na onda 100 como default de classe (o Hard com defesa aberta
+    não perdia na 50).
+  - Som da urna (seção 9): `S_UrnaVoto` importado de
+    `Content/audio/Urna Eletrônica.wav`; toca em `AddVotesRed` pela
+    `UBDObjectiveSubsystem::PlayVoteSound`, no máximo um bipe a cada
+    0,4 s reais, atenuação ao ar livre configurada em código (esfera
+    20 m + falloff 300 m, natural, LPF com a distância), pela classe de
+    efeitos. Verificado: 30 chegadas em leva → 17 bipes espaçados.
+  - HUD responsivo (seção 10): curva de DPI declarada no
+    `DefaultEngine.ini` (1.0 em 1080p, 1.333 em 1440p, 2.0 em 4K, lado
+    menor); paleta virou barra de itens na base (centro), cada item com
+    ícone em Scale Box dimensionado por fração da tela
+    (`ItemIconHeightFraction`), painéis laterais e barra do candidato
+    por fração da largura (`SidePanelWidthFraction`,
+    `CandidateBarWidthFraction`); `Icon` (512 px+) no DataAsset da peça,
+    slot escondido até a arte chegar. `BD.UI.Shot` para capturar o HUD;
+    testado em 1080p, 1440p e 4K com o mesmo layout.
+  - Seções 4, 5, 8, 9 e 10 deste documento atualizadas com as regras
+    decididas hoje.
 
 - **2026-09-14 (tarde) — 297219b** (desde e9967ba):
   - Primeiro teste real do jogador. Faltava o essencial: **paleta de

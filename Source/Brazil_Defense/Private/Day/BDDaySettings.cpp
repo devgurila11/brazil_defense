@@ -14,3 +14,8 @@ const UBDDaySettings& UBDDaySettings::Get()
 	check(Settings);
 	return *Settings;
 }
+
+float UBDDaySettings::HourForAlpha(const float Alpha) const
+{
+	return FMath::Fmod(DawnHour + FMath::Clamp(Alpha, 0.0f, 1.0f) * 24.0f, 24.0f);
+}

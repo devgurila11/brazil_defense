@@ -83,7 +83,7 @@ public:
 
 	/** Waves the player has to clear to win. The match goes on past it as endless, if the player asks. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Victory", meta = (ClampMin = "1", UIMin = "1"))
-	int32 WavesToWin = 50;
+	int32 WavesToWin = 100;
 
 	/** Prisoners a win on this difficulty sets free: the reward the ending is told with. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Victory", meta = (ClampMin = "0", UIMin = "0"))

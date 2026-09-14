@@ -3,6 +3,8 @@
 #include "Day/BDDayCycleComponent.h"
 
 #include "BDLog.h"
+#include "Misc/App.h"
+#include "Kismet/GameplayStatics.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Curves/CurveFloat.h"
 #include "Curves/CurveLinearColor.h"
@@ -112,7 +114,37 @@ void UBDDayCycleComponent::SetWave(const int32 Wave)
 	}
 
 	TargetAlpha = ComputeAlphaForWave(Wave);
-	UE_LOG(LogBDMatch, Log, TEXT("Day cycle: wave %d is %.0f%% through the day (%d waves per day)."), Wave, TargetAlpha * 100.0f, WavesPerCycle);
+
+	const float Hour = UBDDaySettings::Get().HourForAlpha(TargetAlpha);
+	UE_LOG(LogBDMatch, Log, TEXT("Day cycle: wave %d heads for %02d:%02d, %s (%d waves per day)."),
+		Wave, FMath::FloorToInt(Hour), FMath::FloorToInt(FMath::Frac(Hour) * 60.0f),
+		*StaticEnum<EBDDayPhase>()->GetNameStringByValue(static_cast<int64>(PhaseForHour(Hour))), WavesPerCycle);
+}
+
+float UBDDayCycleComponent::GetHour() const
+{
+	return UBDDaySettings::Get().HourForAlpha(CycleAlpha);
+}
+
+EBDDayPhase UBDDayCycleComponent::PhaseForHour(const float Hour)
+{
+	const UBDDaySettings& Settings = UBDDaySettings::Get();
+	if (Hour >= Settings.NightHour || Hour < Settings.SunriseHour) { return EBDDayPhase::Night; }
+	if (Hour >= Settings.DuskHour) { return EBDDayPhase::Dusk; }
+	if (Hour >= Settings.SunsetHour) { return EBDDayPhase::Sunset; }
+	if (Hour >= Settings.DayHour) { return EBDDayPhase::Day; }
+	return EBDDayPhase::Sunrise;
+}
+
+EBDDayPhase UBDDayCycleComponent::GetPhase() const
+{
+	return PhaseForHour(GetHour());
+}
+
+FText UBDDayCycleComponent::GetClockText() const
+{
+	const float Hour = GetHour();
+	return FText::FromString(FString::Printf(TEXT("%02d:%02d"), FMath::FloorToInt(Hour), FMath::FloorToInt(FMath::Frac(Hour) * 60.0f)));
 }
 
 void UBDDayCycleComponent::SetAlphaImmediate(const float Alpha)
@@ -143,10 +175,17 @@ void UBDDayCycleComponent::TickComponent(const float DeltaTime, const ELevelTick
 		TargetAlpha = ComputeAlphaForWave(LastWave);
 	}
 
+	// Real seconds: the sun sweeps at the same pace at 1x and 4x, and keeps moving over a
+	// frozen board.
+	const float Dilation = UGameplayStatics::GetGlobalTimeDilation(this);
+	const float RealDelta = Dilation > KINDA_SMALL_NUMBER ? DeltaTime / Dilation : static_cast<float>(FApp::GetDeltaTime());
+
 	if (FMath::IsNearlyEqual(CycleAlpha, TargetAlpha))
 	{
+		SecondsSinceBlendEnded += RealDelta;
 		return;
 	}
+	SecondsSinceBlendEnded = 0.0f;
 
 	// The day only ever runs forwards, so the blend goes the long way round rather than
 	// rewinding through the afternoon when a new cycle starts at dawn.
@@ -156,7 +195,7 @@ void UBDDayCycleComponent::TickComponent(const float DeltaTime, const ELevelTick
 		Remaining += 1.0f;
 	}
 
-	const float Step = BlendSpeed * DeltaTime;
+	const float Step = BlendSpeed * RealDelta;
 	CycleAlpha = Step >= Remaining ? TargetAlpha : FMath::Frac(CycleAlpha + Step);
 
 	ApplyCycle();

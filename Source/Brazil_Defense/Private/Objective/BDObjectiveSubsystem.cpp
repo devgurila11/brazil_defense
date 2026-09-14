@@ -12,6 +12,11 @@
 #include "Objective/BDObjectiveSettings.h"
 #include "Path/BDPathfinder.h"
 #include "Placement/BDPlacementSettings.h"
+#include "Components/AudioComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
+#include "Sound/SoundClass.h"
+#include "UI/BDUISettings.h"
 
 void UBDObjectiveSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -206,6 +211,67 @@ void UBDObjectiveSubsystem::ClearObjective()
 
 	bPlaced = false;
 	UE_LOG(LogBDGrid, Log, TEXT("Objective cleared from %s."), *GoalCell.ToString());
+}
+
+void UBDObjectiveSubsystem::PlayVoteSound()
+{
+	const UBDObjectiveSettings& Settings = UBDObjectiveSettings::Get();
+	UWorld* World = GetWorld();
+	if (World == nullptr || Settings.VoteSound.IsNull())
+	{
+		return;
+	}
+
+	// Real seconds, not game seconds: at 4x a wave arrives four times as fast and the
+	// beep would stack just the same.
+	const double Now = FPlatformTime::Seconds();
+	if (Now - LastVoteSoundTime < Settings.VoteSoundMinInterval)
+	{
+		return;
+	}
+
+	USoundBase* Sound = Settings.VoteSound.LoadSynchronous();
+	const ABDObjective* Urn = GetObjective();
+	if (Sound == nullptr || Urn == nullptr)
+	{
+		return;
+	}
+	LastVoteSoundTime = Now;
+
+	// Outdoors: a natural falloff from the urn over the board, air taking the highs with
+	// distance, nothing occluding. Set here so the sound asset needs no attenuation of its own.
+	FSoundAttenuationSettings Attenuation;
+	Attenuation.bAttenuate = true;
+	Attenuation.bSpatialize = true;
+	Attenuation.AttenuationShape = EAttenuationShape::Sphere;
+	Attenuation.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+	Attenuation.dBAttenuationAtMax = -60.0f;
+	Attenuation.AttenuationShapeExtents = FVector(Settings.VoteSoundInnerRadius, 0.0f, 0.0f);
+	Attenuation.FalloffDistance = Settings.VoteSoundFalloffDistance;
+	Attenuation.bEnableListenerFocus = false;
+	Attenuation.bAttenuateWithLPF = true;
+	Attenuation.bEnableLogFrequencyScaling = true;
+	Attenuation.LPFRadiusMin = Settings.VoteSoundInnerRadius;
+	Attenuation.LPFRadiusMax = Settings.VoteSoundInnerRadius + Settings.VoteSoundFalloffDistance;
+	Attenuation.LPFFrequencyAtMax = 2500.0f;
+	Attenuation.bEnableOcclusion = false;
+
+	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAtLocation(World, Sound, Urn->GetActorLocation(), FRotator::ZeroRotator,
+		Settings.VoteSoundVolume, 1.0f, 0.0f, nullptr, nullptr, /*bAutoDestroy*/ true);
+	if (Audio == nullptr)
+	{
+		return;
+	}
+
+	// Through the effects class, so the options slider and mute apply to it.
+	if (USoundClass* Effects = UBDUISettings::Get().EffectsSoundClass.LoadSynchronous())
+	{
+		Audio->SoundClassOverride = Effects;
+	}
+	Audio->bOverrideAttenuation = true;
+	Audio->AttenuationOverrides = Attenuation;
+	Audio->Play();
+	UE_LOG(LogBDGrid, Verbose, TEXT("Urn beep at %s."), *Urn->GetActorLocation().ToCompactString());
 }
 
 void UBDObjectiveSubsystem::DrawZone() const

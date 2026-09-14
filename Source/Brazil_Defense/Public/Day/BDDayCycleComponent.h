@@ -23,6 +23,17 @@ class UCurveLinearColor;
  * Everything the cycle does is read off curves, so the look is authored in the curve
  * editor rather than compiled in. BD.Day.SetAlpha sweeps the cycle by hand for that.
  */
+/** The part of the day the sun is in, for the HUD. */
+UENUM(BlueprintType)
+enum class EBDDayPhase : uint8
+{
+	Sunrise,
+	Day,
+	Sunset,
+	Dusk,
+	Night
+};
+
 UCLASS(ClassGroup = (BrazilDefense), meta = (BlueprintSpawnableComponent, DisplayName = "BD Day Cycle"))
 class BRAZIL_DEFENSE_API UBDDayCycleComponent : public UActorComponent
 {
@@ -36,9 +47,31 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	//~ End UActorComponent interface
 
+	/** The phase an hour of the day falls in. */
+	static EBDDayPhase PhaseForHour(float Hour);
+
 	/** Where in the day the cycle currently stands, 0 to 1. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Day")
 	float GetCycleAlpha() const { return CycleAlpha; }
+
+	/** Whether the sun is on its way to the position of the current wave. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Day")
+	bool IsBlending() const { return !FMath::IsNearlyEqual(CycleAlpha, TargetAlpha); }
+
+	/** Real seconds since the sun last stopped moving; large while it moves. */
+	float GetSecondsSinceBlendEnded() const { return SecondsSinceBlendEnded; }
+
+	/** Hour of the day, 0 to 24, where the cycle stands. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Day")
+	float GetHour() const;
+
+	/** The phase the hour falls in, by the day settings. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Day")
+	EBDDayPhase GetPhase() const;
+
+	/** "HH:MM" for the current hour. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Day")
+	FText GetClockText() const;
 
 	/** Aims the cycle at the position a wave implies. Blended, not snapped. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Day")
@@ -54,11 +87,11 @@ public:
 
 	/** Waves it takes to come back round to dawn. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cycle", meta = (ClampMin = "1", UIMin = "1"))
-	int32 WavesPerCycle = 10;
+	int32 WavesPerCycle = 16;
 
-	/** How fast the cycle slides towards the position of a new wave, in alpha per second. */
+	/** How fast the cycle slides towards the position of a new wave, in alpha per real second: the game speed does not hurry the sun. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cycle", meta = (ClampMin = "0.001", UIMin = "0.001"))
-	float BlendSpeed = 0.15f;
+	float BlendSpeed = 0.03f;
 
 	//~ Curves ----------------------------------------------------------------
 
@@ -112,6 +145,9 @@ private:
 	/** Where the cycle is now, and where the current wave says it should end up. */
 	float CycleAlpha = 0.0f;
 	float TargetAlpha = 0.0f;
+
+	/** See GetSecondsSinceBlendEnded. */
+	float SecondsSinceBlendEnded = 1.0e6f;
 
 	/** Last wave handed in, kept so BD.Day.Freeze 0 resumes at the right sky. */
 	int32 LastWave = 0;

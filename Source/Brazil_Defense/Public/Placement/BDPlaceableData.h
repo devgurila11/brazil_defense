@@ -39,6 +39,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable")
 	FText DisplayName;
 
+	/** Picture on the item bar. 512 px or more: the HUD scales it down to a fraction of the screen. Optional. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable")
+	TSoftObjectPtr<UTexture2D> Icon;
+
 	/** Actor spawned once the piece is placed. Loaded on demand, not on startup. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable")
 	TSoftClassPtr<AActor> ActorClass;

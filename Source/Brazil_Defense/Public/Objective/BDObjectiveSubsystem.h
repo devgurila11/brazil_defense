@@ -68,6 +68,9 @@ public:
 	/** Debug: takes the urn off the board. The Goal cell goes back to Free; the actor stays where it is, unplaced. */
 	void ClearObjective();
 
+	/** The urn's beep for a red vote, rate limited: see UBDObjectiveSettings. */
+	void PlayVoteSound();
+
 	/** Whether the urn has been placed this match. Nothing else may be placed before it. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Objective")
 	bool IsPlaced() const { return bPlaced; }
@@ -93,6 +96,9 @@ private:
 
 	/** Weak: the level owns it. Re-found when it goes stale. */
 	mutable TWeakObjectPtr<ABDObjective> Objective;
+
+	/** Real time the beep last went off, for the rate limit. */
+	double LastVoteSoundTime = -1.0e9;
 
 	FBDCellCoord GoalCell;
 	bool bPlaced = false;

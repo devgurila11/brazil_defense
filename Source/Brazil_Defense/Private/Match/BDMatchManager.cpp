@@ -672,6 +672,12 @@ void ABDMatchManager::AddVotesRed(const int32 Votes)
 	VotesRed += Votes;
 	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
 
+	// The urn registers the vote out loud.
+	if (UBDObjectiveSubsystem* Objectives = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDObjectiveSubsystem>() : nullptr)
+	{
+		Objectives->PlayVoteSound();
+	}
+
 	UE_LOG(LogBDMatch, Verbose, TEXT("Red +%d votes, now %d blue / %d red."), Votes, VotesBlue, VotesRed);
 }
 

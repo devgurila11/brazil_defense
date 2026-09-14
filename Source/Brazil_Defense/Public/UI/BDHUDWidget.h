@@ -16,7 +16,9 @@ class UBDPlacementComponent;
 class UBDWaveSubsystem;
 class UBorder;
 class UButton;
+class UImage;
 class UProgressBar;
+class USizeBox;
 class UTextBlock;
 class UVerticalBox;
 
@@ -64,6 +66,8 @@ private:
 	void UpdateDefenderPanel();
 	void UpdatePlacementPanel();
 	void UpdateCandidate(float RealDeltaSeconds);
+	/** Time and phase of the day under the top block, while the sun moves and a moment after. */
+	void UpdateClock();
 	/** The centre box once the match is over: the result, and what the player can do next. */
 	void UpdateEndPanel();
 
@@ -112,8 +116,14 @@ private:
 	/** The save button: its count, and whether a save may be taken now. */
 	void UpdateSaveButton();
 
-	/** The build panel: one button per piece of the palette, with what is left of it, and the urn. */
+	/** The item bar: one button per piece of the palette, with what is left of it, and the urn. */
 	void UpdateBuildPanel();
+
+	/** Sizes that follow the viewport: icon boxes, side panel width, candidate bar. Runs when the viewport changes. */
+	void ApplyResponsiveSizes();
+
+	/** One item of the bar: a picture in a scale box over the words. */
+	UButton* MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutCount);
 
 	UFUNCTION()
 	void HandleBuildUrn();
@@ -160,6 +170,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> MouthsLine;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ClockLine;
 
 	//~ Candidate
 	UPROPERTY(Transient)
@@ -230,7 +243,7 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UButton> SaveButton;
 
-	//~ Build panel
+	//~ Item bar, along the bottom
 	static constexpr int32 MaxPaletteButtons = 9;
 
 	UPROPERTY(Transient)
@@ -246,10 +259,38 @@ private:
 	TObjectPtr<UTextBlock> UrnLabel;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> UrnCount;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> UrnIcon;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> UrnIconBox;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UButton> BuildButtons[MaxPaletteButtons];
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> BuildLabels[MaxPaletteButtons];
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> BuildCounts[MaxPaletteButtons];
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> BuildIcons[MaxPaletteButtons];
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> BuildIconBoxes[MaxPaletteButtons];
+
+	/** The side panels' width box and the candidate bar's, resized with the viewport. */
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> SidePanelBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> CandidateBarBox;
+
+	/** Viewport size the responsive sizes were last applied for. */
+	FVector2D LastViewportSize = FVector2D::ZeroVector;
 
 	/** The palette entries behind the buttons, loaded once. */
 	UPROPERTY(Transient)

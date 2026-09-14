@@ -8,6 +8,7 @@
 #include "BDObjectiveSettings.generated.h"
 
 class UBDPlaceableData;
+class USoundBase;
 
 /**
  * The zone of the board the urn may stand in, as an inclusive rectangle of cells, and
@@ -64,6 +65,30 @@ public:
 
 	UPROPERTY(config, EditAnywhere, Category = "Drawing", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float ZoneBorderThickness = 8.0f;
+
+	//~ The vote sound ------------------------------------------------------------
+	// The urn beeps at every arrival, from where it stands, out in the open: a natural
+	// falloff over the board, air absorption, no walls. A horde arriving together does not
+	// stack the beep: one play per VoteSoundMinInterval, the rest are dropped.
+
+	/** Played at the urn each time the red count goes up. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
+	TSoftObjectPtr<USoundBase> VoteSound;
+
+	/** Real seconds between two beeps, whatever arrives in between. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float VoteSoundMinInterval = 0.4f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.0", ClampMax = "4.0", UIMin = "0.0", UIMax = "4.0"))
+	float VoteSoundVolume = 1.0f;
+
+	/** Up to this far the beep is at full volume. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float VoteSoundInnerRadius = 2000.0f;
+
+	/** Past the inner radius the beep fades to nothing over this distance. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "100.0", UIMin = "100.0", ForceUnits = "cm"))
+	float VoteSoundFalloffDistance = 30000.0f;
 
 	/** Whether a cell lies inside the zone. Says nothing about the grid: an out of grid cell can be "in the zone". */
 	bool IsInZone(const FBDCellCoord& Coord) const;

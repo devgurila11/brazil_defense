@@ -4,12 +4,17 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Candidate/BDCandidateSubsystem.h"
+#include "Day/BDDayCycleComponent.h"
+#include "Day/BDDaySettings.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/Image.h"
+#include "Components/ScaleBox.h"
+#include "Engine/Texture2D.h"
 #include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
@@ -41,6 +46,9 @@ namespace BDHUDPrivate
 	static constexpr float PanelWidth = 320.0f;
 	static constexpr float CandidateBarWidth = 480.0f;
 	static constexpr float CandidateBarHeight = 18.0f;
+	/** Slate units for an item icon before the viewport fraction takes over. */
+	static constexpr float ItemIconSize = 72.0f;
+	static constexpr float ItemGap = 6.0f;
 	static const float Speeds[] = { 1.0f, 2.0f, 4.0f };
 
 
@@ -126,6 +134,11 @@ void UBDHUDWidget::BuildTree()
 	MouthsLine->SetJustification(ETextJustify::Center);
 	Top->AddChildToVerticalBox(MouthsLine);
 
+	ClockLine = MakeText(SmallFontSize, ColorHighlight);
+	ClockLine->SetJustification(ETextJustify::Center);
+	UVerticalBoxSlot* ClockSlot = Top->AddChildToVerticalBox(ClockLine);
+	ClockSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
+
 	//~ Candidate, under the top block: bar, line, notice, frozen count.
 	UVerticalBox* CandidateColumn = MakeColumn();
 
@@ -136,11 +149,11 @@ void UBDHUDWidget::BuildTree()
 	CandidateInner->AddChildToVerticalBox(CandidateLine);
 	CandidateBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
 	CandidateBar->SetFillColorAndOpacity(ColorRed);
-	USizeBox* BarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	BarBox->SetWidthOverride(CandidateBarWidth);
-	BarBox->SetHeightOverride(CandidateBarHeight);
-	BarBox->AddChild(CandidateBar);
-	UVerticalBoxSlot* BarSlot = CandidateInner->AddChildToVerticalBox(BarBox);
+	CandidateBarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	CandidateBarBox->SetWidthOverride(CandidateBarWidth);
+	CandidateBarBox->SetHeightOverride(CandidateBarHeight);
+	CandidateBarBox->AddChild(CandidateBar);
+	UVerticalBoxSlot* BarSlot = CandidateInner->AddChildToVerticalBox(CandidateBarBox);
 	BarSlot->SetHorizontalAlignment(HAlign_Center);
 	CandidateBox->AddChild(CandidateInner);
 	UVerticalBoxSlot* CandidateBoxSlot = CandidateColumn->AddChildToVerticalBox(CandidateBox);
@@ -215,12 +228,12 @@ void UBDHUDWidget::BuildTree()
 	UVerticalBoxSlot* PlacementBoxSlot = Right->AddChildToVerticalBox(PlacementBox);
 	PlacementBoxSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
 
-	USizeBox* RightBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	RightBox->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-	RightBox->SetWidthOverride(PanelWidth);
-	RightBox->AddChild(Right);
+	SidePanelBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	SidePanelBox->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	SidePanelBox->SetWidthOverride(PanelWidth);
+	SidePanelBox->AddChild(Right);
 
-	UCanvasPanelSlot* RightSlot = Canvas->AddChildToCanvas(RightBox);
+	UCanvasPanelSlot* RightSlot = Canvas->AddChildToCanvas(SidePanelBox);
 	RightSlot->SetAnchors(FAnchors(1.0f, 0.0f));
 	RightSlot->SetAlignment(FVector2D(1.0f, 0.0f));
 	RightSlot->SetAutoSize(true);
@@ -260,17 +273,36 @@ void UBDHUDWidget::BuildTree()
 	EndSlot->SetAutoSize(true);
 	EndSlot->SetPosition(FVector2D::ZeroVector);
 
-	//~ Left: what can be built. The urn first, then the palette in its order; the number
-	// keys follow the same order.
-	BuildBox = MakeBox(ColorPanel, 12.0f);
+	//~ Bottom center: the item bar. The urn first, then the palette in its order; the
+	// number keys follow the same order. Each item is a picture in a scale box over its
+	// words, so a 512 px icon comes down to a share of the screen, never a pixel size.
+	BuildBox = MakeBox(ColorPanel, 8.0f);
 	UVerticalBox* BuildColumn = MakeColumn();
 	BuildTitle = MakeText(SmallFontSize, ColorMuted);
+	BuildTitle->SetJustification(ETextJustify::Center);
 	BuildColumn->AddChildToVerticalBox(BuildTitle);
-	UrnButton = MakeButton(UrnLabel, SmallFontSize);
+	UHorizontalBox* ItemRow = MakeRow();
+	UVerticalBoxSlot* ItemRowSlot = BuildColumn->AddChildToVerticalBox(ItemRow);
+	ItemRowSlot->SetHorizontalAlignment(HAlign_Center);
+	ItemRowSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
+
+	UrnButton = MakeItem(UrnIcon, UrnIconBox, UrnLabel, UrnCount);
 	UrnButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuildUrn);
-	UVerticalBoxSlot* UrnSlot = BuildColumn->AddChildToVerticalBox(UrnButton);
-	UrnSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
-	UrnSlot->SetHorizontalAlignment(HAlign_Fill);
+	UHorizontalBoxSlot* UrnSlot = ItemRow->AddChildToHorizontalBox(UrnButton);
+	UrnSlot->SetPadding(FMargin(ItemGap * 0.5f, 0.0f));
+	UrnSlot->SetVerticalAlignment(VAlign_Fill);
+	if (const UBDPlaceableData* Urn = UBDObjectiveSettings::Get().ObjectivePlaceable.LoadSynchronous())
+	{
+		if (UTexture2D* Texture = Urn->Icon.LoadSynchronous())
+		{
+			UrnIcon->SetBrushFromTexture(Texture, /*bMatchSize*/ false);
+		}
+		else
+		{
+			UrnIconBox->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
 	for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
 	{
 		if (PaletteData.Num() >= MaxPaletteButtons)
@@ -284,10 +316,19 @@ void UBDHUDWidget::BuildTree()
 	}
 	for (int32 Index = 0; Index < PaletteData.Num(); ++Index)
 	{
-		BuildButtons[Index] = MakeButton(BuildLabels[Index], SmallFontSize);
-		UVerticalBoxSlot* BuildSlot = BuildColumn->AddChildToVerticalBox(BuildButtons[Index]);
-		BuildSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
-		BuildSlot->SetHorizontalAlignment(HAlign_Fill);
+		BuildButtons[Index] = MakeItem(BuildIcons[Index], BuildIconBoxes[Index], BuildLabels[Index], BuildCounts[Index]);
+		UHorizontalBoxSlot* BuildSlot = ItemRow->AddChildToHorizontalBox(BuildButtons[Index]);
+		BuildSlot->SetPadding(FMargin(ItemGap * 0.5f, 0.0f));
+		BuildSlot->SetVerticalAlignment(VAlign_Fill);
+		if (UTexture2D* Texture = PaletteData[Index]->Icon.LoadSynchronous())
+		{
+			BuildIcons[Index]->SetBrushFromTexture(Texture, /*bMatchSize*/ false);
+		}
+		else
+		{
+			// No picture yet: the words stand alone until the art lands.
+			BuildIconBoxes[Index]->SetVisibility(ESlateVisibility::Collapsed);
+		}
 	}
 	if (PaletteData.Num() > 0) { BuildButtons[0]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild0); }
 	if (PaletteData.Num() > 1) { BuildButtons[1]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild1); }
@@ -300,14 +341,11 @@ void UBDHUDWidget::BuildTree()
 	if (PaletteData.Num() > 8) { BuildButtons[8]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleBuild8); }
 	BuildBox->AddChild(BuildColumn);
 
-	USizeBox* BuildSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	BuildSizeBox->SetWidthOverride(PanelWidth * 0.75f);
-	BuildSizeBox->AddChild(BuildBox);
-	UCanvasPanelSlot* BuildSlotOnCanvas = Canvas->AddChildToCanvas(BuildSizeBox);
-	BuildSlotOnCanvas->SetAnchors(FAnchors(0.0f, 0.0f));
-	BuildSlotOnCanvas->SetAlignment(FVector2D(0.0f, 0.0f));
+	UCanvasPanelSlot* BuildSlotOnCanvas = Canvas->AddChildToCanvas(BuildBox);
+	BuildSlotOnCanvas->SetAnchors(FAnchors(0.5f, 1.0f));
+	BuildSlotOnCanvas->SetAlignment(FVector2D(0.5f, 1.0f));
 	BuildSlotOnCanvas->SetAutoSize(true);
-	BuildSlotOnCanvas->SetPosition(FVector2D(Margin, Margin + 48.0f));
+	BuildSlotOnCanvas->SetPosition(FVector2D(0.0f, -Margin));
 
 	//~ Top left: the game menu and the save, side by side.
 	UHorizontalBox* CornerRow = MakeRow();
@@ -334,6 +372,66 @@ void UBDHUDWidget::BuildTree()
 	DefenderBox->SetVisibility(ESlateVisibility::Collapsed);
 	PlacementBox->SetVisibility(ESlateVisibility::Collapsed);
 	EndBox->SetVisibility(ESlateVisibility::Collapsed);
+	ClockLine->SetVisibility(ESlateVisibility::Collapsed);
+}
+
+UButton* UBDHUDWidget::MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutCount)
+{
+	using namespace BDHUDPrivate;
+
+	// Same face as every other button, with a column inside instead of one label.
+	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	Button->SetBackgroundColor(ColorButton);
+	UVerticalBox* Column = MakeColumn();
+
+	// The picture: a size box says how much of the screen, the scale box keeps the aspect.
+	OutIconBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	OutIconBox->SetWidthOverride(ItemIconSize);
+	OutIconBox->SetHeightOverride(ItemIconSize);
+	UScaleBox* Scale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
+	Scale->SetStretch(EStretch::ScaleToFit);
+	OutIcon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	OutIcon->SetVisibility(ESlateVisibility::HitTestInvisible);
+	Scale->AddChild(OutIcon);
+	OutIconBox->AddChild(Scale);
+	UVerticalBoxSlot* IconSlot = Column->AddChildToVerticalBox(OutIconBox);
+	IconSlot->SetHorizontalAlignment(HAlign_Center);
+
+	OutLabel = MakeText(SmallFontSize, ColorPanelDark);
+	OutLabel->SetJustification(ETextJustify::Center);
+	Column->AddChildToVerticalBox(OutLabel);
+	OutCount = MakeText(SmallFontSize, ColorPanelDark);
+	OutCount->SetJustification(ETextJustify::Center);
+	Column->AddChildToVerticalBox(OutCount);
+
+	Button->AddChild(Column);
+	return Button;
+}
+
+void UBDHUDWidget::ApplyResponsiveSizes()
+{
+	using namespace BDHUDPrivate;
+
+	// Local size is already past the DPI curve: a fraction of it is a fraction of the
+	// screen at every resolution the curve covers.
+	const FVector2D Size = GetCachedGeometry().GetLocalSize();
+	if (Size.X <= 1.0f || Size.Y <= 1.0f || Size.Equals(LastViewportSize, 0.5f))
+	{
+		return;
+	}
+	LastViewportSize = Size;
+
+	const UBDUISettings& Settings = UBDUISettings::Get();
+	const float Icon = FMath::Max(24.0f, Size.Y * Settings.ItemIconHeightFraction);
+	UrnIconBox->SetWidthOverride(Icon);
+	UrnIconBox->SetHeightOverride(Icon);
+	for (int32 Index = 0; Index < PaletteData.Num(); ++Index)
+	{
+		BuildIconBoxes[Index]->SetWidthOverride(Icon);
+		BuildIconBoxes[Index]->SetHeightOverride(Icon);
+	}
+	SidePanelBox->SetWidthOverride(FMath::Max(200.0f, Size.X * Settings.SidePanelWidthFraction));
+	CandidateBarBox->SetWidthOverride(FMath::Max(160.0f, Size.X * Settings.CandidateBarWidthFraction));
 }
 
 void UBDHUDWidget::RefreshTexts()
@@ -434,6 +532,28 @@ void UBDHUDWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTi
 	UpdatePlacementPanel();
 	UpdateCandidate(static_cast<float>(FApp::GetDeltaTime()));
 	UpdateBuildPanel();
+	UpdateClock();
+	ApplyResponsiveSizes();
+}
+
+void UBDHUDWidget::UpdateClock()
+{
+	static const TCHAR* const PhaseKeys[] = { TEXT("Day.Sunrise"), TEXT("Day.Day"), TEXT("Day.Sunset"), TEXT("Day.Dusk"), TEXT("Day.Night") };
+
+	const ABDMatchManager* Match = GetMatch();
+	const UBDDayCycleComponent* Day = Match != nullptr ? Match->GetDayCycle() : nullptr;
+	const bool bShow = Day != nullptr && (Day->IsBlending() || Day->GetSecondsSinceBlendEnded() < UBDDaySettings::Get().ClockNoticeSeconds);
+	if (!bShow)
+	{
+		ClockLine->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	FFormatNamedArguments Args;
+	Args.Add(TEXT("Phase"), Loc(PhaseKeys[FMath::Clamp(static_cast<int32>(Day->GetPhase()), 0, 4)]));
+	Args.Add(TEXT("Time"), Day->GetClockText());
+	ClockLine->SetText(BDLoc::Format(TEXT("HUD.Clock"), Args));
+	ClockLine->SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 
 //~ Always visible -------------------------------------------------------------------
@@ -847,8 +967,16 @@ void UBDHUDWidget::UpdateBuildPanel()
 	UrnButton->SetVisibility(bUrnLeft ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	if (bUrnLeft)
 	{
-		UrnLabel->SetText(Urn != nullptr ? BDLoc::PieceName(Urn) : Loc(TEXT("HUD.Build.Urn")));
-		UrnLabel->SetColorAndOpacity(FSlateColor(Held != nullptr && Held == Urn ? ColorHighlight : FLinearColor::White));
+		FFormatNamedArguments UrnArgs;
+		UrnArgs.Add(TEXT("Key"), FText::FromString(TEXT("U")));
+		UrnArgs.Add(TEXT("Name"), Urn != nullptr ? BDLoc::PieceName(Urn) : Loc(TEXT("HUD.Build.Urn")));
+		UrnLabel->SetText(BDLoc::Format(TEXT("HUD.Build.Entry"), UrnArgs));
+		// The item in hand is the lit one, like the current speed.
+		const bool bUrnHeld = Held != nullptr && Held == Urn;
+		UrnButton->SetBackgroundColor(bUrnHeld ? ColorButton : ColorButtonIdle);
+		UrnLabel->SetColorAndOpacity(FSlateColor(bUrnHeld ? ColorPanelDark : ColorText));
+		UrnCount->SetColorAndOpacity(FSlateColor(bUrnHeld ? ColorPanelDark : ColorMuted));
+		UrnCount->SetText(FText::AsNumber(Match != nullptr ? Match->GetObjectivesRemaining() : 0));
 		UrnButton->SetIsEnabled(!bOver);
 	}
 
@@ -857,11 +985,14 @@ void UBDHUDWidget::UpdateBuildPanel()
 		const UBDPlaceableData* Data = PaletteData[Index];
 		const EBDPieceKind Kind = Data->GetPieceKind();
 		FFormatNamedArguments Args;
-		Args.Add(TEXT("Key"), Index + 1);
+		Args.Add(TEXT("Key"), FText::AsNumber(Index + 1));
 		Args.Add(TEXT("Name"), BDLoc::PieceName(Data));
-		Args.Add(TEXT("Count"), Match != nullptr ? Match->GetBudgetRemaining(Kind) : 0);
 		BuildLabels[Index]->SetText(BDLoc::Format(TEXT("HUD.Build.Entry"), Args));
-		BuildLabels[Index]->SetColorAndOpacity(FSlateColor(Held == Data ? ColorHighlight : FLinearColor::White));
+		const bool bHeld = Held == Data;
+		BuildButtons[Index]->SetBackgroundColor(bHeld ? ColorButton : ColorButtonIdle);
+		BuildLabels[Index]->SetColorAndOpacity(FSlateColor(bHeld ? ColorPanelDark : ColorText));
+		BuildCounts[Index]->SetColorAndOpacity(FSlateColor(bHeld ? ColorPanelDark : ColorMuted));
+		BuildCounts[Index]->SetText(FText::AsNumber(Match != nullptr ? Match->GetBudgetRemaining(Kind) : 0));
 		// Placeable now, by the match's rules for the kind: the urn first, dividers only before wave 1.
 		BuildButtons[Index]->SetIsEnabled(!bOver && Match != nullptr && Match->CanPlace(Kind));
 	}

@@ -7,6 +7,8 @@
 #include "UI/BDLocalization.h"
 #include "UI/BDSettingsSubsystem.h"
 #include "UI/BDUISubsystem.h"
+#include "TimerManager.h"
+#include "UnrealClient.h"
 
 namespace BDUIDebug
 {
@@ -86,6 +88,22 @@ namespace BDUIDebug
 		}
 	}
 
+	/** A screenshot after a delay, so a headless launch can capture the HUD once it is up. */
+	static void ExecShot(const TArray<FString>& Args, UWorld* World)
+	{
+		if (World == nullptr)
+		{
+			return;
+		}
+		const float Seconds = Args.Num() >= 1 ? FCString::Atof(*Args[0]) : 2.0f;
+		const FString Name = Args.Num() >= 2 ? Args[1] : TEXT("BDHUD");
+		FTimerHandle Handle;
+		World->GetTimerManager().SetTimer(Handle, [Name]()
+		{
+			FScreenshotRequest::RequestScreenshot(Name, /*bShowUI*/ true, /*bAddFilenameSuffix*/ true);
+		}, FMath::Max(0.01f, Seconds), false);
+	}
+
 	static void ExecMenu(const TArray<FString>& Args, UWorld* World)
 	{
 		if (UBDUISubsystem* UI = Find<UBDUISubsystem>(World))
@@ -157,6 +175,11 @@ namespace BDUIDebug
 		TEXT("BD.UI.Pause"),
 		TEXT("BD.UI.Pause: opens the in-game menu (match paused), or closes it when open. Escape with nothing in hand does the same."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPause));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdShot(
+		TEXT("BD.UI.Shot"),
+		TEXT("BD.UI.Shot [seconds] [name]: takes a screenshot with the UI after a delay."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecShot));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdPlay(
 		TEXT("BD.UI.Play"),

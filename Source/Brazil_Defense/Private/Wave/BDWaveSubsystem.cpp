@@ -254,11 +254,99 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 		ActiveSpawnPoints.Num(), *Mouths);
 }
 
+namespace BDWavePrivate
+{
+	/** The way into the board from a border run, or zero for a run not on any edge. */
+	static FBDCellCoord InwardStep(const FBDCellCoord& Cell, const bool bAlongX, const int32 SizeX, const int32 SizeY)
+	{
+		if (bAlongX)
+		{
+			return FBDCellCoord(0, Cell.Y == 0 ? 1 : (Cell.Y == SizeY - 1 ? -1 : 0));
+		}
+		return FBDCellCoord(Cell.X == 0 ? 1 : (Cell.X == SizeX - 1 ? -1 : 0), 0);
+	}
+}
+
+bool UBDWaveSubsystem::IsExitOpen(const FBDSpawnPoint& Point, const bool bAlongX) const
+{
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr || Point.Cells.Num() == 0)
+	{
+		return false;
+	}
+
+	const FBDCellCoord Step = BDWavePrivate::InwardStep(Point.ExitCell, bAlongX, Grid->GetSizeX(), Grid->GetSizeY());
+	if (Step.X == 0 && Step.Y == 0)
+	{
+		return true;
+	}
+
+	const FBDCellCoord Inward(Point.ExitCell.X + Step.X, Point.ExitCell.Y + Step.Y);
+	return Grid->IsValidCoord(Inward) && Grid->IsWalkable(Inward) && !Grid->IsEdgeBlocked(Point.ExitCell, Inward);
+}
+
+bool UBDWaveSubsystem::TryShiftSpawnPoint(const TArray<FBDSpawnPoint>& Points, const int32 PointIndex, const bool bAlongX, const int32 Shift)
+{
+	UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr || !Points.IsValidIndex(PointIndex) || Shift == 0)
+	{
+		return false;
+	}
+	const FBDSpawnPoint& Point = Points[PointIndex];
+
+	TArray<FBDCellCoord> NewCells;
+	for (const FBDCellCoord& Cell : Point.Cells)
+	{
+		const FBDCellCoord Moved(Cell.X + (bAlongX ? Shift : 0), Cell.Y + (bAlongX ? 0 : Shift));
+		const bool bOwn = Point.Cells.Contains(Moved);
+		if (!Grid->IsValidCoord(Moved) || (!bOwn && Grid->GetCellState(Moved) != EBDCellState::Free))
+		{
+			return false;
+		}
+		// Not up against another mouth: two runs touching would read as one.
+		for (int32 Other = 0; Other < Points.Num(); ++Other)
+		{
+			if (Other == PointIndex)
+			{
+				continue;
+			}
+			for (const FBDCellCoord& OtherCell : Points[Other].Cells)
+			{
+				if (FMath::Abs(OtherCell.X - Moved.X) + FMath::Abs(OtherCell.Y - Moved.Y) <= 1)
+				{
+					return false;
+				}
+			}
+		}
+		NewCells.Add(Moved);
+	}
+
+	// Applied, then checked: the exit must open onto the board and reach the urn, or it
+	// all goes back.
+	for (const FBDCellCoord& Cell : Point.Cells) { Grid->SetCellState(Cell, EBDCellState::Free); }
+	for (const FBDCellCoord& Cell : NewCells) { Grid->SetCellState(Cell, EBDCellState::Spawn); }
+
+	FBDSpawnPoint Shifted;
+	Shifted.Cells = NewCells;
+	Shifted.ExitCell = NewCells[NewCells.Num() / 2];
+	TArray<FBDCellCoord> Route;
+	if (!IsExitOpen(Shifted, bAlongX) || (GoalCells.Num() > 0 && !FindRouteToGoal(Shifted.ExitCell, Route)))
+	{
+		for (const FBDCellCoord& Cell : NewCells) { Grid->SetCellState(Cell, EBDCellState::Free); }
+		for (const FBDCellCoord& Cell : Point.Cells) { Grid->SetCellState(Cell, EBDCellState::Spawn); }
+		return false;
+	}
+
+	UE_LOG(LogBDWave, Log, TEXT("Mouth %d slid %+d cell(s) along its edge: exit %s -> %s."),
+		PointIndex, Shift, *Point.ExitCell.ToString(), *Shifted.ExitCell.ToString());
+	return true;
+}
+
 void UBDWaveSubsystem::WanderSpawnPoints(const int32 Wave)
 {
 	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
 	UBDGridSubsystem* Grid = GetGrid();
-	if (Grid == nullptr || Balance.MouthWanderMaxCells <= 0 || Balance.MouthWanderChance <= 0.0f)
+	if (Grid == nullptr)
 	{
 		return;
 	}
@@ -268,15 +356,16 @@ void UBDWaveSubsystem::WanderSpawnPoints(const int32 Wave)
 	const int32 Seed = Match != nullptr ? Match->ObstacleSeed : 0;
 	FRandomStream Stream(static_cast<int32>(HashCombine(HashCombine(::GetTypeHash(Seed), ::GetTypeHash(Wave)), 0x5EEDu)));
 
-	const TArray<FBDSpawnPoint> Points = GetSpawnPoints();
 	const int32 SizeX = Grid->GetSizeX();
 	const int32 SizeY = Grid->GetSizeY();
 	int32 Moved = 0;
 
-	for (int32 PointIndex = 0; PointIndex < Points.Num(); ++PointIndex)
+	// Each mouth is judged against the board as the ones before it left it.
+	for (int32 PointIndex = 0; PointIndex < GetSpawnPoints().Num(); ++PointIndex)
 	{
+		const TArray<FBDSpawnPoint> Points = GetSpawnPoints();
 		const FBDSpawnPoint& Point = Points[PointIndex];
-		if (Point.Cells.Num() == 0 || Stream.FRand() > Balance.MouthWanderChance)
+		if (Point.Cells.Num() == 0)
 		{
 			continue;
 		}
@@ -292,77 +381,49 @@ void UBDWaveSubsystem::WanderSpawnPoints(const int32 Wave)
 		}
 		const bool bAlongX = bOnRow && (!bOnColumn || Point.Cells.Num() == 1 || Point.Cells[1].Y == First.Y);
 
-		// Up to a few tries at a random slide, first one that fits wins.
-		for (int32 Try = 0; Try < 6; ++Try)
+		bool bShifted = false;
+
+		// A mouth the player built in front of is no exit: it takes the nearest open spot
+		// along its edge, either way, before any dice are thrown.
+		if (!IsExitOpen(Point, bAlongX))
 		{
-			int32 Shift = Stream.RandRange(-Balance.MouthWanderMaxCells, Balance.MouthWanderMaxCells);
-			if (Shift == 0)
+			const int32 Reach = FMath::Max(Balance.MouthWanderMaxCells, 1) * 2;
+			for (int32 Distance = 1; Distance <= Reach && !bShifted; ++Distance)
 			{
-				continue;
+				const int32 FirstWay = Stream.RandBool() ? 1 : -1;
+				bShifted = TryShiftSpawnPoint(Points, PointIndex, bAlongX, Distance * FirstWay)
+					|| TryShiftSpawnPoint(Points, PointIndex, bAlongX, -Distance * FirstWay);
 			}
-
-			TArray<FBDCellCoord> NewCells;
-			bool bFits = true;
-			for (const FBDCellCoord& Cell : Point.Cells)
+			if (bShifted)
 			{
-				const FBDCellCoord Moved2(Cell.X + (bAlongX ? Shift : 0), Cell.Y + (bAlongX ? 0 : Shift));
-				const bool bOwn = Point.Cells.Contains(Moved2);
-				if (!Grid->IsValidCoord(Moved2) || (!bOwn && Grid->GetCellState(Moved2) != EBDCellState::Free))
-				{
-					bFits = false;
-					break;
-				}
-				// Not up against another mouth: two runs touching would read as one.
-				for (int32 Other = 0; Other < Points.Num() && bFits; ++Other)
-				{
-					if (Other == PointIndex)
-					{
-						continue;
-					}
-					for (const FBDCellCoord& OtherCell : Points[Other].Cells)
-					{
-						if (FMath::Abs(OtherCell.X - Moved2.X) + FMath::Abs(OtherCell.Y - Moved2.Y) <= 1)
-						{
-							bFits = false;
-							break;
-						}
-					}
-				}
-				if (!bFits)
-				{
-					break;
-				}
-				NewCells.Add(Moved2);
+				UE_LOG(LogBDWave, Log, TEXT("Mouth %d was blocked at %s and moved to the nearest open spot."), PointIndex, *Point.ExitCell.ToString());
 			}
-			if (!bFits)
+			else
 			{
-				continue;
+				UE_LOG(LogBDWave, Warning, TEXT("Mouth %d is blocked at %s and found no open spot within %d cell(s)."), PointIndex, *Point.ExitCell.ToString(), Reach);
 			}
-
-			// Applied, then checked for a route; undone when the new spot is walled off.
-			for (const FBDCellCoord& Cell : Point.Cells) { Grid->SetCellState(Cell, EBDCellState::Free); }
-			for (const FBDCellCoord& Cell : NewCells) { Grid->SetCellState(Cell, EBDCellState::Spawn); }
-
-			TArray<FBDCellCoord> Route;
-			if (GoalCells.Num() > 0 && !FindRouteToGoal(NewCells[NewCells.Num() / 2], Route))
+		}
+		else if (Balance.MouthWanderMaxCells > 0 && Stream.FRand() <= Balance.MouthWanderChance)
+		{
+			// Up to a few tries at a random slide, first one that fits wins.
+			for (int32 Try = 0; Try < 6 && !bShifted; ++Try)
 			{
-				for (const FBDCellCoord& Cell : NewCells) { Grid->SetCellState(Cell, EBDCellState::Free); }
-				for (const FBDCellCoord& Cell : Point.Cells) { Grid->SetCellState(Cell, EBDCellState::Spawn); }
-				continue;
+				bShifted = TryShiftSpawnPoint(Points, PointIndex, bAlongX, Stream.RandRange(-Balance.MouthWanderMaxCells, Balance.MouthWanderMaxCells));
 			}
+		}
 
-			UE_LOG(LogBDWave, Log, TEXT("Mouth %d slid %+d cell(s) along its edge: exit %s -> %s."),
-				PointIndex, Shift, *Point.ExitCell.ToString(), *NewCells[NewCells.Num() / 2].ToString());
+		if (bShifted)
+		{
 			++Moved;
-			break;
+			// The grid changed under the routes: read the mouths again before the next one.
+			bRoutesDirty = true;
+			GetSpawnPoints();
 		}
 	}
 
 	if (Moved > 0)
 	{
-		// The grid changed under the routes: read the mouths again before anything is drawn.
-		bRoutesDirty = true;
-		GetSpawnPoints();
+		UE_LOG(LogBDWave, Verbose, TEXT("%d mouth(s) moved before wave %d."), Moved, Wave);
 	}
 }
 

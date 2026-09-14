@@ -199,6 +199,15 @@ private:
 	void WanderSpawnPoints(int32 Wave);
 
 	/**
+	 * Moves one mouth by a number of cells along its edge when the new spot is free, not
+	 * touching another mouth and routed to the urn. @return false, and nothing changed, otherwise.
+	 */
+	bool TryShiftSpawnPoint(const TArray<FBDSpawnPoint>& Points, int32 PointIndex, bool bAlongX, int32 Shift);
+
+	/** Whether the cell the creeps step into from an exit is open: walkable, and no fence between. */
+	bool IsExitOpen(const FBDSpawnPoint& Point, bool bAlongX) const;
+
+	/**
 	 * Route from a cell to any Goal cell: the shortest, or the cheapest over a cost map.
 	 * @param Cost the creep's own map, or null for the uniform cost the spawn points keep.
 	 * @return false when no Goal is reachable.
