@@ -191,7 +191,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-14 (tarde) — (commit abaixo)** (desde e9967ba):
+- **2026-09-14 (tarde) — 297219b** (desde e9967ba):
   - Primeiro teste real do jogador. Faltava o essencial: **paleta de
     construção** no HUD (`Palette` em `BDPlacementSettings`, painel à
     esquerda, teclas 1–9 e U para a urna). Sem ela não havia como pegar
