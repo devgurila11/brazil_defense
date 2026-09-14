@@ -191,7 +191,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-14 — (commit abaixo)** (desde dac5d17):
+- **2026-09-14 — 81b91cd** (desde dac5d17):
   - Janela fora do editor (pendência do dia 13): `ApplyGraphics` só passa
     pela resolução com tamanho explícito, tela cheia ou troca de modo
     (sair da tela cheia sem tamanho dá 3/4 do desktop); o resto vai por
