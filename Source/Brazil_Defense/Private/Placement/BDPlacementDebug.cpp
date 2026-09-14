@@ -8,6 +8,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementComponent.h"
+#include "Platform/BDPlatformComponent.h"
 
 namespace BDPlacementDebug
 {
@@ -220,6 +221,41 @@ namespace BDPlacementDebug
 			bPlaced ? TEXT("succeeded") : TEXT("rejected"));
 	}
 
+	static void ExecPlaceAtSlot(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() != 3)
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.AtSlot <x> <y> <slot>"));
+			return;
+		}
+
+		UBDPlacementComponent* Placement = FindPlacementComponent(World);
+		if (Placement == nullptr)
+		{
+			return;
+		}
+
+		const FBDCellCoord Coord(FCString::Atoi(*Args[0]), FCString::Atoi(*Args[1]));
+		UBDPlatformComponent* Platform = Placement->FindPlatformAt(Coord);
+		if (Platform == nullptr)
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("BD.Place.AtSlot: no platform at %s."), *Coord.ToString());
+			return;
+		}
+
+		const int32 SlotIndex = FCString::Atoi(*Args[2]);
+		Placement->SetHoveredSlotDirect(Platform, SlotIndex);
+
+		const bool bValidBefore = Placement->IsCurrentPlacementValid();
+		const FString Reason = Placement->DescribeCurrentRefusal();
+		const bool bPlaced = Placement->TryPlaceAtHovered();
+
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.AtSlot %s slot %d: preview said %s (%s), placement %s."),
+			*Coord.ToString(), SlotIndex,
+			bValidBefore ? TEXT("valid") : TEXT("refused"), *Reason,
+			bPlaced ? TEXT("succeeded") : TEXT("rejected"));
+	}
+
 	/** Removing is selling: BD.Place.Sell and BD.Place.RemoveAt are the same gesture. */
 	static void ExecRemoveAt(const TArray<FString>& Args, UWorld* World)
 	{
@@ -329,6 +365,11 @@ namespace BDPlacementDebug
 		TEXT("BD.Place.At"),
 		TEXT("BD.Place.At <x> <y>: points the hover at a cell and tries to place the selected piece."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPlaceAt));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdPlaceAtSlot(
+		TEXT("BD.Place.AtSlot"),
+		TEXT("BD.Place.AtSlot <x> <y> <slot>: points the hover at a slot of the platform on a cell and tries to place the selected piece."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPlaceAtSlot));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdPlaceAtEdge(
 		TEXT("BD.Place.AtEdge"),

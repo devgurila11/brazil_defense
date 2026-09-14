@@ -224,10 +224,50 @@ void UBDHUDWidget::BuildTree()
 	RightSlot->SetAutoSize(true);
 	RightSlot->SetPosition(FVector2D(-Margin, Margin));
 
-	//~ Top left: the game menu.
+	//~ Center: the end of the match, won or lost. Solid: nothing on the board is clickable
+	// under it, since the board is frozen anyway.
+	EndBox = MakeBox(ColorPanel, 24.0f);
+	UVerticalBox* EndColumn = MakeColumn();
+	EndTitle = MakeText(NoticeFontSize, ColorHighlight);
+	EndTitle->SetJustification(ETextJustify::Center);
+	EndColumn->AddChildToVerticalBox(EndTitle);
+	EndLine = MakeText(LineFontSize);
+	EndLine->SetJustification(ETextJustify::Center);
+	UVerticalBoxSlot* EndLineSlot = EndColumn->AddChildToVerticalBox(EndLine);
+	EndLineSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 16.0f));
+	EndlessButton = MakeButton(EndlessLabel, LineFontSize);
+	EndlessButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleEndless);
+	UVerticalBoxSlot* EndlessSlot = EndColumn->AddChildToVerticalBox(EndlessButton);
+	EndlessSlot->SetHorizontalAlignment(HAlign_Center);
+	EndlessSlot->SetPadding(FMargin(0.0f, 4.0f));
+	LoadButton = MakeButton(LoadLabel, LineFontSize);
+	LoadButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleLoad);
+	UVerticalBoxSlot* LoadSlot = EndColumn->AddChildToVerticalBox(LoadButton);
+	LoadSlot->SetHorizontalAlignment(HAlign_Center);
+	LoadSlot->SetPadding(FMargin(0.0f, 4.0f));
+	UButton* EndMenuButton = MakeButton(EndMenuLabel, LineFontSize);
+	EndMenuButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleReturnToMenu);
+	UVerticalBoxSlot* EndMenuSlot = EndColumn->AddChildToVerticalBox(EndMenuButton);
+	EndMenuSlot->SetHorizontalAlignment(HAlign_Center);
+	EndMenuSlot->SetPadding(FMargin(0.0f, 4.0f));
+	EndBox->AddChild(EndColumn);
+
+	UCanvasPanelSlot* EndSlot = Canvas->AddChildToCanvas(EndBox);
+	EndSlot->SetAnchors(FAnchors(0.5f, 0.5f));
+	EndSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+	EndSlot->SetAutoSize(true);
+	EndSlot->SetPosition(FVector2D::ZeroVector);
+
+	//~ Top left: the game menu and the save, side by side.
+	UHorizontalBox* CornerRow = MakeRow();
 	UButton* MenuButton = MakeButton(MenuLabel, SmallFontSize);
 	MenuButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleMenu);
-	UCanvasPanelSlot* MenuSlot = Canvas->AddChildToCanvas(MenuButton);
+	CornerRow->AddChildToHorizontalBox(MenuButton);
+	SaveButton = MakeButton(SaveLabel, SmallFontSize);
+	SaveButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleSave);
+	UHorizontalBoxSlot* SaveSlot = CornerRow->AddChildToHorizontalBox(SaveButton);
+	SaveSlot->SetPadding(FMargin(8.0f, 0.0f, 0.0f, 0.0f));
+	UCanvasPanelSlot* MenuSlot = Canvas->AddChildToCanvas(CornerRow);
 	MenuSlot->SetAnchors(FAnchors(0.0f, 0.0f));
 	MenuSlot->SetAlignment(FVector2D(0.0f, 0.0f));
 	MenuSlot->SetAutoSize(true);
@@ -242,6 +282,7 @@ void UBDHUDWidget::BuildTree()
 	FrozenLine->SetVisibility(ESlateVisibility::Collapsed);
 	DefenderBox->SetVisibility(ESlateVisibility::Collapsed);
 	PlacementBox->SetVisibility(ESlateVisibility::Collapsed);
+	EndBox->SetVisibility(ESlateVisibility::Collapsed);
 }
 
 void UBDHUDWidget::RefreshTexts()
@@ -250,12 +291,17 @@ void UBDHUDWidget::RefreshTexts()
 	CandidateNotice->SetText(Loc(TEXT("HUD.Candidate.Notice")));
 	CancelLabel->SetText(Loc(TEXT("HUD.Placement.Cancel")));
 	MenuLabel->SetText(Loc(TEXT("HUD.Menu")));
+	EndlessLabel->SetText(Loc(TEXT("HUD.End.Endless")));
+	EndMenuLabel->SetText(Loc(TEXT("HUD.End.MainMenu")));
+	LoadLabel->SetText(Loc(TEXT("HUD.End.Load")));
+	UpdateSaveButton();
 
 	// Everything else carries numbers and is written on tick, in the current language.
 	UpdateScoreboard();
 	UpdateWaveLine();
 	UpdateSpeedButtons();
 	UpdateMouths();
+	UpdateEndPanel();
 }
 
 //~ Lifetime -------------------------------------------------------------------------
@@ -301,6 +347,7 @@ void UBDHUDWidget::BindMatch()
 	UpdateWaveLine();
 	UpdateSpeedButtons();
 	UpdateMouths();
+	UpdateEndPanel();
 }
 
 void UBDHUDWidget::HandleVotesChanged(const int32 Blue, const int32 Red)
@@ -312,6 +359,8 @@ void UBDHUDWidget::HandlePhaseChanged(const EBDMatchPhase NewPhase)
 {
 	UpdateWaveLine();
 	UpdateMouths();
+	UpdateEndPanel();
+	UpdateSaveButton();
 }
 
 void UBDHUDWidget::HandleWaveStarted(const int32 Wave)
@@ -684,5 +733,78 @@ void UBDHUDWidget::HandleMenu()
 	if (UBDUISubsystem* UI = GetUI())
 	{
 		UI->OpenPauseMenu();
+	}
+}
+
+//~ End of the match ---------------------------------------------------------------
+
+void UBDHUDWidget::UpdateEndPanel()
+{
+	using namespace BDHUDPrivate;
+
+	const ABDMatchManager* Match = GetMatch();
+	const EBDMatchPhase Phase = Match != nullptr ? Match->GetPhase() : EBDMatchPhase::Setup;
+	if (Phase != EBDMatchPhase::Victory && Phase != EBDMatchPhase::Defeat)
+	{
+		EndBox->SetVisibility(ESlateVisibility::Collapsed);
+		return;
+	}
+
+	FFormatNamedArguments Args;
+	Args.Add(TEXT("Wave"), Match->GetCurrentWave());
+	Args.Add(TEXT("Count"), Match->GetPrisonersFreed());
+	Args.Add(TEXT("Blue"), Match->GetVotesBlue());
+	Args.Add(TEXT("Red"), Match->GetVotesRed());
+
+	// A win is told by its reward and offers the endless run; a loss by the final score.
+	const bool bWon = Phase == EBDMatchPhase::Victory;
+	EndTitle->SetText(BDLoc::Format(bWon ? TEXT("HUD.Wave.Victory") : TEXT("HUD.Wave.Defeat"), Args));
+	EndTitle->SetColorAndOpacity(FSlateColor(bWon ? ColorBlue : ColorRed));
+	EndLine->SetText(BDLoc::Format(bWon ? TEXT("HUD.End.Prisoners") : TEXT("HUD.End.Score"), Args));
+	EndlessButton->SetVisibility(bWon ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	// A loss offers the saved match, when there is one; a win has nothing to go back for.
+	LoadButton->SetVisibility(!bWon && ABDMatchManager::HasSavedMatch() ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	EndBox->SetVisibility(ESlateVisibility::Visible);
+}
+
+void UBDHUDWidget::UpdateSaveButton()
+{
+	const ABDMatchManager* Match = GetMatch();
+	FFormatNamedArguments Args;
+	Args.Add(TEXT("Count"), Match != nullptr ? Match->GetSavesRemaining() : 0);
+	SaveLabel->SetText(BDLoc::Format(TEXT("HUD.Save"), Args));
+	SaveButton->SetIsEnabled(Match != nullptr && Match->CanSaveMatch());
+}
+
+void UBDHUDWidget::HandleSave()
+{
+	if (ABDMatchManager* Match = GetMatch())
+	{
+		Match->SaveMatch();
+		UpdateSaveButton();
+	}
+}
+
+void UBDHUDWidget::HandleLoad()
+{
+	if (ABDMatchManager* Match = GetMatch())
+	{
+		Match->LoadMatch();
+	}
+}
+
+void UBDHUDWidget::HandleEndless()
+{
+	if (ABDMatchManager* Match = GetMatch())
+	{
+		Match->ContinueEndless();
+	}
+}
+
+void UBDHUDWidget::HandleReturnToMenu()
+{
+	if (UBDUISubsystem* UI = GetUI())
+	{
+		UI->ReturnToMenu();
 	}
 }

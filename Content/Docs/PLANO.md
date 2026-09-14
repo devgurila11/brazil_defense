@@ -5,7 +5,7 @@ O terminal consulta este arquivo para entender o que o jogo É e por
 quê. Tarefas da vez vão no briefing.md, separado. Quando uma decisão
 de design mudar, este arquivo é atualizado.
 
-Versão: 2026-09-13
+Versão: 2026-09-14
 
 ---
 
@@ -190,6 +190,53 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
+
+- **2026-09-14 — (commit abaixo)** (desde dac5d17):
+  - Janela fora do editor (pendência do dia 13): `ApplyGraphics` só passa
+    pela resolução com tamanho explícito, tela cheia ou troca de modo
+    (sair da tela cheia sem tamanho dá 3/4 do desktop); o resto vai por
+    `ApplyNonResolutionSettings`. Não visto na tela ainda.
+  - Vitória (seção 8): `WavesToWin` e `PrisonersFreed` no DA de
+    dificuldade; `DeclareVictory` ao limpar a onda-alvo, board congelado
+    como na derrota; `ContinueEndless` reabre a montagem e as ondas seguem
+    escalando até uma derrota. Painel central de fim no HUD (vitória:
+    presos + "Continuar (endless)" + menu; derrota: placar + "Carregar
+    save" + menu). `BD.Match.Endless`.
+  - **Regra nova (seções 4 e 8):** a vitória é só por ondas, mas fica
+    retida enquanto o candidato está no board — as ondas seguem saindo;
+    ele morre → vitória (na hora entre ondas, ou ao limpar a onda em
+    curso); chega na urna → derrota. Fecha o caso de "vencer" com o
+    candidato andando e o vermelho na frente.
+  - Saves limitados (seção 8): `UBDMatchSave`, um slot por jogo
+    (`BDMatch`), sobrescrito a cada save; `SaveBudget` no DA; só entre
+    ondas; o contador salvo já vem descontado. Restauração em-place:
+    despawn, remove peças e urna, regenera obstáculos pela seed (a urna
+    sai antes porque o gerador protege a zona inteira sem urna), recoloca
+    tudo pelo fluxo normal de posicionamento, devolve votos/onda/
+    orçamentos/níveis. Candidato não é serializado: os votos reemitidos
+    o trazem de volta se o placar seguir invertido. Botão Save no HUD,
+    "Continue" no menu quando há save. `BD.Save.Write/Load/Status`,
+    `BD.Place.AtSlot`.
+  - Bônus encadeado (seção 8): `UBDProgressSave` (slot `BDProgress`)
+    registra as dificuldades vencidas; `ChainBonus` no DA (votos azuis
+    iniciais + peças + saves) entra quando a dificuldade um degrau abaixo
+    foi vencida. Defaults placeholder: +100 votos, +4 divisórias, +1
+    plataforma, +1 torre, +2 personagens, +1 save. `BD.Progress.Status/
+    SetWon/Reset`.
+  - Seleção de dificuldade no Play (seção 10): tela `DifficultySelect`
+    com Fácil/Normal/Difícil, resumo do DA, marca de vencida e a linha do
+    bônus; Voltar. A escolha vai pelo `UBDUISubsystem` e o match manager
+    a toma no `BeginPlay`; PIE mantém o default. `BD.UI.Play [dif]`.
+  - `-BDSkipFrontEnd` para as checagens headless (o redirecionamento ao
+    menu do dia 13 as tinha quebrado).
+  - **Pendente no editor:** os três `DA_Difficulty_*` herdam os defaults
+    de classe para `WavesToWin`, `PrisonersFreed`, `SaveBudget` e
+    `ChainBonus` — os valores do PLANO (presos 1/2/3, saves 3/2/1) ainda
+    não foram postos nos assets. Ver na tela: painel de fim, botão Save,
+    tela de dificuldade, Continue. Seguem do dia 13: urna no cursor com a
+    câmera fixa e o enquadramento.
+  - Fora do commit: três PlayerStarts do mapa Esplanada alterados/criados
+    na sessão do editor de 14:43 (não confirmados como intencionais).
 
 - **2026-09-13 — e484367 / 8d2f5d5** (desde f1f3c9b):
   - Linha `Wave N cleared. Votes: blue B, red R.` no log a cada onda.

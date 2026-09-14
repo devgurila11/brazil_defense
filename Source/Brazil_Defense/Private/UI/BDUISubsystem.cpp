@@ -10,6 +10,9 @@
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Match/BDMatchManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "TimerManager.h"
 #include "UI/BDFadeWidget.h"
 #include "UI/BDFrontEndWidgets.h"
@@ -34,6 +37,14 @@ void UBDUISubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	BDLoc::Initialize();
 	PreLoadMapHandle = FCoreUObjectDelegates::PreLoadMap.AddUObject(this, &UBDUISubsystem::HandlePreLoadMap);
+
+	// A headless check launched straight into a game level has no use for the menu:
+	// the switch counts the front end as seen so the game mode keeps the level.
+	if (FParse::Param(FCommandLine::Get(), TEXT("BDSkipFrontEnd")))
+	{
+		bFrontEndSeen = true;
+		UE_LOG(LogBDUI, Log, TEXT("Front end skipped by -BDSkipFrontEnd."));
+	}
 }
 
 void UBDUISubsystem::Deinitialize()
@@ -65,6 +76,8 @@ TSubclassOf<UUserWidget> UBDUISubsystem::ClassForScreen(const EBDScreen Screen) 
 		return UBDLoadingWidget::StaticClass();
 	case EBDScreen::MainMenu:
 		return UBDMainMenuWidget::StaticClass();
+	case EBDScreen::DifficultySelect:
+		return UBDDifficultySelectWidget::StaticClass();
 	case EBDScreen::HUD:
 		return UBDHUDWidget::StaticClass();
 	default:
@@ -234,7 +247,45 @@ void UBDUISubsystem::HandleLoadingDone()
 	}
 }
 
-void UBDUISubsystem::PlayGame()
+void UBDUISubsystem::OpenDifficultySelect()
+{
+	if (CurrentScreen == EBDScreen::MainMenu)
+	{
+		TransitionTo(EBDScreen::DifficultySelect);
+	}
+}
+
+void UBDUISubsystem::CloseDifficultySelect()
+{
+	if (CurrentScreen == EBDScreen::DifficultySelect)
+	{
+		TransitionTo(EBDScreen::MainMenu);
+	}
+}
+
+void UBDUISubsystem::PlayGame(const EBDDifficulty Difficulty)
+{
+	ChosenDifficulty = Difficulty;
+	bLoadPending = false;
+	UE_LOG(LogBDUI, Log, TEXT("Play on %s."), *StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Difficulty)));
+	OpenGameLevel();
+}
+
+void UBDUISubsystem::ContinueGame()
+{
+	ChosenDifficulty.Reset();
+	bLoadPending = true;
+	OpenGameLevel();
+}
+
+TOptional<EBDDifficulty> UBDUISubsystem::TakeChosenDifficulty()
+{
+	const TOptional<EBDDifficulty> Taken = ChosenDifficulty;
+	ChosenDifficulty.Reset();
+	return Taken;
+}
+
+void UBDUISubsystem::OpenGameLevel()
 {
 	const UBDUISettings& Settings = UBDUISettings::Get();
 	if (Settings.GameMap.IsNull())
@@ -398,6 +449,16 @@ void UBDUISubsystem::ShowHUD()
 {
 	bGamePending = false;
 	SetScreen(EBDScreen::HUD);
+
+	// The match exists by now: the game mode calls this after spawning it.
+	if (bLoadPending)
+	{
+		bLoadPending = false;
+		if (ABDMatchManager* Match = ABDMatchManager::Get(GetLocalController()))
+		{
+			Match->LoadMatch();
+		}
+	}
 
 	if (UBDFadeWidget* Overlay = GetOrCreateFade(true))
 	{

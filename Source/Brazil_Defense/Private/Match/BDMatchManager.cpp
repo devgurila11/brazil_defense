@@ -11,11 +11,19 @@
 #include "EngineUtils.h"
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
+#include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Match/BDDifficultyData.h"
+#include "Objective/BDObjectiveSubsystem.h"
+#include "Placement/BDPlacementComponent.h"
+#include "Save/BDMatchSave.h"
+#include "Save/BDProgressSave.h"
+#include "Wave/BDWaveSubsystem.h"
 #include "Match/BDGameBalanceSettings.h"
 #include "Obstacle/BDObstacleGenerator.h"
 #include "Tower/BDTowerBase.h"
+#include "UI/BDUISubsystem.h"
+#include "Engine/GameInstance.h"
 
 namespace BDMatchDebug
 {
@@ -75,9 +83,43 @@ void ABDMatchManager::BeginPlay()
 {
 	Super::BeginPlay();
 
-	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	// The menu's choice wins over whatever the actor or the settings say; a level that
+	// came up on its own (Play in Editor) has no choice to take and keeps its own.
+	UBDUISubsystem* UI = GetGameInstance() != nullptr ? GetGameInstance()->GetSubsystem<UBDUISubsystem>() : nullptr;
+	const TOptional<EBDDifficulty> Chosen = UI != nullptr ? UI->TakeChosenDifficulty() : TOptional<EBDDifficulty>();
+	if (Chosen.IsSet())
+	{
+		Difficulty = Chosen.GetValue();
+	}
 
-	DifficultyData = Balance.FindDifficultyData(Difficulty);
+	ResolveDifficulty();
+	ApplyStartingBudgets();
+
+	UE_LOG(LogBDMatch, Log, TEXT("Match on %s%s: %d waves to win, %d dividers, %d platforms, %d towers, %d characters, %d saves."),
+		*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Difficulty)),
+		Chosen.IsSet() ? TEXT(" (chosen in the menu)") : TEXT(""),
+		GetWavesToWin(), DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining, SavesRemaining);
+
+	// The vote part of the bonus is the one thing a budget reset must not hand out
+	// again, so it stays here, at the one start a match has.
+	if (bChainBonusApplied && DifficultyData->ChainBonus.Votes > 0)
+	{
+		VotesBlue = DifficultyData->ChainBonus.Votes;
+		OnVotesChanged.Broadcast(VotesBlue, VotesRed);
+	}
+
+	SetupBoard();
+
+	// Applied even though it is already 1, so a manager restarted mid session cannot
+	// inherit the dilation of the last one.
+	SetGameSpeed(GameSpeed);
+
+	StartBuildingPhase();
+}
+
+void ABDMatchManager::ResolveDifficulty()
+{
+	DifficultyData = UBDGameBalanceSettings::Get().FindDifficultyData(Difficulty);
 	if (DifficultyData == nullptr)
 	{
 		// The asset is an override, not a requirement: a project with no difficulty assets
@@ -87,20 +129,48 @@ void ABDMatchManager::BeginPlay()
 			TEXT("No difficulty asset configured for %s, using the built in defaults."),
 			*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Difficulty)));
 	}
+}
 
+EBDDifficulty ABDMatchManager::GetDifficultyBelow(const EBDDifficulty Difficulty)
+{
+	return Difficulty == EBDDifficulty::Easy || Difficulty >= EBDDifficulty::Count
+		? EBDDifficulty::Count
+		: static_cast<EBDDifficulty>(static_cast<uint8>(Difficulty) - 1);
+}
+
+void ABDMatchManager::ApplyStartingBudgets()
+{
 	DividersRemaining = DifficultyData->DividerBudget;
 	PlatformsRemaining = DifficultyData->PlatformBudget;
 	TowersRemaining = DifficultyData->TowerBudget;
 	CharactersRemaining = DifficultyData->CharacterBudget;
 	ObjectivesRemaining = 1;
+	SavesRemaining = DifficultyData->SaveBudget;
 
-	SetupBoard();
+	const EBDDifficulty Below = GetDifficultyBelow(Difficulty);
+	const FBDChainBonus& Bonus = DifficultyData->ChainBonus;
+	bChainBonusApplied = Below != EBDDifficulty::Count && !Bonus.IsEmpty() && UBDProgressSave::HasWonDifficulty(Below);
+	if (!bChainBonusApplied)
+	{
+		return;
+	}
 
-	// Applied even though it is already 1, so a manager restarted mid session cannot
-	// inherit the dilation of the last one.
-	SetGameSpeed(GameSpeed);
+	DividersRemaining += Bonus.Dividers;
+	PlatformsRemaining += Bonus.Platforms;
+	TowersRemaining += Bonus.Towers;
+	CharactersRemaining += Bonus.Characters;
+	SavesRemaining += Bonus.Saves;
 
-	StartBuildingPhase();
+	UE_LOG(LogBDMatch, Log, TEXT("Chain bonus for having won %s: +%d votes, +%d dividers, +%d platforms, +%d towers, +%d characters, +%d saves."),
+		*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Below)),
+		Bonus.Votes, Bonus.Dividers, Bonus.Platforms, Bonus.Towers, Bonus.Characters, Bonus.Saves);
+}
+
+UBDPlacementComponent* ABDMatchManager::GetPlacement() const
+{
+	const UWorld* World = GetWorld();
+	const APlayerController* Controller = World != nullptr ? World->GetFirstPlayerController() : nullptr;
+	return Controller != nullptr ? Controller->FindComponentByClass<UBDPlacementComponent>() : nullptr;
 }
 
 void ABDMatchManager::SetupBoard()
@@ -177,6 +247,13 @@ void ABDMatchManager::Tick(const float DeltaSeconds)
 
 	if (BDMatchDebug::GFreezeTimer != 0)
 	{
+		return;
+	}
+
+	// A win held back by the candidate is taken the moment he is gone between waves.
+	if (IsWinDue())
+	{
+		DeclareVictory();
 		return;
 	}
 
@@ -264,14 +341,11 @@ void ABDMatchManager::DebugResetBudgets()
 		return;
 	}
 
-	DividersRemaining = DifficultyData->DividerBudget;
-	PlatformsRemaining = DifficultyData->PlatformBudget;
-	TowersRemaining = DifficultyData->TowerBudget;
-	CharactersRemaining = DifficultyData->CharacterBudget;
-	ObjectivesRemaining = 1;
+	ApplyStartingBudgets();
 
-	UE_LOG(LogBDMatch, Warning, TEXT("Budgets reset: %d dividers, %d platforms, %d towers, %d characters, 1 objective."),
-		DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining);
+	UE_LOG(LogBDMatch, Warning, TEXT("Budgets reset: %d dividers, %d platforms, %d towers, %d characters, 1 objective, %d saves%s."),
+		DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining, SavesRemaining,
+		bChainBonusApplied ? TEXT(" (chain bonus in)") : TEXT(""));
 }
 
 void ABDMatchManager::DebugSetWave(const int32 Wave)
@@ -294,6 +368,8 @@ void ABDMatchManager::DebugForcePhase(const EBDMatchPhase NewPhase)
 		// Back to the start of the match, not just to the phase: a locked build would make
 		// the building phase useless for what this is for.
 		CurrentWave = 0;
+		bWon = false;
+		bEndless = false;
 		StartBuildingPhase();
 		if (DayCycle != nullptr)
 		{
@@ -305,6 +381,10 @@ void ABDMatchManager::DebugForcePhase(const EBDMatchPhase NewPhase)
 	case EBDMatchPhase::WaveActive:
 		StartWave();
 		UE_LOG(LogBDMatch, Warning, TEXT("Phase forced to WaveActive."));
+		break;
+
+	case EBDMatchPhase::Victory:
+		DeclareVictory();
 		break;
 
 	default:
@@ -325,7 +405,220 @@ void ABDMatchManager::OnWaveCleared()
 
 	// The one line a match is audited by afterwards: the scoreboard at the end of every wave.
 	UE_LOG(LogBDMatch, Log, TEXT("Wave %d cleared. Votes: blue %d, red %d."), CurrentWave, VotesBlue, VotesRed);
+
+	if (IsWinDue())
+	{
+		DeclareVictory();
+		return;
+	}
+
+	if (!bWon && CurrentWave >= GetWavesToWin())
+	{
+		UE_LOG(LogBDMatch, Log, TEXT("Wave %d of %d cleared with the candidate on the board: the win waits on him."), CurrentWave, GetWavesToWin());
+	}
+
 	StartBuildingPhase();
+}
+
+bool ABDMatchManager::IsWinDue() const
+{
+	if (bWon || CurrentWave < GetWavesToWin())
+	{
+		return false;
+	}
+
+	const UBDCandidateSubsystem* Candidates = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
+	return Candidates == nullptr || Candidates->GetCandidate() == nullptr;
+}
+
+int32 ABDMatchManager::GetWavesToWin() const
+{
+	return FMath::Max(1, DifficultyData != nullptr ? DifficultyData->WavesToWin : GetDefault<UBDDifficultyData>()->WavesToWin);
+}
+
+int32 ABDMatchManager::GetPrisonersFreed() const
+{
+	return DifficultyData != nullptr ? DifficultyData->PrisonersFreed : GetDefault<UBDDifficultyData>()->PrisonersFreed;
+}
+
+void ABDMatchManager::DeclareVictory()
+{
+	if (IsMatchOver())
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("Victory declared but the match is already over."));
+		return;
+	}
+
+	bWon = true;
+	UE_LOG(LogBDMatch, Log, TEXT("VICTORY on wave %d: %d prisoner(s) freed. Board frozen. Votes: blue %d, red %d."),
+		CurrentWave, GetPrisonersFreed(), VotesBlue, VotesRed);
+	UBDProgressSave::RecordWin(Difficulty);
+	SetPhase(EBDMatchPhase::Victory);
+}
+
+//~ Saving ------------------------------------------------------------------------
+
+bool ABDMatchManager::CanSaveMatch() const
+{
+	return Phase == EBDMatchPhase::Building && SavesRemaining > 0;
+}
+
+bool ABDMatchManager::SaveMatch()
+{
+	if (!CanSaveMatch())
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("Save refused: %s."),
+			Phase != EBDMatchPhase::Building ? TEXT("only between waves") : TEXT("no saves left"));
+		return false;
+	}
+
+	UBDPlacementComponent* Placement = GetPlacement();
+	if (Placement == nullptr)
+	{
+		UE_LOG(LogBDMatch, Error, TEXT("Save refused: no placement component to read the board from."));
+		return false;
+	}
+
+	UBDMatchSave* Save = NewObject<UBDMatchSave>(GetTransientPackage());
+	Save->Difficulty = Difficulty;
+	Save->ObstacleSeed = ObstacleSeed;
+	Save->Wave = CurrentWave;
+	Save->VotesBlue = VotesBlue;
+	Save->VotesRed = VotesRed;
+	Save->EarlyCallBonus = EarlyCallBonus;
+	Save->GameSpeed = GameSpeed;
+	// Spent before it is written: a load hands back the match, not the save.
+	Save->SavesRemaining = SavesRemaining - 1;
+	Save->bWon = bWon;
+	Save->bEndless = bEndless;
+	Save->DividersRemaining = DividersRemaining;
+	Save->PlatformsRemaining = PlatformsRemaining;
+	Save->TowersRemaining = TowersRemaining;
+	Save->CharactersRemaining = CharactersRemaining;
+	Save->SavedAt = FDateTime::Now();
+	Placement->CaptureBoard(Save->Pieces);
+
+	if (!Save->WriteToSlot())
+	{
+		UE_LOG(LogBDMatch, Error, TEXT("Save failed: the slot could not be written. Nothing spent."));
+		return false;
+	}
+
+	SavesRemaining = Save->SavesRemaining;
+	UE_LOG(LogBDMatch, Log, TEXT("Match saved after wave %d: %d piece(s), votes %d blue / %d red, seed %d. %d save(s) left."),
+		CurrentWave, Save->Pieces.Num(), VotesBlue, VotesRed, ObstacleSeed, SavesRemaining);
+	return true;
+}
+
+bool ABDMatchManager::HasSavedMatch()
+{
+	return UBDMatchSave::Exists();
+}
+
+bool ABDMatchManager::LoadMatch()
+{
+	const UBDMatchSave* Save = UBDMatchSave::LoadFromSlot();
+	if (Save == nullptr)
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("Load: no saved match."));
+		return false;
+	}
+
+	RestoreMatch(*Save);
+	return true;
+}
+
+void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
+{
+	UWorld* World = GetWorld();
+	UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+	UBDPlacementComponent* Placement = GetPlacement();
+	if (Waves == nullptr || Placement == nullptr)
+	{
+		UE_LOG(LogBDMatch, Error, TEXT("Load refused: the match needs the wave subsystem and a placement component."));
+		return;
+	}
+
+	UE_LOG(LogBDMatch, Log, TEXT("Loading the match saved %s: wave %d, seed %d, %d piece(s)."),
+		*Save.SavedAt.ToString(), Save.Wave, Save.ObstacleSeed, Save.Pieces.Num());
+
+	if (Save.Difficulty != Difficulty)
+	{
+		Difficulty = Save.Difficulty;
+		ResolveDifficulty();
+	}
+
+	// The board is emptied and the match rewound to its very start, which is the one
+	// state that lets every kind of piece back on: the candidate's pause and arming go
+	// with the rewind, the creeps and the candidate himself with the despawn.
+	Waves->DespawnAll();
+	Placement->DebugRemoveAll();
+	// The urn is not one of the placement's pieces. It comes off too, and before the
+	// obstacles: the generator lays a different board for a placed urn than for the
+	// empty zone it saw when this match was first built.
+	if (UBDObjectiveSubsystem* Objectives = World->GetSubsystem<UBDObjectiveSubsystem>())
+	{
+		Objectives->ClearObjective();
+	}
+	CurrentWave = 0;
+	bWon = false;
+	bEndless = false;
+	SetPhase(EBDMatchPhase::Building);
+	DebugResetBudgets();
+
+	bRandomizeSeed = false;
+	ObstacleSeed = Save.ObstacleSeed;
+	DebugRegenerateObstacles(ObstacleSeed);
+
+	Placement->RestoreBoard(Save.Pieces);
+
+	// What the pieces consumed should be what the save says was left; the save wins,
+	// and a mismatch is a piece that did not come back.
+	if (DividersRemaining != Save.DividersRemaining || PlatformsRemaining != Save.PlatformsRemaining
+		|| TowersRemaining != Save.TowersRemaining || CharactersRemaining != Save.CharactersRemaining)
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("Budgets after restore (%d/%d/%d/%d) differ from the saved ones (%d/%d/%d/%d); the saved ones stand."),
+			DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining,
+			Save.DividersRemaining, Save.PlatformsRemaining, Save.TowersRemaining, Save.CharactersRemaining);
+	}
+	DividersRemaining = Save.DividersRemaining;
+	PlatformsRemaining = Save.PlatformsRemaining;
+	TowersRemaining = Save.TowersRemaining;
+	CharactersRemaining = Save.CharactersRemaining;
+
+	CurrentWave = Save.Wave;
+	EarlyCallBonus = Save.EarlyCallBonus;
+	SavesRemaining = Save.SavesRemaining;
+	bWon = Save.bWon;
+	bEndless = Save.bEndless;
+	VotesBlue = Save.VotesBlue;
+	VotesRed = Save.VotesRed;
+	if (DayCycle != nullptr)
+	{
+		DayCycle->SetWave(CurrentWave);
+	}
+	SetGameSpeed(Save.GameSpeed);
+
+	// Told last, with the board whole: an inverted score sends the candidate out again.
+	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
+	StartBuildingPhase();
+
+	UE_LOG(LogBDMatch, Log, TEXT("Match loaded: building for wave %d, votes %d blue / %d red, %d save(s) left."),
+		CurrentWave + 1, VotesBlue, VotesRed, SavesRemaining);
+}
+
+bool ABDMatchManager::ContinueEndless()
+{
+	if (Phase != EBDMatchPhase::Victory)
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("ContinueEndless outside Victory does nothing."));
+		return false;
+	}
+
+	bEndless = true;
+	UE_LOG(LogBDMatch, Log, TEXT("Endless from wave %d: the win stands, the waves go on."), CurrentWave + 1);
+	StartBuildingPhase();
+	return true;
 }
 
 void ABDMatchManager::DeclareDefeat(const FString& Reason)
@@ -593,9 +886,11 @@ namespace BDMatchCommands
 		}
 
 		UE_LOG(LogBDMatch, Log,
-			TEXT("Phase %s | wave %d (health x%.2f) | %.1fs to next | dividers %d | platforms %d | towers %d | characters %d | objectives %d | speed %.0fx | bonus %d | votes %d blue / %d red"),
+			TEXT("Phase %s | wave %d of %d%s (health x%.2f) | %.1fs to next | dividers %d | platforms %d | towers %d | characters %d | objectives %d | speed %.0fx | bonus %d | votes %d blue / %d red"),
 			*StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())),
-			Match->GetCurrentWave(), Match->GetHealthScale(), Match->GetTimeUntilNextWave(),
+			Match->GetCurrentWave(), Match->GetWavesToWin(),
+			Match->IsEndless() ? TEXT(" endless") : Match->HasWon() ? TEXT(" won") : TEXT(""),
+			Match->GetHealthScale(), Match->GetTimeUntilNextWave(),
 			Match->GetDividersRemaining(), Match->GetPlatformsRemaining(), Match->GetTowersRemaining(),
 			Match->GetCharactersRemaining(), Match->GetObjectivesRemaining(),
 			Match->GetGameSpeed(), Match->GetEarlyCallBonus(), Match->GetVotesBlue(), Match->GetVotesRed());
@@ -678,4 +973,109 @@ namespace BDMatchCommands
 		TEXT("BD.Match.ClearWave"),
 		TEXT("BD.Match.ClearWave: reports the board empty without waiting for the creeps to leave it."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecClearWave));
+
+	static void ExecEndless(const TArray<FString>& Args, UWorld* World)
+	{
+		if (ABDMatchManager* Match = FindMatch(World))
+		{
+			Match->ContinueEndless();
+		}
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdEndless(
+		TEXT("BD.Match.Endless"),
+		TEXT("BD.Match.Endless: from Victory, keeps the match going into endless waves."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecEndless));
+
+	static void ExecSaveWrite(const TArray<FString>& Args, UWorld* World)
+	{
+		if (ABDMatchManager* Match = FindMatch(World))
+		{
+			Match->SaveMatch();
+		}
+	}
+
+	static void ExecSaveLoad(const TArray<FString>& Args, UWorld* World)
+	{
+		if (ABDMatchManager* Match = FindMatch(World))
+		{
+			Match->LoadMatch();
+		}
+	}
+
+	static void ExecSaveStatus(const TArray<FString>& Args, UWorld* World)
+	{
+		const ABDMatchManager* Match = FindMatch(World);
+		const UBDMatchSave* Save = UBDMatchSave::LoadFromSlot();
+		UE_LOG(LogBDMatch, Log, TEXT("Saves left: %d. Slot: %s"),
+			Match != nullptr ? Match->GetSavesRemaining() : 0,
+			Save != nullptr
+				? *FString::Printf(TEXT("wave %d, seed %d, %d piece(s), votes %d/%d, %d save(s) left, written %s."),
+					Save->Wave, Save->ObstacleSeed, Save->Pieces.Num(), Save->VotesBlue, Save->VotesRed, Save->SavesRemaining, *Save->SavedAt.ToString())
+				: TEXT("empty."));
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdSaveWrite(
+		TEXT("BD.Save.Write"),
+		TEXT("BD.Save.Write: spends a save and writes the match to the slot."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSaveWrite));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdSaveLoad(
+		TEXT("BD.Save.Load"),
+		TEXT("BD.Save.Load: rebuilds the match from the slot, in place."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSaveLoad));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdSaveStatus(
+		TEXT("BD.Save.Status"),
+		TEXT("BD.Save.Status: logs the saves left and what the slot holds."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSaveStatus));
+
+	static void ExecProgressStatus(const TArray<FString>& Args, UWorld* World)
+	{
+		const UEnum* DifficultyEnum = StaticEnum<EBDDifficulty>();
+		FString Won;
+		for (uint8 Index = 0; Index < static_cast<uint8>(EBDDifficulty::Count); ++Index)
+		{
+			const EBDDifficulty Difficulty = static_cast<EBDDifficulty>(Index);
+			Won += FString::Printf(TEXT(" %s:%s"), *DifficultyEnum->GetNameStringByValue(Index),
+				UBDProgressSave::HasWonDifficulty(Difficulty) ? TEXT("won") : TEXT("-"));
+		}
+
+		const ABDMatchManager* Match = FindMatch(World);
+		UE_LOG(LogBDMatch, Log, TEXT("Progress:%s. This match: %s, chain bonus %s."), *Won,
+			Match != nullptr ? *DifficultyEnum->GetNameStringByValue(static_cast<int64>(Match->Difficulty)) : TEXT("none"),
+			Match != nullptr && Match->WasChainBonusApplied() ? TEXT("applied") : TEXT("not applied"));
+	}
+
+	static void ExecProgressSetWon(const TArray<FString>& Args, UWorld* World)
+	{
+		const UEnum* DifficultyEnum = StaticEnum<EBDDifficulty>();
+		const int64 Value = Args.Num() == 1 ? DifficultyEnum->GetValueByNameString(Args[0]) : INDEX_NONE;
+		if (Value == INDEX_NONE || Value >= static_cast<int64>(EBDDifficulty::Count))
+		{
+			UE_LOG(LogBDMatch, Error, TEXT("Usage: BD.Progress.SetWon <Easy|Normal|Hard>"));
+			return;
+		}
+		UBDProgressSave::RecordWin(static_cast<EBDDifficulty>(Value));
+	}
+
+	static void ExecProgressReset(const TArray<FString>& Args, UWorld* World)
+	{
+		UBDProgressSave::ResetProgress();
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdProgressStatus(
+		TEXT("BD.Progress.Status"),
+		TEXT("BD.Progress.Status: logs which difficulties have been won and whether this match got the chain bonus."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecProgressStatus));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdProgressSetWon(
+		TEXT("BD.Progress.SetWon"),
+		TEXT("BD.Progress.SetWon <Easy|Normal|Hard>: records a win without playing it."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecProgressSetWon));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdProgressReset(
+		TEXT("BD.Progress.Reset"),
+		TEXT("BD.Progress.Reset: forgets every win."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecProgressReset));
 }

@@ -67,9 +67,22 @@ namespace BDUIDebug
 
 	static void ExecPlay(const TArray<FString>& Args, UWorld* World)
 	{
-		if (UBDUISubsystem* UI = Find<UBDUISubsystem>(World))
+		UBDUISubsystem* UI = Find<UBDUISubsystem>(World);
+		if (UI == nullptr)
 		{
-			UI->PlayGame();
+			return;
+		}
+
+		// With a difficulty named it plays straight away, as the difficulty screen would;
+		// without one it does what the Play button does and opens that screen.
+		const int64 Value = Args.Num() == 1 ? StaticEnum<EBDDifficulty>()->GetValueByNameString(Args[0]) : INDEX_NONE;
+		if (Value != INDEX_NONE && Value < static_cast<int64>(EBDDifficulty::Count))
+		{
+			UI->PlayGame(static_cast<EBDDifficulty>(Value));
+		}
+		else
+		{
+			UI->OpenDifficultySelect();
 		}
 	}
 
@@ -147,7 +160,7 @@ namespace BDUIDebug
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdPlay(
 		TEXT("BD.UI.Play"),
-		TEXT("BD.UI.Play: what the Play button does: fades out and opens the game level."),
+		TEXT("BD.UI.Play [Easy|Normal|Hard]: what the Play button does (the difficulty screen), or straight into the game on a difficulty."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPlay));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdMenu(

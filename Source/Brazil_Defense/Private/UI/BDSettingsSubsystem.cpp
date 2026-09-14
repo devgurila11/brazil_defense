@@ -136,19 +136,31 @@ void UBDSettingsSubsystem::ApplyGraphics()
 
 	// The window belongs to the editor while playing in it: resolution and window mode
 	// are saved but only applied to a window of our own. A window with no explicit size
-	// is left at whatever the engine or the command line gave it.
-	if (!GIsEditor)
+	// is left at whatever the engine or the command line gave it, so the resolution pass
+	// is skipped outright: ApplySettings would push the stored size, which defaults to
+	// the desktop, and a window that size does not fit on it. Leaving a full screen for
+	// such a window is the one case that still needs the pass; it gets three quarters
+	// of the desktop.
+	const bool bModeChanged = WindowMode != UserSettings->GetLastConfirmedFullscreenMode();
+	const bool bApplyResolution = !GIsEditor && (bExplicit || WindowMode != EWindowMode::Windowed || bModeChanged);
+	if (bApplyResolution && !bExplicit && WindowMode == EWindowMode::Windowed)
 	{
-		if (bExplicit || WindowMode != EWindowMode::Windowed)
-		{
-			UserSettings->SetScreenResolution(Resolution);
-		}
+		Resolution = UserSettings->GetDesktopResolution() * 3 / 4;
+	}
+	if (bApplyResolution)
+	{
+		UserSettings->SetScreenResolution(Resolution);
 		UserSettings->SetFullscreenMode(WindowMode);
 	}
 	UserSettings->SetVSyncEnabled(Settings->bVSync);
 
 	// Not a check for a confirmation: the panel already showed the player what they picked.
-	UserSettings->ApplySettings(/*bCheckForCommandLineOverrides*/ false);
+	if (bApplyResolution)
+	{
+		UserSettings->ApplyResolutionSettings(/*bCheckForCommandLineOverrides*/ false);
+	}
+	UserSettings->ApplyNonResolutionSettings();
+	UserSettings->SaveSettings();
 
 	UE_LOG(LogBDUI, Verbose, TEXT("Graphics applied: quality %d, %dx%d, mode %d, vsync %s."),
 		Settings->QualityLevel, Resolution.X, Resolution.Y, static_cast<int32>(Settings->WindowMode), Settings->bVSync ? TEXT("on") : TEXT("off"));

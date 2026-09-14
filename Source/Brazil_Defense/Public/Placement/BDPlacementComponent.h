@@ -19,6 +19,7 @@ class UBDPathfinder;
 class UBDPlaceableData;
 class UInputComponent;
 struct FInputActionValue;
+struct FBDSavedPiece;
 
 /** A piece standing on the board, remembered so it can be taken back. */
 USTRUCT()
@@ -290,6 +291,9 @@ public:
 	/** Points the hover at one slot of a platform without a mouse, as if the cursor were on that slot. */
 	void SetHoveredSlotDirect(UBDPlatformComponent* Platform, int32 SlotIndex);
 
+	/** The platform standing on a cell inside the battle area, or null. */
+	UBDPlatformComponent* FindPlatformAt(const FBDCellCoord& Coord) const;
+
 	/** Turns the held piece until it faces a given number of quarter turns. */
 	void SetRotationSteps(int32 Steps);
 
@@ -298,6 +302,20 @@ public:
 
 	/** Debug: takes back every piece the player placed, refunding each, whatever the phase says. */
 	void DebugRemoveAll();
+
+	//~ Saving ---------------------------------------------------------------
+	// The board as a list of pieces, and the list put back through the normal placement
+	// gesture: the same validation, budgets and spawning as a click, one piece at a time.
+
+	/** Writes every placed piece down, urn first. Pieces with no asset behind them are skipped with a warning. */
+	void CaptureBoard(TArray<FBDSavedPiece>& OutPieces) const;
+
+	/**
+	 * Puts saved pieces back on a board that has been emptied. The match has to allow
+	 * every kind at the time: the caller rewinds it to the start of building first.
+	 * @return how many pieces went back. Refusals are logged, not fatal.
+	 */
+	int32 RestoreBoard(const TArray<FBDSavedPiece>& Pieces);
 
 	FBDOnHoverChanged OnHoverChanged;
 
@@ -319,9 +337,6 @@ private:
 	bool IsObjectiveSelection() const;
 	/** A defender of either kind, tower or character, is in hand. */
 	bool IsTowerSelection() const;
-
-	/** The platform standing on a cell inside the battle area, or null. */
-	UBDPlatformComponent* FindPlatformAt(const FBDCellCoord& Coord) const;
 
 	/** Index of the slot of a platform nearest to a point on the board plane, or INDEX_NONE when it has no slots. */
 	static int32 FindNearestSlot(const UBDPlatformComponent& Platform, const FVector& Point);

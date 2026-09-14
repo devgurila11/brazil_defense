@@ -64,6 +64,8 @@ private:
 	void UpdateDefenderPanel();
 	void UpdatePlacementPanel();
 	void UpdateCandidate(float RealDeltaSeconds);
+	/** The centre box once the match is over: the result, and what the player can do next. */
+	void UpdateEndPanel();
 
 	/** "Blue B -> B' vs Red R" for a change of Delta votes; bOutInverts when a spend hands the lead over. */
 	FText ResultText(int32 Delta, bool& bOutInverts) const;
@@ -94,6 +96,21 @@ private:
 
 	UFUNCTION()
 	void HandleMenu();
+
+	UFUNCTION()
+	void HandleEndless();
+
+	UFUNCTION()
+	void HandleReturnToMenu();
+
+	UFUNCTION()
+	void HandleSave();
+
+	UFUNCTION()
+	void HandleLoad();
+
+	/** The save button: its count, and whether a save may be taken now. */
+	void UpdateSaveButton();
 
 	//~ Always visible
 	UPROPERTY(Transient)
@@ -182,6 +199,37 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> MenuLabel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> SaveButton;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> SaveLabel;
+
+	//~ End of the match
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> EndBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> EndTitle;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> EndLine;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> EndlessButton;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> EndlessLabel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> EndMenuLabel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> LoadButton;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> LoadLabel;
 
 	TWeakObjectPtr<ABDMatchManager> BoundMatch;
 	FDelegateHandle VotesChangedHandle;

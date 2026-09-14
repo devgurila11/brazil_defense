@@ -20,6 +20,8 @@
 #include "Placement/BDPlacementPreview.h"
 #include "Placement/BDPlacementSettings.h"
 #include "Platform/BDPlatformComponent.h"
+#include "Objective/BDObjectiveSettings.h"
+#include "Save/BDMatchSave.h"
 #include "Tower/BDTowerBase.h"
 #include "Tower/BDTowerData.h"
 #include "UI/BDUISubsystem.h"
@@ -655,6 +657,170 @@ void UBDPlacementComponent::DebugRemoveAll()
 
 	CancelSelection();
 	UE_LOG(LogBDGrid, Log, TEXT("Every placed piece removed: %d piece(s)."), Removed);
+}
+
+//~ Saving --------------------------------------------------------------------------
+
+void UBDPlacementComponent::CaptureBoard(TArray<FBDSavedPiece>& OutPieces) const
+{
+	OutPieces.Reset();
+
+	// The urn is not a piece of the maps: it lives in the objective subsystem. It goes
+	// first because nothing else may be placed before it.
+	const UBDObjectiveSubsystem* Objectives = GetObjectives();
+	if (Objectives != nullptr && Objectives->IsPlaced())
+	{
+		FBDSavedPiece& Urn = OutPieces.AddDefaulted_GetRef();
+		Urn.Data = UBDObjectiveSettings::Get().ObjectivePlaceable.ToSoftObjectPath();
+		Urn.Origin = Objectives->GetGoalCell();
+	}
+
+	const auto Write = [&OutPieces](const FBDPlacedPiece& Piece, const FBDCellCoord& PlatformCell)
+	{
+		if (Piece.Data == nullptr || Piece.Data->HasAnyFlags(RF_Transient) || !FSoftObjectPath(Piece.Data).IsValid())
+		{
+			UE_LOG(LogBDGrid, Warning, TEXT("Piece '%s' at %s has no asset behind it and is not saved."),
+				*GetNameSafe(Piece.Data), *Piece.Origin.ToString());
+			return;
+		}
+
+		FBDSavedPiece& Saved = OutPieces.AddDefaulted_GetRef();
+		Saved.Data = FSoftObjectPath(Piece.Data);
+		Saved.Edges = Piece.Edges;
+		Saved.SlotIndex = Piece.SlotIndex;
+		if (Piece.IsOnSlot())
+		{
+			Saved.Origin = PlatformCell;
+		}
+		else
+		{
+			Saved.Origin = Piece.Origin;
+			// The same recovery TryBeginMoveAtHovered does: a fence's turn is its direction,
+			// a cell piece's turn is in its yaw.
+			Saved.RotationSteps = Piece.Edges.Num() > 0
+				? (Piece.Edges[0].Direction == FBDEdgeCoord::DirectionX ? 1 : 0)
+				: FMath::RoundToInt(Piece.Yaw / DegreesPerRotationStep) % CellRotationStepCount;
+		}
+
+		const ABDTowerBase* Tower = Piece.Actors.Num() > 0 ? Cast<ABDTowerBase>(Piece.Actors[0]) : nullptr;
+		Saved.Level = Tower != nullptr ? Tower->GetTowerLevel() : 1;
+	};
+
+	// A wide piece is in the map once per cell it covers; its first actor tells the copies apart.
+	TSet<const AActor*> Seen;
+	for (const TPair<FBDCellCoord, FBDPlacedPiece>& Pair : PlacedByCell)
+	{
+		const AActor* Key = Pair.Value.Actors.Num() > 0 ? Pair.Value.Actors[0] : nullptr;
+		if (Key == nullptr || Seen.Contains(Key))
+		{
+			continue;
+		}
+		Seen.Add(Key);
+		Write(Pair.Value, FBDCellCoord());
+	}
+
+	for (const TPair<FBDEdgeCoord, FBDPlacedPiece>& Pair : PlacedByEdge)
+	{
+		const AActor* Key = Pair.Value.Actors.Num() > 0 ? Pair.Value.Actors[0] : nullptr;
+		if (Key == nullptr || Seen.Contains(Key))
+		{
+			continue;
+		}
+		Seen.Add(Key);
+		Write(Pair.Value, FBDCellCoord());
+	}
+
+	// Mounted pieces come last so their platform is back before they are. The platform
+	// is found by its owner among the cell pieces.
+	for (const FBDPlacedPiece& Piece : PlacedOnSlots)
+	{
+		const UBDPlatformComponent* Platform = Piece.Platform.Get();
+		const FBDPlacedPiece* PlatformPiece = Platform != nullptr ? FindPieceOfActor(Platform->GetOwner()) : nullptr;
+		if (PlatformPiece == nullptr)
+		{
+			UE_LOG(LogBDGrid, Warning, TEXT("Mounted piece '%s' has no platform on the board and is not saved."), *GetNameSafe(Piece.Data));
+			continue;
+		}
+		Write(Piece, PlatformPiece->Origin);
+	}
+}
+
+int32 UBDPlacementComponent::RestoreBoard(const TArray<FBDSavedPiece>& Pieces)
+{
+	if (bMoving)
+	{
+		CancelMove();
+	}
+
+	const bool bWasLogging = bRefusalLogging;
+	bRefusalLogging = false;
+	int32 Restored = 0;
+
+	for (const FBDSavedPiece& Saved : Pieces)
+	{
+		UBDPlaceableData* Data = Cast<UBDPlaceableData>(Saved.Data.TryLoad());
+		if (Data == nullptr)
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Saved piece '%s' could not be loaded; skipped."), *Saved.Data.ToString());
+			continue;
+		}
+
+		SelectPlaceable(Data);
+		if (CurrentSelection != Data)
+		{
+			continue;
+		}
+
+		if (Saved.IsOnSlot())
+		{
+			const FBDPlacedPiece* PlatformPiece = PlacedByCell.Find(Saved.Origin);
+			AActor* PlatformActor = PlatformPiece != nullptr && PlatformPiece->Actors.Num() > 0 ? PlatformPiece->Actors[0] : nullptr;
+			UBDPlatformComponent* Platform = PlatformActor != nullptr ? PlatformActor->FindComponentByClass<UBDPlatformComponent>() : nullptr;
+			if (Platform == nullptr)
+			{
+				UE_LOG(LogBDGrid, Error, TEXT("Saved '%s' wants slot %d of a platform at %s, but no platform is there; skipped."),
+					*Data->GetName(), Saved.SlotIndex, *Saved.Origin.ToString());
+				continue;
+			}
+			SetHoveredSlotDirect(Platform, Saved.SlotIndex);
+		}
+		else if (Saved.IsOnEdge())
+		{
+			SetHoveredEdgeDirect(Saved.Edges[0]);
+		}
+		else
+		{
+			SetRotationSteps(Saved.RotationSteps);
+			SetHoveredCellDirect(Saved.Origin);
+		}
+
+		if (!TryPlaceAtHovered())
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Saved '%s' at %s refused on restore: %s."),
+				*Data->GetName(), Saved.IsOnEdge() ? *Saved.Edges[0].ToString() : *Saved.Origin.ToString(), *DescribeCurrentRefusal());
+			continue;
+		}
+		++Restored;
+
+		// The level goes straight on: the upgrades were paid for in the saved match.
+		if (Saved.Level > 1)
+		{
+			const FBDPlacedPiece* Placed = Saved.IsOnSlot()
+				? (PlacedOnSlots.Num() > 0 ? &PlacedOnSlots.Last() : nullptr)
+				: PlacedByCell.Find(Saved.Origin);
+			ABDTowerBase* Tower = Placed != nullptr && Placed->Actors.Num() > 0 ? Cast<ABDTowerBase>(Placed->Actors[0]) : nullptr;
+			if (Tower != nullptr)
+			{
+				Tower->DebugSetLevel(Saved.Level);
+			}
+		}
+	}
+
+	CancelSelection();
+	bRefusalLogging = bWasLogging;
+
+	UE_LOG(LogBDGrid, Log, TEXT("Board restored: %d of %d saved piece(s) back."), Restored, Pieces.Num());
+	return Restored;
 }
 
 void UBDPlacementComponent::SetHoveredEdgeDirect(const FBDEdgeCoord Edge)

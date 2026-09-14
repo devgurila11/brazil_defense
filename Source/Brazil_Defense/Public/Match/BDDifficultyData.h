@@ -8,6 +8,38 @@
 #include "BDDifficultyData.generated.h"
 
 /**
+ * What a win on the difficulty below adds to the starting hand of this one. Zero
+ * everywhere means the difficulty stands alone. The defaults are placeholders, like
+ * every number until there is real content to calibrate against.
+ */
+USTRUCT(BlueprintType)
+struct FBDChainBonus
+{
+	GENERATED_BODY()
+
+	/** Blue votes the match opens with: a head start on the count, not just on the board. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
+	int32 Votes = 100;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
+	int32 Dividers = 4;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
+	int32 Platforms = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
+	int32 Towers = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
+	int32 Characters = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
+	int32 Saves = 1;
+
+	bool IsEmpty() const { return Votes == 0 && Dividers == 0 && Platforms == 0 && Towers == 0 && Characters == 0 && Saves == 0; }
+};
+
+/**
  * The starting hand of a match: how much the player gets to build with, how many towers
  * they walk in holding, how cluttered the board is and how long the first countdown runs.
  *
@@ -48,4 +80,24 @@ public:
 	/** Seconds of building time before the first wave goes out. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Waves", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
 	float FirstWaveDelay = 60.0f;
+
+	/** Waves the player has to clear to win. The match goes on past it as endless, if the player asks. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Victory", meta = (ClampMin = "1", UIMin = "1"))
+	int32 WavesToWin = 20;
+
+	/** Prisoners a win on this difficulty sets free: the reward the ending is told with. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Victory", meta = (ClampMin = "0", UIMin = "0"))
+	int32 PrisonersFreed = 2;
+
+	/** Times the player may save the match. Each save overwrites the last: the choice of when is the resource. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Saves", meta = (ClampMin = "0", UIMin = "0"))
+	int32 SaveBudget = 2;
+
+	/**
+	 * Added to the starting hand when the difficulty one step below this one has been
+	 * won (UBDProgressSave). Easy has nothing below it, so its bonus never applies. This
+	 * is what makes starting on Hard cold nearly impossible, on purpose.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus")
+	FBDChainBonus ChainBonus;
 };

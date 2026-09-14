@@ -12,6 +12,8 @@ class ABDTowerBase;
 class UBDDayCycleComponent;
 class UBDDifficultyData;
 class UBDGridSubsystem;
+class UBDMatchSave;
+class UBDPlacementComponent;
 
 /** Broadcast whenever the match moves to another phase. */
 DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnMatchPhaseChanged, EBDMatchPhase /*NewPhase*/);
@@ -144,6 +146,81 @@ public:
 	/** Whether the match is over, won or lost. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool IsMatchOver() const { return Phase == EBDMatchPhase::Defeat || Phase == EBDMatchPhase::Victory; }
+
+	//~ Winning ------------------------------------------------------------------
+	// Clearing the difficulty's last wave wins: the phase goes to Victory and the board
+	// freezes like a defeat, so the player reads the result. Not while the candidate is
+	// on the board, though: he is the one thing that can still lose the match, so the
+	// waves keep coming until he dies (the win is taken then, at once between waves or
+	// when the running wave clears) or reaches the urn. The win is kept once it is
+	// taken; the player may then carry on into endless, where the waves keep scaling and
+	// only a defeat ends things. A defeat after a win does not undo the win.
+
+	/** Waves to clear for the win on this difficulty. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetWavesToWin() const;
+
+	/** Prisoners the win on this difficulty frees. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetPrisonersFreed() const;
+
+	/** True once the winning wave has been cleared, whatever happened after. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool HasWon() const { return bWon; }
+
+	/** True once the player chose to keep playing past the win. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool IsEndless() const { return bEndless; }
+
+	/** Waves to win reached, no win taken yet, and no candidate walking: the next quiet moment is the win. */
+	bool IsWinDue() const;
+
+	/** Ends the match as a win. Called when the win is due; public so the console can force it. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void DeclareVictory();
+
+	/** From Victory, reopens the building phase for the next wave and keeps going until a defeat. @return false outside Victory. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	bool ContinueEndless();
+
+	//~ Saving ------------------------------------------------------------------
+	// The difficulty hands out a few saves. Each one writes the whole match to the one
+	// slot, between waves only, and the count goes down: choosing when to spend them is
+	// the game. Loading rebuilds the match in place, at the start of the wave after the
+	// one saved, with the saves left as they were after that save.
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetSavesRemaining() const { return SavesRemaining; }
+
+	/** Between waves, match still running, saves left. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool CanSaveMatch() const;
+
+	/** Spends a save and writes the match. @return false when it cannot, with nothing spent. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	bool SaveMatch();
+
+	/** Whether a saved match exists to load. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	static bool HasSavedMatch();
+
+	/** Reads the slot and rebuilds this match from it. @return false when there is nothing to load. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	bool LoadMatch();
+
+	/** Rebuilds this match from a snapshot, whatever it was doing. */
+	void RestoreMatch(const UBDMatchSave& Save);
+
+	//~ Chained difficulties -------------------------------------------------------
+	// A win is recorded in UBDProgressSave. A match on a difficulty whose lower neighbour
+	// has been won opens with that difficulty's ChainBonus on top of its budgets.
+
+	/** The difficulty one step below this match's, or Count for the lowest. */
+	static EBDDifficulty GetDifficultyBelow(EBDDifficulty Difficulty);
+
+	/** Whether the chain bonus was handed out at the start of this match. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool WasChainBonusApplied() const { return bChainBonusApplied; }
 
 	//~ Votes, reported by the wave subsystem -----------------------------------
 
@@ -279,6 +356,15 @@ private:
 
 	UBDGridSubsystem* GetGrid() const;
 
+	/** The local player's placement component, which owns the pieces on the board. */
+	UBDPlacementComponent* GetPlacement() const;
+
+	/** Resolves DifficultyData from Difficulty, falling back to the class defaults. */
+	void ResolveDifficulty();
+
+	/** The budgets of the difficulty, plus the chain bonus when the one below has been won. Votes are not touched. */
+	void ApplyStartingBudgets();
+
 	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Match")
 	TObjectPtr<UBDDayCycleComponent> DayCycle;
 
@@ -298,4 +384,8 @@ private:
 	float GameSpeed = 1.0f;
 	int32 VotesBlue = 0;
 	int32 VotesRed = 0;
+	bool bWon = false;
+	bool bEndless = false;
+	int32 SavesRemaining = 0;
+	bool bChainBonusApplied = false;
 };

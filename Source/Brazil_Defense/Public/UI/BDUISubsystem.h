@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Match/BDMatchTypes.h"
 #include "BDUISubsystem.generated.h"
 
 class APlayerController;
@@ -23,6 +24,7 @@ enum class EBDScreen : uint8
 	Splash,
 	Loading,
 	MainMenu,
+	DifficultySelect,
 	HUD
 };
 
@@ -59,8 +61,24 @@ public:
 	/** Skips the rest of the splash. */
 	void FinishSplash();
 
-	/** Fades out, opens the game level; the HUD follows once the level is up. */
-	void PlayGame();
+	/** Play from the menu: the difficulty screen comes first. */
+	void OpenDifficultySelect();
+
+	/** Back from the difficulty screen. */
+	void CloseDifficultySelect();
+
+	/** Fades out, opens the game level on a difficulty; the HUD follows once the level is up. */
+	void PlayGame(EBDDifficulty Difficulty);
+
+	/** PlayGame, then the saved match is loaded into the level once it is up. The save carries its own difficulty. */
+	void ContinueGame();
+
+	/**
+	 * The difficulty chosen for the match about to start, taken once by the match manager
+	 * at its BeginPlay. Unset when the level came up on its own (Play in Editor), in which
+	 * case the manager keeps its own.
+	 */
+	TOptional<EBDDifficulty> TakeChosenDifficulty();
 
 	/** Fades out and returns to the menu level. */
 	void ReturnToMenu();
@@ -133,6 +151,15 @@ private:
 
 	/** Set when Play was pressed: the next level to come up is the game and gets the HUD. */
 	bool bGamePending = false;
+
+	/** Continue was chosen: the saved match is loaded once the game level shows its HUD. */
+	bool bLoadPending = false;
+
+	/** See TakeChosenDifficulty. */
+	TOptional<EBDDifficulty> ChosenDifficulty;
+
+	/** The level open is shared by Play and Continue. */
+	void OpenGameLevel();
 
 	/** Set once StartFrontEnd ran in this session. */
 	bool bFrontEndSeen = false;
