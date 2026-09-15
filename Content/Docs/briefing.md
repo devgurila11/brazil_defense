@@ -1,105 +1,62 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-14 17:10**
+**Versão: 2026-09-14 23:25**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
 ---
 
-## 1. Candidatos como chefes agendados
+## 1. Barra grande do candidato no HUD — suportar vários
 
-O candidato deixa de ser evento único e vira o sistema de chefes.
+A barra flutuante sobre cada cubo já funciona (mostra o HP de cada um).
+O problema é a BARRA GRANDE no HUD, que expõe o HP em número: ela
+mostra só UM candidato, provavelmente o agendado atual.
 
-- Um candidato surge a cada 5 ondas (ondas 5, 10, 15... 100) = 20 no
-  total. Expor CandidateInterval (5) em UBDGameBalanceSettings.
-- Cada um mais forte que o anterior. HP = HP do creep daquela onda ×
-  CandidateHealthMultiplier (o x40 que já existe). Como o HP do creep
-  cresce por onda, o candidato da onda 100 é muito mais forte que o
-  da 5, naturalmente.
-- Sai de uma boca sorteada. Lento. Alvo prioritário de todo defensor
-  no alcance.
-- Só um agendado por vez.
+Quando a leva volta pela virada de votos, há vários candidatos ao
+mesmo tempo. A barra do HUD precisa mostrar TODOS os candidatos vivos:
 
-O gatilho antigo "sai quando o vermelho passa o azul" NÃO some — vira
-outra coisa, ver item 3.
+- Uma barra POR CANDIDATO vivo (individual, nunca agregada),
+  empilhadas, cada uma com HP e a cor do candidato (o TintColor de
+  debug). No futuro cada candidato terá nome/rosto próprio, então a
+  barra precisa identificar QUEM está apanhando — deixar já um campo
+  de nome/label por barra, mesmo que por ora seja "Candidato N".
+- Some conforme cada um morre.
+- Se ficar muito cheio (ex: 16 voltando), limitar a lista visível e
+  indicar "+N" para o resto, ou encolher as barras — o importante é
+  não esconder candidatos.
 
----
-
-## 2. Condições de vitória e derrota
-
-Substitui a vitória por sobrevivência.
-
-DERROTA, por qualquer uma:
-
-- Um candidato alcança a urna — a QUALQUER momento, mesmo na onda 27.
-  Morte súbita. Fase Defeat.
-- Chegar ao fim da onda 100 com o VERMELHO na frente no placar.
-
-VITÓRIA:
-
-- Chegar ao fim da onda 100 com o AZUL na frente. Liberta os presos
-  da dificuldade. Endless continua disponível depois.
-
-Creep normal chegando na urna NÃO é game over — só soma voto vermelho
-(por HP, como já está). Só CANDIDATO na urna é morte súbita.
-
-Atualizar o PLANO.md §8 com isto — a vitória mudou de "sobreviver a X
-ondas" para "vencer a apuração ao fim da onda 100, sem deixar nenhum
-candidato chegar".
+Motivo: com candidato na urna = game over, o jogador precisa ver
+TODOS que estão vindo, não só um.
 
 ---
 
-## 3. Retorno dos candidatos (a punição da virada)
+## 2. Recompensa por matar candidato agendado
 
-Quando o VERMELHO ultrapassa o AZUL no placar:
+Cada candidato AGENDADO (ondas 5, 10, 15...) morto aumenta o TETO de
+orçamento de peças do jogador.
 
-- Todos os candidatos JÁ MORTOS nesta partida voltam, cada um com a
-  VIDA ORIGINAL de quando morreu (o da onda 80 volta forte).
-- A onda atual vira SÓ o desfile deles — nenhum creep normal sai
-  durante o retorno.
-- Distribuídos ao longo da duração da onda.
-- Defesas grudam neles (alvo prioritário).
-- Qualquer um que alcance a urna = morte súbita, como qualquer
-  candidato.
+- Incremento FIXO por chefe: +1 torre e +1 personagem de teto por
+  candidato agendado morto. (Expor em UBDGameBalanceSettings:
+  TowerBudgetPerBoss, CharacterBudgetPerBoss.)
+- NÃO dá peça pronta — dá ESPAÇO. O jogador ainda paga cada peça com
+  votos azuis (que derrubam o placar). Preserva o modelo cruel: o
+  chefe dá teto, não poder de graça.
+- Feedback claro ao matar: mensagem/HUD "Orçamento aumentado: +1
+  torre, +1 personagem".
 
-Se o jogador MATAR TODOS os que voltaram:
-
-- O placar IGUALA POR BAIXO: azul e vermelho vão ambos ao valor do
-  MENOR (o vermelho). O jogador NÃO ganha votos de brinde — só para
-  de perder. Isso fecha o exploit de provocar a virada de propósito
-  para zerar a dívida dos gastos.
-- A partida segue normal, com os chefes agendados voltando a cada 5
-  ondas.
-- Se o vermelho passar o azul de novo mais tarde, o retorno dispara
-  outra vez.
-
-Se um dos que voltaram chegar na urna antes de todos morrerem:
-
-- Derrota (morte súbita).
+REGRA CRÍTICA: candidatos que voltam pela VIRADA DE VOTOS (o desfile
+dos caídos) NÃO dão recompensa nenhuma. Só os agendados dão. Senão o
+jogador provoca a virada de propósito para farmar orçamento — o mesmo
+tipo de exploit que o "igualar por baixo" já fecha no placar.
 
 ---
 
-## 4. Cor de debug nos candidatos-cubo
+## Confirmado OK (não mexer)
 
-Enquanto os candidatos são cubos de blocagem, dar a cada um uma cor
-distinta pela ordem de surgimento (onda 5 = cor 1, onda 10 = cor 2...),
-só para eu distinguir quais são quando a leva volta na virada.
-
-- TintColor no material do cubo basta.
-- É debug de blocagem — sai quando os 20 modelos reais de político
-  entrarem. Não investir em paleta elaborada.
-
----
-
-## 5. Economia inflada — registrar, não corrigir agora
-
-A simulação deu ~500 mil votos na onda 68. A mudança de vermelho/azul
-por HP multiplicou a escala. Os custos de peça e upgrade (dezenas)
-ficaram irrelevantes.
-
-NÃO recalibrar agora — é placeholder até o conteúdo real (vários
-atiradores e inimigos). Mas registrar no PLANO que a escala de votos
-e os custos precisam ser recalibrados juntos quando o conteúdo entrar.
+- Barra flutuante sobre os cubos: funcionando.
+- Igualar votos por baixo, sistema de votos: aprovado.
+- A derrota apertada na onda 45 (candidato chegou com 330/460) é o
+  comportamento certo — tensão desejada.
 
 ---
 
@@ -107,11 +64,8 @@ e os custos precisam ser recalibrados juntos quando o conteúdo entrar.
 
 Compilar limpo nos dois targets.
 
-- 20 candidatos ao longo de 100 ondas, um a cada 5, cada um mais forte.
-- Candidato na urna = Defeat imediato, em qualquer onda.
-- Fim da onda 100: azul na frente = vitória, vermelho na frente =
-  derrota.
-- Virada de placar = todos os candidatos mortos voltam com vida
-  original, onda vira só o desfile; matar todos iguala por baixo.
-- Log claro de cada evento (candidato agendado, retorno disparado,
-  igualar por baixo, condição de fim).
+- Barra grande do HUD mostra todos os candidatos vivos, não só um;
+  testar com a leva voltando (vários ao mesmo tempo).
+- Matar candidato agendado sobe o teto de torre e personagem, com
+  feedback na tela.
+- Candidato do desfile de virada não dá recompensa.

@@ -76,9 +76,11 @@ Custos e reembolsos:
   todo defensor no alcance. HP = HP do creep da onda × 40 — o da onda
   100 é muito mais forte que o da 5. Só um agendado por vez; se a
   onda dele encontra outro andando, ele vem com a próxima onda livre.
-- Matar um candidato não dá voto. **Qualquer candidato chegando na
-  urna = derrota imediata, em qualquer onda.** Creep normal chegando
-  só soma vermelho.
+- Matar um candidato não dá voto. Matar um candidato AGENDADO sobe o
+  teto de orçamento (+1 torre, +1 personagem): espaço, não peça — a
+  peça continua custando votos azuis. **Qualquer candidato chegando
+  na urna = derrota imediata, em qualquer onda.** Creep normal
+  chegando só soma vermelho.
 - **Retorno (a punição da virada):** quando o vermelho ultrapassa o
   azul, todos os candidatos já mortos na partida voltam, cada um com
   a vida original de quando caiu, distribuídos em
@@ -86,8 +88,8 @@ Custos e reembolsos:
   nenhum creep normal sai até todos caírem. Matar todos **iguala o
   placar por baixo** (azul desce até o vermelho) — nada de brinde,
   só para de sangrar; isso fecha o exploit de provocar a virada para
-  zerar a dívida dos gastos. Um deles na urna = derrota. Nova virada
-  mais tarde = novo retorno.
+  zerar a dívida dos gastos. Os que voltam não dão recompensa nenhuma.
+  Um deles na urna = derrota. Nova virada mais tarde = novo retorno.
 - Enquanto há candidato no board (agendado ou de retorno) a partida
   não se decide: as ondas seguem até ele cair ou chegar.
 - Debug de blocagem: cada cubo ganha uma cor por ordem de surgimento
@@ -247,6 +249,19 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
+
+- **2026-09-14 (noite, 3) — (commit abaixo)** (desde ede2420):
+  - HUD: painel do candidato virou lista — uma linha por candidato
+    vivo (nome, HP, barra na cor dele), até 6 linhas e "+N a caminho"
+    acima disso. `DisplayName` no ator ("Candidato N" até os 20 terem
+    nome próprio).
+  - **Regra nova (seção 4):** matar candidato AGENDADO sobe o teto de
+    orçamento em +1 torre e +1 personagem (`TowerBudgetPerBoss`,
+    `CharacterBudgetPerBoss`); é espaço, não peça — cada peça segue
+    custando votos azuis. Candidato do desfile de virada não dá nada.
+    Aviso no HUD ao ganhar.
+  - Textos `HUD.Candidate.Return/More` e `HUD.Reward.Budget` (Return
+    faltava desde o commit anterior).
 
 - **2026-09-14 (noite, 2) — b162e3a** (desde 795cdc8):
   - Placar com ícones (cédulas e urna, fixos do HUD, por fração da

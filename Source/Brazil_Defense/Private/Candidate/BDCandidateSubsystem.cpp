@@ -291,6 +291,10 @@ ABDCandidate* UBDCandidateSubsystem::SpawnFromRecord(const FBDCandidateRecord& R
 	Spawned->Ordinal = Record.Ordinal;
 	Spawned->bReturning = bReturning;
 	Spawned->SetDebugTint(BDCandidatePrivate::TintForOrdinal(Record.Ordinal));
+	// "Candidate N" until the twenty have names of their own.
+	FFormatNamedArguments NameArgs;
+	NameArgs.Add(TEXT("Ordinal"), Record.Ordinal);
+	Spawned->DisplayName = FText::Format(NSLOCTEXT("BrazilDefense", "CandidateName", "Candidate {Ordinal}"), NameArgs);
 	Living.Add(Spawned);
 
 	UE_LOG(LogBDCandidate, Log, TEXT("CANDIDATE %d %s on wave %d from mouth %d with %.0f health (because %s): %d blue / %d red."),
@@ -416,7 +420,19 @@ void UBDCandidateSubsystem::NotifyCandidateKilled(ABDCandidate* Killed)
 		}
 	}
 
-	if (!Killed->bReturning || !bReturnActive)
+	// A scheduled candidate down is room for more: one more tower and character may be
+	// placed, each still paid for. One of the fallen come back earns nothing, on purpose.
+	if (!Killed->bReturning)
+	{
+		const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+		if (Match != nullptr)
+		{
+			Match->GrantBudget(Balance.TowerBudgetPerBoss, Balance.CharacterBudgetPerBoss,
+				FString::Printf(TEXT("candidate %d killed"), Killed->Ordinal));
+		}
+		return;
+	}
+	if (!bReturnActive)
 	{
 		return;
 	}

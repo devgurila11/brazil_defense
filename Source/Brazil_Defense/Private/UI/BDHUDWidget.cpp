@@ -227,20 +227,34 @@ void UBDHUDWidget::BuildTree()
 	//~ Candidate, under the top block: bar, line, notice, frozen count.
 	UVerticalBox* CandidateColumn = MakeColumn();
 
+	// One row per candidate walking, each his own name, number and colour: with a
+	// candidate at the urn ending the match, every one coming has to be seen. Rows are
+	// built once and shown as needed; past the last row a line counts the rest.
 	CandidateBox = MakeBox(ColorPanel, 8.0f);
-	UVerticalBox* CandidateInner = MakeColumn();
-	CandidateLine = MakeText(LineFontSize, ColorRed);
-	CandidateLine->SetJustification(ETextJustify::Center);
-	CandidateInner->AddChildToVerticalBox(CandidateLine);
-	CandidateBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
-	CandidateBar->SetFillColorAndOpacity(ColorRed);
-	CandidateBarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-	CandidateBarBox->SetWidthOverride(CandidateBarWidth);
-	CandidateBarBox->SetHeightOverride(CandidateBarHeight);
-	CandidateBarBox->AddChild(CandidateBar);
-	UVerticalBoxSlot* BarSlot = CandidateInner->AddChildToVerticalBox(CandidateBarBox);
-	BarSlot->SetHorizontalAlignment(HAlign_Center);
-	CandidateBox->AddChild(CandidateInner);
+	CandidateRows = MakeColumn();
+	for (int32 Index = 0; Index < MaxCandidateRows; ++Index)
+	{
+		CandidateLines[Index] = MakeText(LineFontSize, ColorRed);
+		CandidateLines[Index]->SetJustification(ETextJustify::Center);
+		UVerticalBoxSlot* LineSlot = CandidateRows->AddChildToVerticalBox(CandidateLines[Index]);
+		LineSlot->SetPadding(FMargin(0.0f, Index == 0 ? 0.0f : 6.0f, 0.0f, 0.0f));
+		CandidateBars[Index] = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass());
+		CandidateBars[Index]->SetFillColorAndOpacity(ColorRed);
+		CandidateBarBoxes[Index] = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		CandidateBarBoxes[Index]->SetWidthOverride(CandidateBarWidth);
+		CandidateBarBoxes[Index]->SetHeightOverride(CandidateBarHeight);
+		CandidateBarBoxes[Index]->AddChild(CandidateBars[Index]);
+		UVerticalBoxSlot* BarSlot = CandidateRows->AddChildToVerticalBox(CandidateBarBoxes[Index]);
+		BarSlot->SetHorizontalAlignment(HAlign_Center);
+		CandidateLines[Index]->SetVisibility(ESlateVisibility::Collapsed);
+		CandidateBarBoxes[Index]->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	CandidateBarBox = CandidateBarBoxes[0];
+	CandidateOverflow = MakeText(SmallFontSize, ColorMuted);
+	CandidateOverflow->SetJustification(ETextJustify::Center);
+	CandidateOverflow->SetVisibility(ESlateVisibility::Collapsed);
+	CandidateRows->AddChildToVerticalBox(CandidateOverflow);
+	CandidateBox->AddChild(CandidateRows);
 	UVerticalBoxSlot* CandidateBoxSlot = CandidateColumn->AddChildToVerticalBox(CandidateBox);
 	CandidateBoxSlot->SetHorizontalAlignment(HAlign_Center);
 
@@ -254,6 +268,13 @@ void UBDHUDWidget::BuildTree()
 	FrozenLine->SetJustification(ETextJustify::Center);
 	UVerticalBoxSlot* FrozenSlot = CandidateColumn->AddChildToVerticalBox(FrozenLine);
 	FrozenSlot->SetHorizontalAlignment(HAlign_Center);
+
+	RewardNotice = MakeText(LineFontSize, ColorBlue);
+	RewardNotice->SetJustification(ETextJustify::Center);
+	RewardNotice->SetVisibility(ESlateVisibility::Collapsed);
+	UVerticalBoxSlot* RewardSlot = CandidateColumn->AddChildToVerticalBox(RewardNotice);
+	RewardSlot->SetHorizontalAlignment(HAlign_Center);
+	RewardSlot->SetPadding(FMargin(0.0f, 4.0f));
 
 	UVerticalBoxSlot* CandidateColumnSlot = Top->AddChildToVerticalBox(CandidateColumn);
 	CandidateColumnSlot->SetHorizontalAlignment(HAlign_Center);
@@ -550,7 +571,10 @@ void UBDHUDWidget::ApplyResponsiveSizes()
 	NullIconBox->SetHeightOverride(ScoreIcon * 0.6f);
 	ScoreBarBox->SetWidthOverride(FMath::Max(120.0f, Size.X * Settings.ScoreBarWidthFraction));
 	SidePanelBox->SetWidthOverride(FMath::Max(200.0f, Size.X * Settings.SidePanelWidthFraction));
-	CandidateBarBox->SetWidthOverride(FMath::Max(160.0f, Size.X * Settings.CandidateBarWidthFraction));
+	for (int32 Index = 0; Index < MaxCandidateRows; ++Index)
+	{
+		CandidateBarBoxes[Index]->SetWidthOverride(FMath::Max(160.0f, Size.X * Settings.CandidateBarWidthFraction));
+	}
 }
 
 void UBDHUDWidget::RefreshTexts()
@@ -589,6 +613,7 @@ void UBDHUDWidget::NativeDestruct()
 		Match->OnVotesChanged.Remove(VotesChangedHandle);
 		Match->OnPhaseChanged.Remove(PhaseChangedHandle);
 		Match->OnWaveStarted.Remove(WaveStartedHandle);
+		Match->OnBudgetGranted.Remove(BudgetGrantedHandle);
 	}
 	BoundMatch.Reset();
 	if (UBDObjectiveSubsystem* Objectives = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDObjectiveSubsystem>() : nullptr)
@@ -614,6 +639,7 @@ void UBDHUDWidget::BindMatch()
 	}
 
 	VotesChangedHandle = Match->OnVotesChanged.AddUObject(this, &UBDHUDWidget::HandleVotesChanged);
+	BudgetGrantedHandle = Match->OnBudgetGranted.AddUObject(this, &UBDHUDWidget::HandleBudgetGranted);
 	LastBlueVotes = Match->GetVotesBlue();
 	LastRedVotes = Match->GetVotesRed();
 	bVotesSeen = true;
@@ -658,6 +684,15 @@ void UBDHUDWidget::HandleVotesChanged(const int32 Blue, const int32 Red)
 void UBDHUDWidget::HandleVoteSound()
 {
 	UrnPulse.Trigger();
+}
+
+void UBDHUDWidget::HandleBudgetGranted(const int32 Towers, const int32 Characters)
+{
+	FFormatNamedArguments Args;
+	Args.Add(TEXT("Towers"), Towers);
+	Args.Add(TEXT("Characters"), Characters);
+	RewardNotice->SetText(BDLoc::Format(TEXT("HUD.Reward.Budget"), Args));
+	RewardNoticeRemaining = UBDUISettings::Get().CandidateNoticeSeconds;
 }
 
 //~ Numbers from the urn -------------------------------------------------------------
@@ -1026,19 +1061,54 @@ void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 	NoticeRemaining = FMath::Max(0.0f, NoticeRemaining - RealDeltaSeconds);
 	CandidateNotice->SetVisibility(NoticeRemaining > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
-	if (Candidate != nullptr && Candidate->GetMaxHealth() > 0.0f)
+	// Every candidate walking, in the order they came out, one row each; the overflow
+	// line counts whoever did not get a row.
+	TArray<ABDCandidate*> Walking;
+	if (Candidates != nullptr)
+	{
+		Candidates->GetLivingCandidates(Walking);
+	}
+	int32 Row = 0;
+	for (const ABDCandidate* Walker : Walking)
+	{
+		if (Walker == nullptr || Walker->GetMaxHealth() <= 0.0f || Row >= MaxCandidateRows)
+		{
+			continue;
+		}
+		FFormatNamedArguments Args;
+		Args.Add(TEXT("Name"), Walker->DisplayName);
+		Args.Add(TEXT("Health"), FMath::CeilToInt(Walker->GetCurrentHealth()));
+		Args.Add(TEXT("MaxHealth"), FMath::CeilToInt(Walker->GetMaxHealth()));
+		CandidateLines[Row]->SetText(BDLoc::Format(TEXT("HUD.Candidate.Health"), Args));
+		CandidateLines[Row]->SetColorAndOpacity(FSlateColor(Walker->GetDebugTint()));
+		CandidateBars[Row]->SetFillColorAndOpacity(Walker->GetDebugTint());
+		CandidateBars[Row]->SetPercent(FMath::Clamp(Walker->GetCurrentHealth() / Walker->GetMaxHealth(), 0.0f, 1.0f));
+		CandidateLines[Row]->SetVisibility(ESlateVisibility::HitTestInvisible);
+		CandidateBarBoxes[Row]->SetVisibility(ESlateVisibility::HitTestInvisible);
+		++Row;
+	}
+	for (int32 Index = Row; Index < MaxCandidateRows; ++Index)
+	{
+		CandidateLines[Index]->SetVisibility(ESlateVisibility::Collapsed);
+		CandidateBarBoxes[Index]->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	const int32 Overflow = Walking.Num() - Row;
+	if (Overflow > 0)
 	{
 		FFormatNamedArguments Args;
-		Args.Add(TEXT("Health"), FMath::CeilToInt(Candidate->GetCurrentHealth()));
-		Args.Add(TEXT("MaxHealth"), FMath::CeilToInt(Candidate->GetMaxHealth()));
-		CandidateLine->SetText(BDLoc::Format(TEXT("HUD.Candidate.Health"), Args));
-		CandidateBar->SetPercent(FMath::Clamp(Candidate->GetCurrentHealth() / Candidate->GetMaxHealth(), 0.0f, 1.0f));
-		CandidateBox->SetVisibility(ESlateVisibility::HitTestInvisible);
+		Args.Add(TEXT("Count"), Overflow);
+		CandidateOverflow->SetText(BDLoc::Format(TEXT("HUD.Candidate.More"), Args));
+		CandidateOverflow->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 	else
 	{
-		CandidateBox->SetVisibility(ESlateVisibility::Collapsed);
+		CandidateOverflow->SetVisibility(ESlateVisibility::Collapsed);
 	}
+	CandidateBox->SetVisibility(Row > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+
+	// The reward notice, for a moment after a scheduled candidate falls.
+	RewardNoticeRemaining = FMath::Max(0.0f, RewardNoticeRemaining - RealDeltaSeconds);
+	RewardNotice->SetVisibility(RewardNoticeRemaining > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
 	if (Candidates != nullptr && Candidates->IsReturnActive())
 	{

@@ -271,15 +271,36 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ClockLine;
 
-	//~ Candidate
+	//~ Candidates: one row per living one, pooled
+	static constexpr int32 MaxCandidateRows = 6;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UBorder> CandidateBox;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> CandidateLine;
+	TObjectPtr<UVerticalBox> CandidateRows;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UProgressBar> CandidateBar;
+	TObjectPtr<UTextBlock> CandidateLines[MaxCandidateRows];
+
+	UPROPERTY(Transient)
+	TObjectPtr<UProgressBar> CandidateBars[MaxCandidateRows];
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> CandidateBarBoxes[MaxCandidateRows];
+
+	/** "+N more" under the rows when there are more candidates than rows. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> CandidateOverflow;
+
+	/** "Budget raised: +1 tower, +1 character", for a moment after a scheduled kill. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> RewardNotice;
+	float RewardNoticeRemaining = 0.0f;
+	FDelegateHandle BudgetGrantedHandle;
+	void HandleBudgetGranted(int32 Towers, int32 Characters);
+
+	/** Kept only to keep the old responsive-size code pointing somewhere: the first row's box. */
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> CandidateNotice;

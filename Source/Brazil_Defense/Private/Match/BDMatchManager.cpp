@@ -891,6 +891,20 @@ void ABDMatchManager::RefundRemoval(const EBDPieceKind Kind)
 	}
 }
 
+void ABDMatchManager::GrantBudget(const int32 Towers, const int32 Characters, const FString& Why)
+{
+	if (Towers <= 0 && Characters <= 0)
+	{
+		return;
+	}
+
+	TowersRemaining += FMath::Max(0, Towers);
+	CharactersRemaining += FMath::Max(0, Characters);
+	UE_LOG(LogBDMatch, Log, TEXT("Budget raised (%s): +%d tower(s), +%d character(s); now %d towers, %d characters to place."),
+		*Why, Towers, Characters, TowersRemaining, CharactersRemaining);
+	OnBudgetGranted.Broadcast(Towers, Characters);
+}
+
 namespace BDMatchCommands
 {
 	static constexpr int32 ArgCountSpeed = 1;

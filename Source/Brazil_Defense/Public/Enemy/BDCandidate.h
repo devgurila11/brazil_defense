@@ -55,6 +55,16 @@ public:
 	 */
 	void SetDebugTint(const FLinearColor& Color);
 
+	/** The colour he was given, for the HUD to match. */
+	const FLinearColor& GetDebugTint() const { return PendingTint; }
+
+	/**
+	 * Who this is, for the HUD: "Candidate N" until each of the twenty has a name and a
+	 * face of his own, which will come from data and go in here the same way.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Brazil Defense|Candidate")
+	FText DisplayName;
+
 protected:
 	//~ Begin ABDEnemyBase interface
 	virtual void Arrive() override;

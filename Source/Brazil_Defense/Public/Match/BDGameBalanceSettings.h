@@ -94,6 +94,17 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0", UIMin = "0"))
 	int32 CandidateInterval = 5;
 
+	// A scheduled candidate killed raises the ceilings: room for one more tower and one
+	// more character, not the pieces themselves, which are still paid for in blue votes.
+	// The fallen who come back with the count pay nothing: the return is a punishment,
+	// and a reward on it would make the count worth throwing.
+
+	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0", UIMin = "0"))
+	int32 TowerBudgetPerBoss = 1;
+
+	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0", UIMin = "0"))
+	int32 CharacterBudgetPerBoss = 1;
+
 	/** Seconds the return of the fallen is spread over when the count turns red: the parade's length. */
 	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "1.0", UIMin = "1.0", ForceUnits = "s"))
 	float ReturnParadeSeconds = 30.0f;

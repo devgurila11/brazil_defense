@@ -24,6 +24,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnWaveStarted, int32 /*Wave*/);
 /** Broadcast whenever either vote counter moves. Carries the new totals, blue then red. */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnVotesChanged, int32 /*Blue*/, int32 /*Red*/);
 
+/** Broadcast when the ceilings go up: extra towers and characters the player may now place. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnBudgetGranted, int32 /*Towers*/, int32 /*Characters*/);
+
 /**
  * Owns where a match stands: the phase, the wave, the countdown and what the player has
  * left to build with. Nothing else is allowed to decide those.
@@ -316,6 +319,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void RefundRemoval(EBDPieceKind Kind);
 
+	/** Raises the tower and character ceilings: room for more, paid for like any piece. Announced through OnBudgetGranted. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void GrantBudget(int32 Towers, int32 Characters, const FString& Why);
+
 	//~ Selling ------------------------------------------------------------------
 	// Nothing on the board is permanent: any piece can be sold, and the price of having
 	// been wrong is the part of the build cost that does not come back. All of it comes
@@ -345,6 +352,7 @@ public:
 	FBDOnMatchPhaseChanged OnPhaseChanged;
 	FBDOnWaveStarted OnWaveStarted;
 	FBDOnVotesChanged OnVotesChanged;
+	FBDOnBudgetGranted OnBudgetGranted;
 
 	/** Seed the board was generated from, so a match can be handed over as a number. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Brazil Defense|Match")
