@@ -248,7 +248,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-14 (noite, 2) — (commit abaixo)** (desde 795cdc8):
+- **2026-09-14 (noite, 2) — b162e3a** (desde 795cdc8):
   - Placar com ícones (cédulas e urna, fixos do HUD, por fração da
     tela) e feedback de voto: cédula vibra e escala, número dá tick,
     urna pulsa junto do bipe; rajada não reinicia, no máximo um pulso
