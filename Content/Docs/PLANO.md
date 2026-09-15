@@ -250,7 +250,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-15 — COMMIT_ID** (desde 1319754):
+- **2026-09-15 — 82f4755** (desde 1319754):
   - **Moeda nova: a propina (seção 3).** Candidato AGENDADO morto solta
     propina = `floor(MaxHealth / HealthPerBribe)`; o contador do ladrão
     a recebe e a Casa da Moeda a converte em dinheiro público, que é a
