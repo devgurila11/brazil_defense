@@ -188,8 +188,25 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Votes")
 	bool bBlueVotesByHealth = true;
 
+	/**
+	 * Weight on the red side alone. Both counters read health through HealthPerVote, so
+	 * that number moves the whole board and never the balance between the sides; this is
+	 * the one that decides how heavily a leak lands against how heavily a kill lands.
+	 *
+	 * It exists because of what the simulation showed: while the defense holds, almost
+	 * nothing reaches the urn and red sits near zero, which is right - defending well IS
+	 * winning the election. What was missing is for the late leaks, when the defense
+	 * finally gives, to weigh enough that the count is a contest at the end rather than a
+	 * formality. Scale, not a new rule: a creep still scores only by arriving.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Votes", meta = (ClampMin = "0.1", UIMin = "0.1"))
+	float RedVoteWeight = 1.0f;
+
 	/** Votes a creep of this much health is worth. At least 1. */
 	int32 VotesForHealth(float Health) const;
+
+	/** Red votes a creep of this much health scores by reaching the urn: the health rate, times the red weight. */
+	int32 RedVotesForHealth(float Health) const;
 
 	//~ Wandering mouths ---------------------------------------------------------
 	// The buses do not park: before a wave goes out each mouth may slide along its edge
@@ -220,11 +237,11 @@ public:
 
 	//~ Upgrades ---------------------------------------------------------------
 	// Cost of level N = UpgradeCostBase x UpgradeCostGrowth ^ (N - 1); damage at level N =
-	// Damage x (1 + DamageGrowthPerLevel x (N - 1)). Calibrated so a level 5 defender costs
-	// a few hundred votes, payable inside one match. Exponential cost against linear damage
+	// Damage x (1 + DamageGrowthPerLevel x (N - 1)). Exponential cost against linear damage
 	// makes stacking the same defender expensive on its own, so spreading out becomes the
-	// right move without forbidding anything. Paid in blue votes, which are the score: an
-	// upgrade is bought with the scoreboard, on purpose.
+	// right move without forbidding anything. Paid in public money, never in votes: the
+	// scoreboard is the score, and buying levels with it made every upgrade a step towards
+	// the candidate. UBDTowerData::MaxLevels caps the ladder at five.
 
 	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "1.0", UIMin = "1.0"))
 	float UpgradeCostGrowth = 1.35f;
@@ -232,11 +249,41 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float DamageGrowthPerLevel = 0.60f;
 
-	/** Blue votes it costs to bring a defender of this upgrade cost base to a level (2 and up). */
+	/** Public money it costs to bring a defender of this upgrade cost base to a level (2 and up). */
 	int32 GetUpgradeCost(int32 UpgradeCostBase, int32 Level) const;
 
 	/** Damage multiplier of a level, 1.0 at level 1. */
 	float GetUpgradeDamageScale(int32 Level) const;
+
+	/** Everything a defender of this upgrade cost base has cost to reach its current level: levels 2 to Level. 0 at level 1. */
+	int32 GetEvolutionSpent(int32 UpgradeCostBase, int32 Level) const;
+
+	//~ The bribe -----------------------------------------------------------------
+	// The second currency, and the only one evolution is paid in. A scheduled candidate
+	// killed drops the bribe he stole - floor(MaxHealth / HealthPerBribe), so the late
+	// bosses are worth many times the early ones - the thief's counter takes it, and the
+	// mint turns it into public money, which is what the player spends. Votes are the
+	// score and stay the score: no upgrade ever moves them.
+	//
+	// The shape the curve is calibrated for: every boss buys something, the middle of the
+	// match is short of money on purpose, and the whole defense at the top level only
+	// becomes payable in the last stretch. BD.Bribe.Report prints where a given
+	// HealthPerBribe actually lands that. The fallen who come back drop nothing, like the
+	// budget they do not raise.
+
+	/** Health per unit of bribe. 2.5 makes a 12,000 hp boss worth 4,800. */
+	UPROPERTY(config, EditAnywhere, Category = "Bribe", meta = (ClampMin = "0.01", UIMin = "0.01"))
+	float HealthPerBribe = 2.5f;
+
+	/** Fraction of the public money sunk into a defender's levels that comes back when it is taken off the board. */
+	UPROPERTY(config, EditAnywhere, Category = "Bribe", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float EvolutionRefundRatio = 0.6f;
+
+	/** Bribe a candidate of this much health drops. At least 1. */
+	int32 BribeForHealth(float Health) const;
+
+	/** Public money a defender of this upgrade cost base and level pays back when it is sold. */
+	int32 GetEvolutionRefund(int32 UpgradeCostBase, int32 Level) const;
 
 	//~ Moving pieces between waves -------------------------------------------
 	// Rate = Min(MoveTaxMax, MoveTaxInitial + MoveTaxStep * Wave), charged on the build

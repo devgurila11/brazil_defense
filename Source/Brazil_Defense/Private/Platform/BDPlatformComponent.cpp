@@ -9,7 +9,12 @@
 #include "Grid/BDGridDebug.h"
 #include "Grid/BDGridSettings.h"
 #include "Grid/BDGridSubsystem.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Tower/BDTowerBase.h"
+#include "Tower/BDTowerData.h"
 
 UBDPlatformComponent::UBDPlatformComponent()
 {
@@ -64,6 +69,11 @@ void UBDPlatformComponent::TickComponent(const float DeltaTime, const ELevelTick
 		RefreshFootprint();
 	}
 
+	// The rank it wears follows the people on it. Read every tick rather than pushed
+	// from the upgrade, the removal and the load separately: three places to forget,
+	// against one cheap min over a handful of slots.
+	RefreshVisualLevel();
+
 	if (!BDGridDebug::IsEnabled())
 	{
 		return;
@@ -83,6 +93,236 @@ void UBDPlatformComponent::TickComponent(const float DeltaTime, const ELevelTick
 	if (Settings.bDrawPlatformFootprint)
 	{
 		DrawDebugFootprint(Settings);
+	}
+}
+
+//~ Climbing as a block -------------------------------------------------------------
+
+bool UBDPlatformComponent::IsFullyManned() const
+{
+	if (Slots.Num() == 0)
+	{
+		return false;
+	}
+
+	for (const FBDPlatformSlot& Slot : Slots)
+	{
+		if (!Slot.Occupant.IsValid())
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+int32 UBDPlatformComponent::GetBlockLevel() const
+{
+	// Not fully manned is not a level: a scaffold with a hole in it is not a storey.
+	if (!IsFullyManned())
+	{
+		return 0;
+	}
+
+	int32 Lowest = MAX_int32;
+	for (const FBDPlatformSlot& Slot : Slots)
+	{
+		if (const ABDTowerBase* Occupant = Slot.Occupant.Get())
+		{
+			Lowest = FMath::Min(Lowest, Occupant->GetTowerLevel());
+		}
+	}
+	return Lowest == MAX_int32 ? 0 : FMath::Max(0, Lowest);
+}
+
+bool UBDPlatformComponent::CanOccupantEvolve(const ABDTowerBase& Occupant, FString& OutReason) const
+{
+	if (!IsFullyManned())
+	{
+		OutReason = FString::Printf(TEXT("the platform has %d empty slot(s): nobody on it evolves until every slot is filled"),
+			GetFreeSlotCount());
+		return false;
+	}
+
+	// Only the lowest may buy the next level, which is what makes them climb together:
+	// everyone at N, then one at a time to N+1, and the last one to pay finishes the
+	// floor. Nobody gets two levels ahead of the shooter beside them.
+	const int32 Block = GetBlockLevel();
+	if (Occupant.GetTowerLevel() > Block)
+	{
+		OutReason = FString::Printf(TEXT("it is already at level %d and the platform is on floor %d: the shooters at level %d buy the next one first"),
+			Occupant.GetTowerLevel(), Block, Block);
+		return false;
+	}
+
+	return true;
+}
+
+//~ The floors ------------------------------------------------------------------------
+
+float UBDPlatformComponent::GetLiftForLevel(const int32 Level) const
+{
+	// Level 1 is the ground floor: a platform that is merely manned stands where it was
+	// authored. The height is the rank of the shooters on it, not the fact of their
+	// being there, so it is the storeys ABOVE the first that lift the deck: level 5 is
+	// five floors, four of them stacked under the authored one.
+	return FMath::Max(0.0f, FloorHeight) * FMath::Max(0, Level - 1);
+}
+
+float UBDPlatformComponent::GetDeckLift() const
+{
+	return GetLiftForLevel(AppliedVisualLevel);
+}
+
+void UBDPlatformComponent::CacheAuthoredMeshTransforms()
+{
+	if (bAuthoredMeshTransformsCached)
+	{
+		return;
+	}
+	bAuthoredMeshTransformsCached = true;
+
+	const AActor* Owner = GetOwner();
+	if (Owner == nullptr)
+	{
+		return;
+	}
+
+	TArray<UStaticMeshComponent*> Meshes;
+	Owner->GetComponents<UStaticMeshComponent>(Meshes);
+	for (UStaticMeshComponent* Mesh : Meshes)
+	{
+		// The storeys are ours and are placed from scratch every time; only the authored
+		// meshes are lifted, and only from where they were authored.
+		if (Mesh != Floors)
+		{
+			AuthoredMeshTransforms.Emplace(Mesh, Mesh->GetRelativeTransform());
+		}
+	}
+}
+
+void UBDPlatformComponent::RefreshVisualLevel()
+{
+	// Never in the editor: building storeys onto a placed actor would dirty the map for
+	// something that is only ever true while a match runs.
+	const UWorld* World = GetWorld();
+	if (World == nullptr || !World->IsGameWorld())
+	{
+		return;
+	}
+
+	const int32 Level = GetBlockLevel();
+	if (Level == AppliedVisualLevel)
+	{
+		return;
+	}
+
+	const int32 Previous = AppliedVisualLevel;
+	AppliedVisualLevel = Level;
+	ApplyVisualLevel(Level);
+
+	// Not on the first pass, which only settles the platform at the height it already has.
+	UE_CLOG(Previous >= 0, LogBDGrid, Log, TEXT("%s stands at level %d of %d (was %d): every one of its %d slot(s) reached it, so the deck is %.0f cm up on %d storey(s). Visual only - no range, no damage, no parameter."),
+		*GetNameSafe(GetOwner()), Level, UBDTowerData::MaxLevels, Previous, Slots.Num(), GetLiftForLevel(Level), FMath::Max(0, Level - 1));
+}
+
+void UBDPlatformComponent::ApplyVisualLevel(const int32 Level)
+{
+	AActor* Owner = GetOwner();
+	if (Owner == nullptr)
+	{
+		return;
+	}
+
+	CacheAuthoredMeshTransforms();
+
+	const float Lift = GetLiftForLevel(Level);
+	const int32 Storeys = FMath::Max(0, Level - 1);
+
+	// 1. The deck goes up, from where it was authored rather than from where the last
+	//    floor left it, so the height is always the level times the floor and never a
+	//    sum of rounding.
+	for (const TPair<TWeakObjectPtr<UStaticMeshComponent>, FTransform>& Authored : AuthoredMeshTransforms)
+	{
+		if (UStaticMeshComponent* Mesh = Authored.Key.Get())
+		{
+			FTransform Raised = Authored.Value;
+			Raised.SetLocation(Authored.Value.GetLocation() + FVector(0.0f, 0.0f, Lift));
+			Mesh->SetRelativeTransform(Raised);
+		}
+	}
+
+	// 2. The storeys fill the space under it, one per floor. One instanced component for
+	//    the lot: a platform at level 5 is five instances, not five components.
+	UStaticMesh* Storey = FloorMesh.LoadSynchronous();
+	if (Storey == nullptr && AuthoredMeshTransforms.Num() > 0)
+	{
+		const UStaticMeshComponent* First = AuthoredMeshTransforms[0].Key.Get();
+		Storey = First != nullptr ? First->GetStaticMesh() : nullptr;
+	}
+
+	if (Storeys > 0 && Storey != nullptr)
+	{
+		if (Floors == nullptr)
+		{
+			Floors = NewObject<UInstancedStaticMeshComponent>(Owner, TEXT("PlatformFloors"));
+			Floors->SetupAttachment(Owner->GetRootComponent());
+			Floors->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Floors->SetGenerateOverlapEvents(false);
+			Floors->SetCastShadow(false);
+			Floors->RegisterComponent();
+		}
+		Floors->SetStaticMesh(Storey);
+		Floors->ClearInstances();
+		for (int32 Floor = 0; Floor < Storeys; ++Floor)
+		{
+			const FTransform Instance(FRotator::ZeroRotator, FVector(0.0f, 0.0f, FMath::Max(0.0f, FloorHeight) * Floor), FloorMeshScale);
+			Floors->AddInstance(Instance);
+		}
+	}
+	else if (Floors != nullptr)
+	{
+		Floors->ClearInstances();
+	}
+
+	// 3. The shooters ride up with the deck they stand on. Their range is measured on the
+	//    flat (DistSquared2D), so standing higher changes nothing they do.
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		if (ABDTowerBase* Occupant = Slots[Index].Occupant.Get())
+		{
+			const FTransform SlotTransform = GetSlotWorldTransform(Index);
+			Occupant->SetActorLocationAndRotation(SlotTransform.GetLocation(), SlotTransform.GetRotation());
+		}
+	}
+
+	// 4. And a quieter reading of the same rank, for a board seen from above: white at
+	//    level 0, so a platform that has earned nothing looks exactly as authored.
+	const float Alpha = FMath::Clamp(static_cast<float>(Level) / FMath::Max(1, UBDTowerData::MaxLevels), 0.0f, 1.0f);
+	const FLinearColor Tint = FMath::Lerp(FLinearColor::White, TopLevelTint, Alpha);
+	const float Glow = FMath::Max(0.0f, TopLevelGlow) * Alpha;
+	for (const TPair<TWeakObjectPtr<UStaticMeshComponent>, FTransform>& Authored : AuthoredMeshTransforms)
+	{
+		UStaticMeshComponent* Mesh = Authored.Key.Get();
+		if (Mesh == nullptr)
+		{
+			continue;
+		}
+
+		for (int32 Index = 0; Index < Mesh->GetNumMaterials(); ++Index)
+		{
+			if (Mesh->GetMaterial(Index) == nullptr)
+			{
+				continue;
+			}
+
+			// Returns the instance already in place when there is one, so this does not
+			// stack a new material every time a floor goes up.
+			if (UMaterialInstanceDynamic* Dynamic = Mesh->CreateAndSetMaterialInstanceDynamic(Index))
+			{
+				Dynamic->SetVectorParameterValue(TEXT("TintColor"), Tint);
+				Dynamic->SetScalarParameterValue(TEXT("TintGlow"), Glow);
+			}
+		}
 	}
 }
 
@@ -137,8 +377,11 @@ FTransform UBDPlatformComponent::GetSlotWorldTransform(const int32 SlotIndex) co
 		return FTransform::Identity;
 	}
 
+	// The floors under the deck raise the slots with it, so a shooter mounted on a
+	// platform at level 3 stands three storeys up. Range is measured on the flat, so
+	// nothing it does changes.
 	const FBDPlatformSlot& Slot = Slots[SlotIndex];
-	const FTransform LocalTransform(Slot.LocalRotation, Slot.LocalOffset);
+	const FTransform LocalTransform(Slot.LocalRotation, Slot.LocalOffset + FVector(0.0f, 0.0f, GetDeckLift()));
 	return LocalTransform * Owner->GetActorTransform();
 }
 

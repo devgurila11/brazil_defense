@@ -383,7 +383,7 @@ namespace BDPlacementDebug
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdSell(
 		TEXT("BD.Place.Sell"),
-		TEXT("BD.Place.Sell <x> <y>: sells the piece on a cell, paying part of its build cost back in blue votes. A platform returns its passengers to the hand."),
+		TEXT("BD.Place.Sell <x> <y>: sells the piece on a cell, paying part of its build cost back in blue votes and part of its levels back in public money. A platform returns its passengers to the hand."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecRemoveAt));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdRemoveAtEdge(

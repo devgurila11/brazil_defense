@@ -73,6 +73,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
 	int32 CharacterBudget = 12;
 
+	/**
+	 * Blue votes the player walks in with. Building charges the build cost of every piece,
+	 * so this is the capital the opening defense is paid for: enough for a base, never
+	 * enough for the whole board. From wave 1 the kills pay it back, and every piece added
+	 * after that comes off the scoreboard - which is the cruel model working.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
+	int32 StartingVotes = 3000;
+
 	/** Permanent obstacles scattered on the board before the player sees it. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Board", meta = (ClampMin = "0", UIMin = "0"))
 	int32 ObstacleCount = 20;

@@ -49,7 +49,7 @@ namespace BDTowerDebug
 
 			const FString UpgradeText = Tower->IsMaxLevel()
 				? TEXT("max level")
-				: FString::Printf(TEXT("next level %d votes for %.1f dmg"), Tower->GetUpgradeCost(), Tower->GetDamageAtNextLevel());
+				: FString::Printf(TEXT("next level %d public money for %.1f dmg"), Tower->GetUpgradeCost(), Tower->GetDamageAtNextLevel());
 
 			UE_LOG(LogBDTower, Log,
 				TEXT("  %s (%s): level %d/%d (%s) | %s | range %.2f cells = %.0f cm | %.1f dmg @ %.2f/s | target %s | %s | %s | %d shot(s), %d kill(s)."),
@@ -194,7 +194,7 @@ namespace BDTowerDebug
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdUpgrade(
 		TEXT("BD.Tower.Upgrade"),
-		TEXT("BD.Tower.Upgrade <x> <y>: buys the next level of the defender on that cell with blue votes."),
+		TEXT("BD.Tower.Upgrade <x> <y>: buys the next level of the defender on that cell with public money."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecUpgradeConfirm));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdSetAllLevels(

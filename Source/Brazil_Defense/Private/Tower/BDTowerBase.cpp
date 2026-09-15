@@ -215,10 +215,22 @@ bool ABDTowerBase::CanUpgrade(FString& OutReason) const
 		return false;
 	}
 
-	const int32 Cost = GetUpgradeCost();
-	if (!Match->CanAffordVotesBlue(Cost))
+	// On a platform the shooters climb as a block: every slot filled, and the lowest
+	// level buys first. The platform is the only thing that can see the others.
+	if (const UBDPlatformComponent* Stand = GetPlatform())
 	{
-		OutReason = FString::Printf(TEXT("%d blue vote(s) needed, %d held"), Cost, Match->GetVotesBlue());
+		FString Blocked;
+		if (!Stand->CanOccupantEvolve(*this, Blocked))
+		{
+			OutReason = Blocked;
+			return false;
+		}
+	}
+
+	const int32 Cost = GetUpgradeCost();
+	if (!Match->CanAffordPublicMoney(Cost))
+	{
+		OutReason = FString::Printf(TEXT("%d public money needed, %d held"), Cost, Match->GetPublicMoney());
 		return false;
 	}
 
@@ -234,16 +246,14 @@ FString ABDTowerBase::DescribeUpgrade() const
 
 	const ABDMatchManager* Match = ABDMatchManager::Get(this);
 	const int32 Cost = GetUpgradeCost();
-	const int32 Blue = Match != nullptr ? Match->GetVotesBlue() : 0;
-	const int32 Red = Match != nullptr ? Match->GetVotesRed() : 0;
+	const int32 Money = Match != nullptr ? Match->GetPublicMoney() : 0;
 
 	FString Reason;
 	const bool bCan = CanUpgrade(Reason);
-	const bool bInverts = Match != nullptr && Match->WouldInvertScoreboard(Cost);
 
-	return FString::Printf(TEXT("%s level %d -> %d: cost %d blue vote(s), blue %d -> %d against red %d, damage %.1f -> %.1f.%s%s"),
-		*GetName(), Level, Level + 1, Cost, Blue, Blue - Cost, Red, GetEffectiveDamage(), GetDamageAtNextLevel(),
-		bInverts ? TEXT(" WARNING: red would pull ahead.") : TEXT(""),
+	// Public money only: the count is not touched by an upgrade, so it is not quoted here.
+	return FString::Printf(TEXT("%s level %d -> %d: cost %d public money, %d -> %d held, damage %.1f -> %.1f.%s"),
+		*GetName(), Level, Level + 1, Cost, Money, Money - Cost, GetEffectiveDamage(), GetDamageAtNextLevel(),
 		bCan ? TEXT("") : *FString::Printf(TEXT(" Refused: %s."), *Reason));
 }
 
@@ -259,14 +269,19 @@ bool ABDTowerBase::Upgrade()
 	ABDMatchManager* Match = ABDMatchManager::Get(this);
 	const int32 Cost = GetUpgradeCost();
 	const float DamageBefore = GetEffectiveDamage();
-	if (Match == nullptr || !Match->SpendVotesBlue(Cost))
+	if (Match == nullptr || !Match->SpendPublicMoney(Cost))
 	{
 		return false;
 	}
 
 	++Level;
-	UE_LOG(LogBDTower, Log, TEXT("%s upgraded to level %d for %d blue vote(s): damage %.1f -> %.1f, blue now %d."),
-		*GetName(), Level, Cost, DamageBefore, GetEffectiveDamage(), Match->GetVotesBlue());
+	UE_LOG(LogBDBribe, Log, TEXT("EVOLVED %s to level %d of %d for %d public money: damage %.1f -> %.1f, %d public money left.%s"),
+		*GetName(), Level, UBDTowerData::MaxLevels, Cost, DamageBefore, GetEffectiveDamage(), Match->GetPublicMoney(),
+		// The one that finishes the floor is worth saying out loud: it is the only thing
+		// that builds the platform a storey higher.
+		GetPlatform() != nullptr && GetPlatform()->GetBlockLevel() >= Level
+			? *FString::Printf(TEXT(" It completes floor %d of its platform."), Level)
+			: TEXT(""));
 	return true;
 }
 

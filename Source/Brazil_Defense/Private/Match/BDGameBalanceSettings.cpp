@@ -4,6 +4,7 @@
 
 #include "Curves/CurveFloat.h"
 #include "Match/BDDifficultyData.h"
+#include "Tower/BDTowerData.h"
 
 UBDGameBalanceSettings::UBDGameBalanceSettings()
 {
@@ -62,6 +63,11 @@ int32 UBDGameBalanceSettings::VotesForHealth(const float Health) const
 	return FMath::Max(1, FMath::FloorToInt(FMath::Max(0.0f, Health) / FMath::Max(0.01f, HealthPerVote)));
 }
 
+int32 UBDGameBalanceSettings::RedVotesForHealth(const float Health) const
+{
+	return FMath::Max(1, FMath::FloorToInt(VotesForHealth(Health) * FMath::Max(0.1f, RedVoteWeight)));
+}
+
 int32 UBDGameBalanceSettings::GetCreepsPerSpawnPoint(const int32 Wave) const
 {
 	return FMath::Max(1, CreepsPerSpawnPointBase) + FMath::Max(0, CreepsPerSpawnPointStep) * FMath::Max(0, Wave - 1);
@@ -75,6 +81,28 @@ int32 UBDGameBalanceSettings::GetUpgradeCost(const int32 UpgradeCostBase, const 
 float UBDGameBalanceSettings::GetUpgradeDamageScale(const int32 Level) const
 {
 	return 1.0f + FMath::Max(0.0f, DamageGrowthPerLevel) * (FMath::Max(1, Level) - 1);
+}
+
+int32 UBDGameBalanceSettings::GetEvolutionSpent(const int32 UpgradeCostBase, const int32 Level) const
+{
+	// Summed rather than closed form: the rounding of each level is what was actually
+	// charged, and a refund that does not match what was paid is a bug the player sees.
+	int32 Spent = 0;
+	for (int32 Step = 2; Step <= FMath::Min(Level, UBDTowerData::MaxLevels); ++Step)
+	{
+		Spent += GetUpgradeCost(UpgradeCostBase, Step);
+	}
+	return Spent;
+}
+
+int32 UBDGameBalanceSettings::BribeForHealth(const float Health) const
+{
+	return FMath::Max(1, FMath::FloorToInt(FMath::Max(0.0f, Health) / FMath::Max(0.01f, HealthPerBribe)));
+}
+
+int32 UBDGameBalanceSettings::GetEvolutionRefund(const int32 UpgradeCostBase, const int32 Level) const
+{
+	return FMath::FloorToInt(GetEvolutionSpent(UpgradeCostBase, Level) * FMath::Clamp(EvolutionRefundRatio, 0.0f, 1.0f));
 }
 
 float UBDGameBalanceSettings::GetMoveTaxRate(const int32 Wave) const

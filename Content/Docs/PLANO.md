@@ -5,7 +5,7 @@ O terminal consulta este arquivo para entender o que o jogo É e por
 quê. Tarefas da vez vão no briefing.md, separado. Quando uma decisão
 de design mudar, este arquivo é atualizado.
 
-Versão: 2026-09-14
+Versão: 2026-09-15
 
 ---
 
@@ -250,6 +250,53 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-15 — COMMIT_ID** (desde 1319754):
+  - **Moeda nova: a propina (seção 3).** Candidato AGENDADO morto solta
+    propina = `floor(MaxHealth / HealthPerBribe)`; o contador do ladrão
+    a recebe e a Casa da Moeda a converte em dinheiro público, que é a
+    ÚNICA moeda da evolução. Votos não são mais tocados por upgrade.
+    Candidato do desfile não solta nada, mesma regra do orçamento.
+    Zera na vitória e na derrota; não passa de partida para partida.
+    `UBDBribeSubsystem` conduz a sequência (mala quica com som a cada
+    toque, contador sobe, caixa registradora, transferência), `ABDMoneyBag`
+    é a mala. Slots de som e mesh em Project Settings > Brazil Defense -
+    Bribe, vazios até a arte chegar — a sequência roda muda sem eles.
+  - **Evolução até o nível 5** (`UBDTowerData::MaxLevels` 10 -> 5) e
+    remoção devolve 60% do que os níveis custaram (`EvolutionRefundRatio`),
+    inclusive quando a peça sai junto com a plataforma.
+  - **HUD:** dois contadores novos sob a barra de contagem, com os
+    ícones do ladrão e da Casa da Moeda, e a seta acesa enquanto algo
+    atravessa. Textos em pt e en.
+  - **Plataformas sobem em bloco (seção 6).** Personagens de uma
+    plataforma evoluem em passo: todos os slots preenchidos, e só quem
+    está no nível mais baixo compra o próximo. A cada nível fechado a
+    plataforma ganha um andar — nível 1 é a altura base, nível 5 são
+    cinco andares. Puramente visual: alcance e mira são medidos do
+    slot (`DistSquared2D`), então subir não muda parâmetro nenhum.
+  - **Teto de personagem acompanha as plataformas.** Cada plataforma
+    construída leva seus slots para o `CharacterBudget` e os tira ao ser
+    vendida. Sem isso a trava de bloco era inalcançável: 54 slots contra
+    ~32 personagens congelavam TODOS os personagens no nível 1 para
+    sempre (medido na rodada 2).
+  - **Construir cobra votos (seção 3).** `BuildCost` debitado ao colocar
+    qualquer peça, com recusa `NoVotes` e preview vermelho. Capital
+    inicial novo por dificuldade (`StartingVotes`, default 3000; Easy e
+    Hard ainda a definir no editor). Antes só a venda lia `BuildCost` —
+    colocar e vender era fábrica de votos.
+  - **Correção:** o bônus em cadeia fazia `VotesBlue = Bonus.Votes`
+    (atribuição) e passou a sobrescrever o capital inicial; virou `+=`.
+  - **Calibração (seção 13).** `HealthScaleGrowth` 1.035 -> 1.022,
+    `HealthPerBribe` 2.5 -> 1.0, `RedVoteWeight` novo (1.0, neutro).
+    Com isso a onda 100 deixou de ser matematicamente impossível: 3 de
+    4 seeds vencem. Duas rodadas de medição registradas na seção 13.
+  - **Ferramentas de medição:** `BD.Sim.Run` (joga a partida inteira
+    sozinha e reporta em linhas `SIM`), `BD.Debug.AutoEvolve`,
+    `BD.Bribe.Report/Status/Grant/Flush`, e o AutoSetup passou a
+    construir o orçamento que os chefes liberam.
+  - **Pendente:** o candidato é o gargalo real (decide 5 de 5 derrotas
+    e depende da rota sorteada); o vermelho continua ~0 numa partida
+    vencida e não há escala que resolva; construir só morde na abertura.
+
 - **2026-09-14 (noite, 3) — 0747d14** (desde ede2420):
   - HUD: painel do candidato virou lista — uma linha por candidato
     vivo (nome, HP, barra na cor dele), até 6 linhas e "+N a caminho"
@@ -441,3 +488,167 @@ mudou desde o push anterior.
 - **2026-09-12 — f1f3c9b / accb09a** (último push antes desta regra):
   movimento orgânico da horda, bocas ativas por onda, variação de rota
   por creep, scoreboard de debug. Pendente na época: candidato e venda.
+
+---
+
+## 13. Medições de balanceamento
+
+Resultados de simulação headless. Esta seção guarda o que foi MEDIDO,
+com data e como reproduzir; as curvas em si continuam na seção 7 e as
+decisões de ajuste são anotadas aqui quando tomadas.
+
+### Rodada 1 — 2026-09-15
+
+**Como reproduzir.** `BD.Sim.Run <seed> 100 <evoluir 0|1> 4 1` numa
+corrida headless (`-game -nullrhi -BDSkipFrontEnd`). O driver monta a
+defesa AutoSetup da seed, chama as ondas em sequência a 4x e, quando
+evoluir=1, gasta a propina entre ondas no upgrade mais barato
+disponível (`BD.Debug.AutoEvolve`). Cada corrida escreve linhas `SIM`.
+8 corridas: seeds 101, 202, 303, 404 × com e sem evolução.
+
+**Cenário.** Defesa AutoSetup = 23 defensores (9 plataformas, 14
+personagens, 9 torres, 10 cercas). Bônus em cadeia do Easy ativo
+(+1 torre, +2 personagens, +1 plataforma, +100 votos). Valores da
+época: HealthScaleGrowth 1.035, HealthPerBribe 2.5,
+CandidateHealthMultiplier 40, UpgradeCostGrowth 1.35.
+
+**1. Progressão da propina.** 1ª evolução na onda 7 (onda 9 numa
+seed). Tabuleiro real de 23 defensores ao nível 5 custa 8.234 de
+dinheiro público. Propina acumulada cobre 16% na onda 25, 54% na 50,
+145% na 75, 251% na 90 — 100% por volta da onda 65-70. Nível médio
+realmente atingido: 1.65 (onda 25), 2.22 (40), 2.57 (50); os níveis
+caros vêm por último, então 54% do dinheiro não compra metade dos
+níveis. Contra o tabuleiro real a propina NÃO está apertada.
+
+**2. Disputa do placar.** Azul × vermelho: 30.196 × 156 na onda 25
+(194:1), 228.332 × 6.548 na onda 50 (35:1). O vermelho nunca encosta;
+a vantagem do azul é irreversível desde a onda 1. Nenhuma das 8
+derrotas foi por contagem — todas foram candidato chegando na urna.
+O placar hoje não decide partida.
+
+**3. Chefes.** Mortos antes de um passar: 7 (seed 101, passou o chefe
+8 na onda 41, 1.530 hp), 11 (202, chefe 12 na onda 60, 3.045 hp), 8
+(303, chefe 9 na onda 46, 1.817 hp), 2 (404, chefe 3 na onda 16, 647
+hp). Os primeiros são tranquilos. O chefe que passa nunca é o difícil:
+é o primeiro a chegar depois que a defesa já afundou contra a horda.
+
+**4. Economia inflada — confirmado.** Custos: divisória 10, palanque
+40, personagem 40, arquibancada 80, caminhão 100, torre 100. Tabuleiro
+inteiro ~2.220 votos. Renda azul acumulada: 3.076 na onda 10 (1,4
+tabuleiros), 30.196 na 25 (13,6), 113.002 na 40 (51). A partir da onda
+~8 o custo de construção em votos é irrelevante.
+
+**5. Onda de quebra.** Com evolução: 41, 60, 46, 16 (média 40,8). Sem
+evolução: 36, 36, 26, 16 (média 28,5). A evolução compra +12,3 ondas
+em média — mas ZERO na seed 404, que quebra na onda 16 nos dois casos,
+porque lá a defesa está em nível 1.30 e a propina por desenho só
+começa na onda 7. Quebra precoce é problema de tabuleiro/rota do
+chefe, não de economia.
+
+**Achado estrutural.** Razão horda ÷ capacidade de dano:
+
+| onda | nível simulado | nível 5 (23 def.) | nível 5 (60 def., máx. teórico) |
+|---|---|---|---|
+| 25 | 0,45 | 0,18 | 0,07 |
+| 40 | 0,97 | 0,50 | 0,19 |
+| 50 | 1,53 | 0,87 | 0,33 |
+| 75 | — | 3,10 | 1,19 |
+| 100 | — | 9,75 | 3,74 |
+
+A defesa simulada cruza 1,0 na onda 40 e as quebras vieram em 41, 46 e
+60 — o modelo prevê onde aconteceram. Uma defesa perfeita de 23
+defensores no nível 5 quebra na onda 53. O máximo teórico (60
+defensores, todo o orçamento liberado pelos 20 chefes, todos no nível
+5) quebra na onda 72 e na onda 100 está 3,7× abaixo do necessário.
+Da onda 50 à 100 a horda cresce 11,2×; a defesa, já no teto de nível,
+só pode crescer 3× por número de defensores. **A onda 100 é
+inalcançável por qualquer defesa que as regras atuais permitam**, e
+nenhum ajuste de propina resolve isso — é HealthScaleGrowth composto
+contra contagem linear de creeps.
+
+**Limitações desta rodada.** (a) O AutoSetup constrói uma vez, no
+início: o +1 torre e +1 personagem que cada chefe libera nunca são
+construídos, então na onda 40 o simulador tem 23 defensores onde um
+jogador real teria ~37. As ondas de quebra acima são PISO. (b)
+`BD.Bribe.Report` usa 60 defensores como denominador da "defesa
+completa"; contra o tabuleiro real de 23 ele superestima o custo em
+2,6×. Os dois pontos ficam para a rodada 2.
+
+**Ordem de ajuste sugerida pelos números:** HealthScaleGrowth
+primeiro (é a raiz do achado estrutural), depois o vermelho por HP
+(194:1 não é disputa), depois construir o orçamento liberado no
+simulador; a propina é a última, e possivelmente não precisa mexer.
+
+### Rodada 2 — 2026-09-15
+
+**Valores aplicados.** HealthScaleGrowth 1.035 -> 1.022;
+HealthPerBribe 2.5 -> 1.0; bBlueVotesByHealth True; HealthPerVote 1.0;
+RedVoteWeight 1.0 (novo, neutro); StartingVotes 3000 (novo, no
+DA_Difficulty — Easy/Hard ainda a definir no editor);
+EvolutionRefundRatio 0.6.
+
+**Mudancas de regra que entraram com ela.** O teto de personagens
+acompanha os slots das plataformas (cada plataforma construida leva
+seus slots para o teto e os tira ao ser vendida), o que torna a trava
+de bloco alcancavel — antes 54 slots contra ~32 personagens congelavam
+TODOS os personagens no nivel 1 para sempre. Construir passou a
+debitar BuildCost em votos, com recusa NoVotes e preview vermelho. O
+bonus em cadeia somava votos por atribuicao (`VotesBlue = Bonus.Votes`)
+e sobrescrevia o capital inicial; virou `+=`. O simulador passou a
+construir o orcamento que os chefes liberam, e BD.Bribe.Report a medir
+contra o tabuleiro real em vez do teto.
+
+**Como reproduzir.** `BD.Sim.Run <seed> 100 <evoluir 0|1> 4 1`,
+8 corridas: seeds 101/202/303/404 x com e sem evolucao.
+
+**As 8 corridas em 1.022.**
+
+| seed | com evolucao | nivel | verm. | sem evolucao | verm. |
+|---|---|---|---|---|---|
+| 101 | vitoria 100 | 4,71 | 0 | vitoria 100 | 13.204 |
+| 202 | vitoria 100 | 4,55 | 1.475 | derrota 65 | 900 |
+| 303 | vitoria 100 | 4,89 | 0 | derrota 46 | 80 |
+| 404 | derrota 26 | 1,54 | 1.917 | derrota 26 | 1.844 |
+
+As 5 derrotas foram candidato na urna (n. 5, 13, 9, 5). Defensores no
+fim: 76-88 (rodada 1: 23). Razao horda÷dano na onda 100: 0,72 em
+1.020, 0,825 em 1.022.
+
+**Metricas.** Propina: 1a evolucao na onda 7, gasto 26.164, money=0 no
+fim, nivel 4,7/5 — no alvo, nao mexer. Placar (seed 101, evoluindo),
+azul por onda 10/25/50/75/100: 2.180 / 23.420 / 146.574 / 502.384 /
+1.365.368, com vermelho 0 em todas. Chefes: 19 mortos antes da 100 nas
+vitorias. Renda x custo: tabuleiro inicial 3.100 votos (9 plataformas,
+54 personagens, 3 torres, 6 cercas; sobraram 6 torres e 26 divisorias
+sem pagamento), equivalente a 0,7 tabuleiros de renda na onda 10, 7,6
+na 25 e 47 na 50. Overkill (nulo/azul): 26,9% evoluindo contra 11,0%
+sem evoluir — evoluir piora o desperdicio.
+
+**Tres achados que mudam o quadro.**
+
+1. A evolucao quase nao decide a partida; o TABULEIRO decide. A seed
+   101 vence a onda 100 sem evoluir nada (82 defensores no nivel 1) e
+   a seed 404 morre na onda 26 com evolucao. A variavel dominante e a
+   rota do chefe contra onde os defensores cairam, nao a curva.
+
+2. Quatro seeds e pouco para medir curva. A seed 404 foi de 95 (1.020)
+   para 26 (1.022); 0,2% de crescimento nao explica 69 ondas — e
+   divergencia caotica (HP diferente muda quem morre quando, que muda
+   a mira, que muda tudo). Atribuir quebra a curva pede ~15 seeds por
+   configuracao.
+
+3. O vermelho continua zero e RedVoteWeight nao resolve. Tres das
+   quatro vitorias terminaram com vermelho literalmente 0: nada chegou
+   a urna, e zero vezes qualquer peso e zero. O alvo 55/45 exige
+   vazamento continuo, e a defesa e tudo-ou-nada — segura tudo, ou o
+   chefe passa e a partida acaba. O unico sinal que cresce com a
+   pressao sem exigir falha e o NULO (26,9% do azul); um vermelho
+   competitivo teria de ser construido a partir dele, e isso e logica
+   nova.
+
+**Pendente.** O gargalo real e o candidato: decide 5 de 5 derrotas e
+sua chegada depende da rota sorteada. Atacar isso antes de mexer em
+curva, e remedir com mais seeds. Construir so morde na abertura: para
+pesar a partida toda o custo teria de escalar com a onda
+(Cost x HealthScale(onda)), que e logica nova. O perfil "defesa media"
+nao existe no simulador — ha so evoluir tudo que da ou nada.

@@ -87,8 +87,11 @@ public:
 	/** Asset type used to discover every tower through the asset manager. */
 	static const FPrimaryAssetType TowerAssetType;
 
-	/** Upper bound on Levels, so a tree of upgrades stays a short list a designer can read. */
-	static constexpr int32 MaxLevels = 10;
+	/**
+	 * Top of the ladder: five levels per defender, authored or derived. It bounds Levels
+	 * as well, so a designer never authors a level the game will not hand out.
+	 */
+	static constexpr int32 MaxLevels = 5;
 
 	//~ Begin UPrimaryDataAsset interface
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
@@ -112,7 +115,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tower", meta = (ClampMin = "0", UIMin = "0"))
 	int32 UnlockWave = 0;
 
-	/** Base of the upgrade curve: level N costs UpgradeCostBase x UpgradeCostGrowth ^ (N - 1) blue votes. */
+	/** Base of the upgrade curve: level N costs UpgradeCostBase x UpgradeCostGrowth ^ (N - 1) in public money. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tower", meta = (ClampMin = "0", UIMin = "0"))
 	int32 UpgradeCostBase = 50;
 

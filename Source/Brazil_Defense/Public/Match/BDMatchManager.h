@@ -27,6 +27,9 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnVotesChanged, int32 /*Blue*/, int32 /*
 /** Broadcast when the ceilings go up: extra towers and characters the player may now place. */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnBudgetGranted, int32 /*Towers*/, int32 /*Characters*/);
 
+/** Broadcast whenever either money counter moves: the thief's recovered bribe, then the mint's public money. */
+DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnMoneyChanged, int32 /*Bribe*/, int32 /*PublicMoney*/);
+
 /**
  * Owns where a match stands: the phase, the wave, the countdown and what the player has
  * left to build with. Nothing else is allowed to decide those.
@@ -260,9 +263,48 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool CanAffordVotesBlue(int32 Votes) const { return Votes <= VotesBlue; }
 
+	//~ The bribe and the public money -------------------------------------------
+	// The second currency, kept beside the votes and never mixed with them. A scheduled
+	// candidate killed drops the bribe he stole: the thief's counter takes it, then the
+	// mint turns it into public money, which is the only thing evolution is paid with.
+	// Both counters live and die with the match - they are never carried to the next one
+	// - and the conversion between them is driven by UBDBribeSubsystem, which is what
+	// makes the numbers on the HUD climb rather than jump.
+
+	/** Bribe recovered from the thief and not yet converted: the left-hand counter. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetBribeHeld() const { return BribeHeld; }
+
+	/** Public money: the spendable balance, the right-hand counter. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetPublicMoney() const { return PublicMoney; }
+
+	/** Puts recovered bribe on the thief's counter. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void AddBribe(int32 Amount, const FString& Why);
+
+	/** Moves bribe off the thief's counter and onto the mint's, clamped to what is held. @return what actually moved. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	int32 ConvertBribe(int32 Amount);
+
+	/** Pays public money straight into the mint: a refund, or the console. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void AddPublicMoney(int32 Amount, const FString& Why);
+
+	/** Spends public money. @return false, nothing spent, when there is not enough. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	bool SpendPublicMoney(int32 Amount);
+
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool CanAffordPublicMoney(int32 Amount) const { return Amount <= PublicMoney; }
+
+	/** Drops both counters to zero: what the end of a match does with money that does not carry over. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void DropMoney(const FString& Why);
+
 	//~ Upgrades, for the HUD and the log -----------------------------------------
 
-	/** Blue votes the next level of a defender costs. 0 for null or a defender at max level. */
+	/** Public money the next level of a defender costs. 0 for null or a defender at max level. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetUpgradeCost(const ABDTowerBase* Tower) const;
 
@@ -323,6 +365,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void GrantBudget(int32 Towers, int32 Characters, const FString& Why);
 
+	/**
+	 * A platform built carries its own slots into the character ceiling, and takes them
+	 * back out when it leaves. The ceiling therefore follows the board: whatever stands
+	 * on it can always be manned, which is what the block rule of the platforms needs to
+	 * be reachable at all - a platform that can never be filled evolves nothing, ever.
+	 *
+	 * The difficulty's CharacterBudget stays as what the player walks in holding, on top
+	 * of the slots; the bosses still add theirs.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void AdjustCharacterSlots(int32 Delta, const FString& Why);
+
 	//~ Selling ------------------------------------------------------------------
 	// Nothing on the board is permanent: any piece can be sold, and the price of having
 	// been wrong is the part of the build cost that does not come back. All of it comes
@@ -353,6 +407,7 @@ public:
 	FBDOnWaveStarted OnWaveStarted;
 	FBDOnVotesChanged OnVotesChanged;
 	FBDOnBudgetGranted OnBudgetGranted;
+	FBDOnMoneyChanged OnMoneyChanged;
 
 	/** Seed the board was generated from, so a match can be handed over as a number. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Brazil Defense|Match")
@@ -411,6 +466,8 @@ private:
 	int32 VotesBlue = 0;
 	int32 VotesRed = 0;
 	int32 VotesNull = 0;
+	int32 BribeHeld = 0;
+	int32 PublicMoney = 0;
 	bool bWon = false;
 	bool bEndless = false;
 	int32 SavesRemaining = 0;

@@ -57,10 +57,13 @@ private:
 
 	void BindMatch();
 	void HandleVotesChanged(int32 Blue, int32 Red);
+	void HandleMoneyChanged(int32 Bribe, int32 PublicMoney);
 	void HandlePhaseChanged(EBDMatchPhase NewPhase);
 	void HandleWaveStarted(int32 Wave);
 
 	void UpdateScoreboard();
+	/** The thief's bribe and the mint's public money, under the count bar. */
+	void UpdateMoneyCounters();
 	void UpdateWaveLine();
 	void UpdateSpeedButtons();
 	void UpdateMouths();
@@ -99,8 +102,13 @@ private:
 	FBDPulse BluePulse;
 	FBDPulse RedPulse;
 	FBDPulse UrnPulse;
+	/** The two money counters shiver as they climb, the same way the ballots do. */
+	FBDPulse BribePulse;
+	FBDPulse MintPulse;
 	int32 LastBlueVotes = 0;
 	int32 LastRedVotes = 0;
+	int32 LastBribe = 0;
+	int32 LastPublicMoney = 0;
 	bool bVotesSeen = false;
 	FDelegateHandle VoteSoundHandle;
 	/** The centre box once the match is over: the result, and what the player can do next. */
@@ -233,6 +241,29 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UImage> NullIcon;
+
+	//~ The money: the thief's bribe on the left, the mint's public money on the right
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> BribeScore;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> BribeIconBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> BribeIcon;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> MintScore;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> MintIconBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> MintIcon;
+
+	/** The arrow between them, lit only while a conversion is crossing. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> MoneyArrow;
 
 	//~ Numbers rising from the urn when a creep gets through
 	struct FBDFloater
@@ -444,6 +475,7 @@ private:
 
 	TWeakObjectPtr<ABDMatchManager> BoundMatch;
 	FDelegateHandle VotesChangedHandle;
+	FDelegateHandle MoneyChangedHandle;
 	FDelegateHandle PhaseChangedHandle;
 	FDelegateHandle WaveStartedHandle;
 

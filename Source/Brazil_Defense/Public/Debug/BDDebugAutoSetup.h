@@ -49,8 +49,20 @@ public:
 	/** Takes everything off the board, creeps included, and hands the budgets back. */
 	void ClearAll();
 
+	/**
+	 * Places whatever platform, character and tower budget has been granted since the
+	 * board was built - what the bosses hand out as they fall. Called between waves by
+	 * the simulation, because a defense that never spends its new ceilings is not the
+	 * defense a player would have. Does nothing when no budget is left.
+	 * @return how many pieces were placed.
+	 */
+	int32 BuildGrantedBudget();
+
 	/** Seed of the last setup, for the log and for repeating it. */
 	int32 GetLastSeed() const { return LastSeed; }
+
+	/** How many times the granted budget has been built, so each pass draws its own spots. */
+	int32 GrantedPasses = 0;
 
 private:
 	/** The placement component of the first player controller, or null. */

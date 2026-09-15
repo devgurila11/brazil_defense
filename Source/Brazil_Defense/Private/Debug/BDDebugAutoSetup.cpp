@@ -278,6 +278,43 @@ void UBDDebugAutoSetup::Run(const int32 Seed, const int32 DefenderLevel)
 	LogDistribution();
 }
 
+int32 UBDDebugAutoSetup::BuildGrantedBudget()
+{
+	UBDPlacementComponent* Placement = FindPlacement();
+	ABDMatchManager* Match = FindMatch();
+	if (Placement == nullptr || Match == nullptr)
+	{
+		return 0;
+	}
+
+	const int32 Waiting = Match->GetPlatformsRemaining() + Match->GetCharactersRemaining() + Match->GetTowersRemaining();
+	if (Waiting <= 0)
+	{
+		return 0;
+	}
+
+	// A stream of its own per pass, seeded off the setup seed, so a run stays repeatable
+	// and two passes do not try the same spots.
+	FRandomStream Stream(LastSeed * 7919 + ++GrantedPasses);
+
+	GatherPlaceables();
+	Placement->SetRefusalLogging(false);
+
+	// Platforms first: they are what makes slots for the characters to stand on.
+	const int32 Platforms = PlacePlatforms(*Placement, Stream);
+	const int32 Characters = FillSlots(*Placement, Stream);
+	const int32 Towers = PlaceTowers(*Placement, Stream);
+
+	Placement->CancelSelection();
+	Placement->SetRefusalLogging(true);
+
+	const int32 Placed = Platforms + Characters + Towers;
+	UE_CLOG(Placed > 0, LogBDDebug, Log, TEXT("Granted budget built (pass %d): %d platform(s), %d character(s), %d tower(s). Left: %d platforms, %d characters, %d towers."),
+		GrantedPasses, Platforms, Characters, Towers,
+		Match->GetPlatformsRemaining(), Match->GetCharactersRemaining(), Match->GetTowersRemaining());
+	return Placed;
+}
+
 void UBDDebugAutoSetup::LogDistribution() const
 {
 	const UWorld* World = GetWorld();

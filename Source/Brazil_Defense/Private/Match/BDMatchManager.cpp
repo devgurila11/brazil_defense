@@ -106,12 +106,14 @@ void ABDMatchManager::BeginPlay()
 		GetWavesToWin(), DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining, SavesRemaining);
 
 	// The vote part of the bonus is the one thing a budget reset must not hand out
-	// again, so it stays here, at the one start a match has.
+	// again, so it stays here, at the one start a match has. Added to the opening capital
+	// rather than replacing it: the capital is what building is paid for.
 	if (bChainBonusApplied && DifficultyData->ChainBonus.Votes > 0)
 	{
-		VotesBlue = DifficultyData->ChainBonus.Votes;
-		OnVotesChanged.Broadcast(VotesBlue, VotesRed);
+		VotesBlue += DifficultyData->ChainBonus.Votes;
 	}
+	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
+	UE_LOG(LogBDMatch, Log, TEXT("Opening capital: %d blue vote(s) to build with."), VotesBlue);
 
 	SetupBoard();
 
@@ -151,6 +153,10 @@ void ABDMatchManager::ApplyStartingBudgets()
 	CharactersRemaining = DifficultyData->CharacterBudget;
 	ObjectivesRemaining = 1;
 	SavesRemaining = DifficultyData->SaveBudget;
+
+	// The opening capital. Set rather than added: starting budgets are what a match opens
+	// with, and a rewind has to land on the same number as a fresh start.
+	VotesBlue = DifficultyData->StartingVotes;
 
 	const EBDDifficulty Below = GetDifficultyBelow(Difficulty);
 	const FBDChainBonus& Bonus = DifficultyData->ChainBonus;
@@ -485,6 +491,10 @@ void ABDMatchManager::DeclareVictory()
 	UE_LOG(LogBDMatch, Log, TEXT("VICTORY on wave %d: %d prisoner(s) freed. Board frozen. Votes: blue %d, red %d."),
 		CurrentWave, GetPrisonersFreed(), VotesBlue, VotesRed);
 	UBDProgressSave::RecordWin(Difficulty);
+
+	// The match is settled, so the money is settled with it: what was not spent on the
+	// defense is not kept. Endless starts over on the bribes its own bosses drop.
+	DropMoney(TEXT("the match was won"));
 	SetPhase(EBDMatchPhase::Victory);
 }
 
@@ -518,6 +528,8 @@ bool ABDMatchManager::SaveMatch()
 	Save->VotesBlue = VotesBlue;
 	Save->VotesRed = VotesRed;
 	Save->VotesNull = VotesNull;
+	Save->BribeHeld = BribeHeld;
+	Save->PublicMoney = PublicMoney;
 	Save->EarlyCallBonus = EarlyCallBonus;
 	Save->GameSpeed = GameSpeed;
 	// Spent before it is written: a load hands back the match, not the save.
@@ -538,8 +550,8 @@ bool ABDMatchManager::SaveMatch()
 	}
 
 	SavesRemaining = Save->SavesRemaining;
-	UE_LOG(LogBDMatch, Log, TEXT("Match saved after wave %d: %d piece(s), votes %d blue / %d red, seed %d. %d save(s) left."),
-		CurrentWave, Save->Pieces.Num(), VotesBlue, VotesRed, ObstacleSeed, SavesRemaining);
+	UE_LOG(LogBDMatch, Log, TEXT("Match saved after wave %d: %d piece(s), votes %d blue / %d red, %d public money, seed %d. %d save(s) left."),
+		CurrentWave, Save->Pieces.Num(), VotesBlue, VotesRed, PublicMoney, ObstacleSeed, SavesRemaining);
 	return true;
 }
 
@@ -597,6 +609,9 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	bWon = false;
 	bEndless = false;
 	VotesNull = 0;
+	// Wiped before the rewind so nothing of the running match survives it; the saved
+	// balances go back on further down, once the board is whole again.
+	DropMoney(TEXT("the match is being rebuilt from a save"));
 	SetPhase(EBDMatchPhase::Building);
 	DebugResetBudgets();
 
@@ -628,6 +643,8 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	VotesBlue = Save.VotesBlue;
 	VotesRed = Save.VotesRed;
 	VotesNull = Save.VotesNull;
+	BribeHeld = Save.BribeHeld;
+	PublicMoney = Save.PublicMoney;
 	if (DayCycle != nullptr)
 	{
 		DayCycle->SetWave(CurrentWave);
@@ -636,10 +653,11 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 
 	// Told last, with the board whole: an inverted score sends the candidate out again.
 	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
 	StartBuildingPhase();
 
-	UE_LOG(LogBDMatch, Log, TEXT("Match loaded: building for wave %d, votes %d blue / %d red, %d save(s) left."),
-		CurrentWave + 1, VotesBlue, VotesRed, SavesRemaining);
+	UE_LOG(LogBDMatch, Log, TEXT("Match loaded: building for wave %d, votes %d blue / %d red, %d public money, %d save(s) left."),
+		CurrentWave + 1, VotesBlue, VotesRed, PublicMoney, SavesRemaining);
 }
 
 bool ABDMatchManager::ContinueEndless()
@@ -666,6 +684,7 @@ void ABDMatchManager::DeclareDefeat(const FString& Reason)
 
 	UE_LOG(LogBDMatch, Log, TEXT("DEFEAT on wave %d: %s. Board frozen. Votes: blue %d, red %d."),
 		CurrentWave, *Reason, VotesBlue, VotesRed);
+	DropMoney(TEXT("the match was lost"));
 	SetPhase(EBDMatchPhase::Defeat);
 }
 
@@ -736,6 +755,98 @@ bool ABDMatchManager::SpendVotesBlue(const int32 Votes)
 
 	UE_LOG(LogBDMatch, Verbose, TEXT("Blue -%d votes, now %d blue / %d red."), Votes, VotesBlue, VotesRed);
 	return true;
+}
+
+//~ The bribe and the public money --------------------------------------------------
+
+void ABDMatchManager::AddBribe(const int32 Amount, const FString& Why)
+{
+	if (Amount <= 0)
+	{
+		return;
+	}
+
+	BribeHeld += Amount;
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+	UE_LOG(LogBDBribe, Verbose, TEXT("Bribe +%d (%s): %d held, %d public."), Amount, *Why, BribeHeld, PublicMoney);
+}
+
+int32 ABDMatchManager::ConvertBribe(const int32 Amount)
+{
+	const int32 Moved = FMath::Clamp(Amount, 0, BribeHeld);
+	if (Moved == 0)
+	{
+		return 0;
+	}
+
+	BribeHeld -= Moved;
+	PublicMoney += Moved;
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+	UE_LOG(LogBDBribe, Verbose, TEXT("Minted %d: %d held, %d public."), Moved, BribeHeld, PublicMoney);
+	return Moved;
+}
+
+void ABDMatchManager::AddPublicMoney(const int32 Amount, const FString& Why)
+{
+	if (Amount <= 0)
+	{
+		return;
+	}
+
+	PublicMoney += Amount;
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+	UE_LOG(LogBDBribe, Log, TEXT("Public money +%d (%s): now %d."), Amount, *Why, PublicMoney);
+}
+
+bool ABDMatchManager::SpendPublicMoney(const int32 Amount)
+{
+	if (Amount < 0 || !CanAffordPublicMoney(Amount))
+	{
+		return false;
+	}
+
+	if (Amount == 0)
+	{
+		return true;
+	}
+
+	PublicMoney -= Amount;
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+	UE_LOG(LogBDBribe, Verbose, TEXT("Public money -%d, now %d."), Amount, PublicMoney);
+	return true;
+}
+
+void ABDMatchManager::DropMoney(const FString& Why)
+{
+	if (BribeHeld == 0 && PublicMoney == 0)
+	{
+		return;
+	}
+
+	UE_LOG(LogBDBribe, Log, TEXT("Money dropped (%s): %d bribe and %d public money gone. Nothing carries to the next match."),
+		*Why, BribeHeld, PublicMoney);
+	BribeHeld = 0;
+	PublicMoney = 0;
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+}
+
+void ABDMatchManager::AdjustCharacterSlots(const int32 Delta, const FString& Why)
+{
+	if (Delta == 0)
+	{
+		return;
+	}
+
+	const int32 Before = CharactersRemaining;
+	// Clamped at zero: a platform sold hands its passengers back before its slots come
+	// off, so the two cancel out, and anything left over is a rounding of the board, not
+	// a debt the player should carry.
+	CharactersRemaining = FMath::Max(0, CharactersRemaining + Delta);
+
+	UE_LOG(LogBDMatch, Log, TEXT("Character ceiling %s%d (%s): %d -> %d."),
+		Delta > 0 ? TEXT("+") : TEXT(""), Delta, *Why, Before, CharactersRemaining);
+
+	OnBudgetGranted.Broadcast(0, CharactersRemaining - Before);
 }
 
 int32 ABDMatchManager::GetUpgradeCost(const ABDTowerBase* Tower) const

@@ -3,6 +3,7 @@
 #include "Candidate/BDCandidateSubsystem.h"
 
 #include "BDLog.h"
+#include "Bribe/BDBribeSubsystem.h"
 #include "Enemy/BDCandidate.h"
 #include "Enemy/BDEnemyData.h"
 #include "Engine/Engine.h"
@@ -429,6 +430,15 @@ void UBDCandidateSubsystem::NotifyCandidateKilled(ABDCandidate* Killed)
 		{
 			Match->GrantBudget(Balance.TowerBudgetPerBoss, Balance.CharacterBudgetPerBoss,
 				FString::Printf(TEXT("candidate %d killed"), Killed->Ordinal));
+		}
+
+		// And the bribe he stole falls out of him: worth his own health, so the twentieth
+		// boss pays many times what the first did. The bribe subsystem drops the bag,
+		// counts it and mints it; the fallen come back drop nothing, the same rule as the
+		// budget above.
+		if (UBDBribeSubsystem* Bribes = UBDBribeSubsystem::Get(this))
+		{
+			Bribes->Collect(Balance.BribeForHealth(Killed->GetMaxHealth()), Killed->GetActorLocation(), Killed->Ordinal);
 		}
 		return;
 	}

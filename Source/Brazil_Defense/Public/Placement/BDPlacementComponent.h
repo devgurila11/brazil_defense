@@ -97,7 +97,9 @@ enum class EBDPlacementRefusal : uint8
 	/** The held defender is a character and the cursor is over a ground cell: characters stand on platforms. */
 	CharacterNeedsPlatform,
 	/** Moving the lifted piece here would cost more blue votes than the player has. */
-	CannotAffordMove
+	CannotAffordMove,
+	/** The piece costs more blue votes than the player holds. Building is paid for out of the score. */
+	NoVotes
 };
 
 /** Broadcast whenever the hovered cell or its validity changes. */
@@ -426,6 +428,25 @@ private:
 
 	/** Takes a placed piece off the board, returns it to the hand and pays its sale. Behind TryRemoveAtHovered and TrySellActor. */
 	bool SellPiece(const FBDPlacedPiece& Piece);
+
+	/**
+	 * Pays back the share of the public money sunk into a defender's levels that survives
+	 * its removal. Must be called while the piece still has its actors: the level is read
+	 * off the tower, and ForgetPiece destroys it. Nothing happens for a piece that never
+	 * evolved, or for anything that is not a defender.
+	 * @return the public money paid back.
+	 */
+	int32 RefundEvolution(const FBDPlacedPiece& Piece);
+
+	/**
+	 * Slots a placed piece brings to the board: the sum over its actors' platform
+	 * components, 0 for anything that is not a platform. Read while the piece still has
+	 * its actors, which is why removal asks before ForgetPiece.
+	 */
+	static int32 CountPlatformSlots(const FBDPlacedPiece& Piece);
+
+	/** Hands back the votes and the ceiling of a placement the board refused after they were charged. */
+	void RefundRefusedPlacement(int32 BuildCost);
 	void ForgetPiece(UBDGridSubsystem& Grid, const FBDPlacedPiece& Piece);
 
 	void EnsurePreview();

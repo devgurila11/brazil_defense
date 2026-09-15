@@ -70,6 +70,23 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
 	TSoftObjectPtr<UTexture2D> ScoreNullIcon;
 
+	//~ The money counters -------------------------------------------------------
+	// Under the count bar, side by side: the thief on the left holding the bribe just
+	// recovered, the mint on the right holding the public money the player spends. The
+	// value crosses from one to the other when the till rings.
+
+	/** The thief, beside the bribe recovered and not yet minted. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> BribeIcon;
+
+	/** The mint, beside the public money: the spendable balance. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> MintIcon;
+
+	/** Height of the two money pictures, as a fraction of the viewport height. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.02", ClampMax = "0.2", UIMin = "0.02", UIMax = "0.2"))
+	float MoneyIconHeightFraction = 0.05f;
+
 	/** Width of the count bar, as a fraction of the viewport width. */
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.1", ClampMax = "0.8", UIMin = "0.1", UIMax = "0.8"))
 	float ScoreBarWidthFraction = 0.26f;

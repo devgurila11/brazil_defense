@@ -1132,7 +1132,9 @@ void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
 	}
 
 	// Worth its health: the later the leak, the more it costs. A candidate is the defeat, not votes.
-	const int32 Votes = Enemy->IsCandidate() ? 0 : UBDGameBalanceSettings::Get().VotesForHealth(Enemy->GetMaxHealth());
+	// The red side carries its own weight: an arrival is meant to land harder than a kill,
+	// so the count is still a contest once the defense starts to give.
+	const int32 Votes = Enemy->IsCandidate() ? 0 : UBDGameBalanceSettings::Get().RedVotesForHealth(Enemy->GetMaxHealth());
 
 	if (ABDMatchManager* Match = GetMatch())
 	{

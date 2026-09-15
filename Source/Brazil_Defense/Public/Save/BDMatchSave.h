@@ -85,6 +85,14 @@ public:
 	UPROPERTY()
 	int32 VotesNull = 0;
 
+	/** The thief's counter: bribe recovered and not yet minted. */
+	UPROPERTY()
+	int32 BribeHeld = 0;
+
+	/** The mint's counter: what evolution is paid with. */
+	UPROPERTY()
+	int32 PublicMoney = 0;
+
 	UPROPERTY()
 	int32 EarlyCallBonus = 0;
 

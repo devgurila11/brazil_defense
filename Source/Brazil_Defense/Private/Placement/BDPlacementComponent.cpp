@@ -14,6 +14,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Grid/BDGridSubsystem.h"
 #include "Objective/BDObjectiveSubsystem.h"
+#include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
 #include "Path/BDPathfinder.h"
 #include "Placement/BDPlaceableData.h"
@@ -1143,6 +1144,12 @@ void UBDPlacementComponent::EvaluatePlacement()
 		{
 			CurrentRefusal = EBDPlacementRefusal::MatchRefused;
 		}
+		else if (!bMoving && Match != nullptr && !Match->CanAffordVotesBlue(CurrentSelection->GetBuildCost()))
+		{
+			// Paid for out of the scoreboard, like everything else: the ghost goes red
+			// before the click, so the player is never surprised by a refusal.
+			CurrentRefusal = EBDPlacementRefusal::NoVotes;
+		}
 		else if (IsObjectiveSelection())
 		{
 			CurrentRefusal = EvaluateObjectivePlacement();
@@ -1593,6 +1600,9 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 	}
 
 	// Charged before anything is spawned or written, so a refused budget leaves no trace.
+	// Two charges, in this order: the ceiling of the kind, then the votes. The votes go
+	// last because they are the one that can be handed straight back.
+	const int32 BuildCost = CurrentSelection->GetBuildCost();
 	if (ABDMatchManager* Match = GetMatch())
 	{
 		if (!Match->ConsumeBudget(CurrentSelection->GetPieceKind()))
@@ -1601,12 +1611,22 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 				*GetNameSafe(CurrentSelection));
 			return false;
 		}
+
+		if (!Match->SpendVotesBlue(BuildCost))
+		{
+			// The ceiling was already charged, so it goes back before leaving.
+			Match->RefundRemoval(CurrentSelection->GetPieceKind());
+			UE_LOG(LogBDGrid, Verbose, TEXT("Placement of '%s' refused: %d blue vote(s) needed, %d held."),
+				*GetNameSafe(CurrentSelection), BuildCost, Match->GetVotesBlue());
+			return false;
+		}
 	}
 
 	if (IsObjectiveSelection())
 	{
 		if (!PlaceObjectivePiece())
 		{
+			RefundRefusedPlacement(BuildCost);
 			return false;
 		}
 
@@ -1623,7 +1643,20 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 		: (IsEdgeSelection() ? PlaceEdgePiece(*Grid, Piece) : PlaceCellPiece(*Grid, Piece));
 	if (!bPlaced)
 	{
+		// The board said yes a frame ago and no now: nothing was built, so nothing is paid.
+		RefundRefusedPlacement(BuildCost);
 		return false;
+	}
+
+	// A platform carries its slots into the character ceiling: what was built can always
+	// be manned. Asked of the actors, not of the data, because the slots are authored on
+	// the Blueprint and a platform may be turned before it lands.
+	if (const int32 Slots = CountPlatformSlots(Piece))
+	{
+		if (ABDMatchManager* Match = GetMatch())
+		{
+			Match->AdjustCharacterSlots(Slots, FString::Printf(TEXT("'%s' built with %d slot(s)"), *GetNameSafe(Piece.Data), Slots));
+		}
 	}
 
 	EvaluatePlacement();
@@ -1687,6 +1720,10 @@ void UBDPlacementComponent::ForgetSlotPiecesOn(const FBDPlacedPiece& PlatformPie
 
 		for (const FBDPlacedPiece& Piece : Mounted)
 		{
+			// Same rule as a defender sold on its own: the levels were paid for in public
+			// money, so part of that public money comes back rather than going down with
+			// the platform.
+			RefundEvolution(Piece);
 			ForgetPiece(*GetGrid(), Piece);
 			if (Match != nullptr && Piece.Data != nullptr)
 			{
@@ -1841,6 +1878,58 @@ bool UBDPlacementComponent::TrySellActor(AActor* Actor)
 	return SellPiece(Piece);
 }
 
+void UBDPlacementComponent::RefundRefusedPlacement(const int32 BuildCost)
+{
+	// Charged before the board was touched; if the board then refused, both charges come
+	// straight back. Never a partial payment for a piece that does not exist.
+	if (ABDMatchManager* Match = GetMatch())
+	{
+		Match->AddVotesBlue(BuildCost);
+		if (CurrentSelection != nullptr)
+		{
+			Match->RefundRemoval(CurrentSelection->GetPieceKind());
+		}
+	}
+}
+
+int32 UBDPlacementComponent::CountPlatformSlots(const FBDPlacedPiece& Piece)
+{
+	int32 Slots = 0;
+	for (const AActor* Actor : Piece.Actors)
+	{
+		if (const UBDPlatformComponent* Platform = Actor != nullptr ? Actor->FindComponentByClass<UBDPlatformComponent>() : nullptr)
+		{
+			Slots += Platform->Slots.Num();
+		}
+	}
+	return Slots;
+}
+
+int32 UBDPlacementComponent::RefundEvolution(const FBDPlacedPiece& Piece)
+{
+	ABDMatchManager* Match = GetMatch();
+	const ABDTowerBase* Tower = Piece.Actors.Num() > 0 ? Cast<ABDTowerBase>(Piece.Actors[0]) : nullptr;
+	const UBDTowerData* TowerData = Tower != nullptr ? Tower->GetData() : nullptr;
+	if (Match == nullptr || TowerData == nullptr || Tower->GetTowerLevel() <= 1)
+	{
+		return 0;
+	}
+
+	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	const int32 Level = Tower->GetTowerLevel();
+	const int32 Spent = Balance.GetEvolutionSpent(TowerData->UpgradeCostBase, Level);
+	const int32 Back = Balance.GetEvolutionRefund(TowerData->UpgradeCostBase, Level);
+	if (Back <= 0)
+	{
+		return 0;
+	}
+
+	Match->AddPublicMoney(Back, FString::Printf(TEXT("'%s' at level %d taken off the board"), *GetNameSafe(Piece.Data), Level));
+	UE_LOG(LogBDBribe, Log, TEXT("EVOLUTION REFUND for '%s' at level %d: %d of the %d public money it cost comes back (%.0f%%), %d lost."),
+		*GetNameSafe(Piece.Data), Level, Back, Spent, Balance.EvolutionRefundRatio * 100.0f, Spent - Back);
+	return Back;
+}
+
 bool UBDPlacementComponent::SellPiece(const FBDPlacedPiece& Piece)
 {
 	UBDGridSubsystem* Grid = GetGrid();
@@ -1869,6 +1958,16 @@ bool UBDPlacementComponent::SellPiece(const FBDPlacedPiece& Piece)
 		Where = Piece.Edges.Num() > 0 ? Piece.Edges[0].ToString() : Piece.Origin.ToString();
 	}
 
+	// What the levels cost comes back first, while the tower is still there to be asked
+	// what level it reached. The platform's passengers pay their own back inside
+	// ForgetPiece, on the same rule.
+	const int32 EvolutionBack = RefundEvolution(Piece);
+
+	// And its slots leave the character ceiling with it, counted now while the actors are
+	// still there. The passengers are handed back to the hand inside ForgetPiece, so a
+	// full platform nets out to zero and a half-empty one gives back only what stood on it.
+	const int32 SlotsLeaving = CountPlatformSlots(Piece);
+
 	// The platform's passengers come off first, inside ForgetPiece, and go back to the
 	// hand; only the piece under the cursor is sold.
 	ForgetPiece(*Grid, Piece);
@@ -1876,14 +1975,18 @@ bool UBDPlacementComponent::SellPiece(const FBDPlacedPiece& Piece)
 	if (Match != nullptr)
 	{
 		Match->RefundRemoval(Kind);
+		if (SlotsLeaving > 0)
+		{
+			Match->AdjustCharacterSlots(-SlotsLeaving, FString::Printf(TEXT("'%s' sold with %d slot(s)"), *GetNameSafe(Piece.Data), SlotsLeaving));
+		}
 
 		// Selling pays part of the build cost back in blue votes, which is the score: a
 		// piece sold is a piece that lifts the scoreboard, on purpose.
 		const int32 BuildCost = Piece.Data != nullptr ? Piece.Data->GetBuildCost() : 0;
 		const int32 Refund = Match->RefundSale(Kind, BuildCost);
-		UE_LOG(LogBDMatch, Log, TEXT("Sold '%s' at %s for %d blue vote(s) (%.0f%% of %d): now %d blue / %d red."),
-			*GetNameSafe(Piece.Data), *Where, Refund, Match->GetSellRefundRatio(Kind) * 100.0f, BuildCost,
-			Match->GetVotesBlue(), Match->GetVotesRed());
+		UE_LOG(LogBDMatch, Log, TEXT("Sold '%s' at %s for %d blue vote(s) (%.0f%% of %d) and %d public money back from its levels: now %d blue / %d red, %d public money."),
+			*GetNameSafe(Piece.Data), *Where, Refund, Match->GetSellRefundRatio(Kind) * 100.0f, BuildCost, EvolutionBack,
+			Match->GetVotesBlue(), Match->GetVotesRed(), Match->GetPublicMoney());
 	}
 	else
 	{
