@@ -250,7 +250,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-14 (noite, 3) — (commit abaixo)** (desde ede2420):
+- **2026-09-14 (noite, 3) — 0747d14** (desde ede2420):
   - HUD: painel do candidato virou lista — uma linha por candidato
     vivo (nome, HP, barra na cor dele), até 6 linhas e "+N a caminho"
     acima disso. `DisplayName` no ator ("Candidato N" até os 20 terem
