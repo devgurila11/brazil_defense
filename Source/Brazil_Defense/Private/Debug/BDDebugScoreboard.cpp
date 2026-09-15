@@ -194,9 +194,9 @@ void UBDDebugScoreboard::Draw(UCanvas* Canvas, APlayerController* PlayerControll
 			Candidate->GetCurrentHealth(), Candidate->GetMaxHealth()), RedColor);
 	}
 
-	if (Candidates->IsCountFrozen())
+	if (Candidates->IsReturnActive())
 	{
-		Y += DrawLine(*Canvas, *Font, Margin, Y, FString::Printf(TEXT("APURA\u00C7\u00C3O CONGELADA  %ds"),
-			FMath::CeilToInt(Candidates->GetPauseRemaining())), TextColor);
+		Y += DrawLine(*Canvas, *Font, Margin, Y, FString::Printf(TEXT("RETORNO DOS CANDIDATOS  faltam %d"),
+			Candidates->GetReturnRemaining()), TextColor);
 	}
 }

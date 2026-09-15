@@ -57,6 +57,11 @@ float UBDGameBalanceSettings::GetWaveSpawnInterval(const int32 Wave) const
 	return FMath::Max(WaveSpawnIntervalMin, WaveSpawnIntervalBase * FMath::Pow(WaveSpawnIntervalDecay, static_cast<float>(FMath::Max(0, Wave))));
 }
 
+int32 UBDGameBalanceSettings::VotesForHealth(const float Health) const
+{
+	return FMath::Max(1, FMath::FloorToInt(FMath::Max(0.0f, Health) / FMath::Max(0.01f, HealthPerVote)));
+}
+
 int32 UBDGameBalanceSettings::GetCreepsPerSpawnPoint(const int32 Wave) const
 {
 	return FMath::Max(1, CreepsPerSpawnPointBase) + FMath::Max(0, CreepsPerSpawnPointStep) * FMath::Max(0, Wave - 1);

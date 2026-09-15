@@ -14,8 +14,10 @@
 #include "Placement/BDPlacementSettings.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Sound/ReverbEffect.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundClass.h"
+#include "Sound/SoundConcurrency.h"
 #include "UI/BDUISettings.h"
 
 void UBDObjectiveSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -213,7 +215,7 @@ void UBDObjectiveSubsystem::ClearObjective()
 	UE_LOG(LogBDGrid, Log, TEXT("Objective cleared from %s."), *GoalCell.ToString());
 }
 
-void UBDObjectiveSubsystem::PlayVoteSound()
+void UBDObjectiveSubsystem::PlayVoteSound(const int32 Votes)
 {
 	const UBDObjectiveSettings& Settings = UBDObjectiveSettings::Get();
 	UWorld* World = GetWorld();
@@ -238,26 +240,54 @@ void UBDObjectiveSubsystem::PlayVoteSound()
 	}
 	LastVoteSoundTime = Now;
 
-	// Outdoors: a natural falloff from the urn over the board, air taking the highs with
-	// distance, nothing occluding. Set here so the sound asset needs no attenuation of its own.
+	EnsureOutdoorReverb(*World);
+
+	// Only so many at once: past the rate limit a dense wave still stacks a few, and the
+	// oldest gives way rather than the whole lot piling up.
+	if (VoteConcurrency == nullptr)
+	{
+		VoteConcurrency = NewObject<USoundConcurrency>(this, TEXT("VoteConcurrency"));
+		VoteConcurrency->Concurrency.MaxCount = FMath::Clamp(Settings.VoteSoundMaxConcurrent, 1, 16);
+		VoteConcurrency->Concurrency.bLimitToOwner = false;
+		VoteConcurrency->Concurrency.ResolutionRule = EMaxConcurrentResolutionRule::StopOldest;
+	}
+
+	// Outdoors, from the urn itself: a 3D source with a natural falloff over the board,
+	// air taking the highs with distance, nothing occluding, and a share sent to the
+	// open-air reverb that grows with the distance. The listener is the match camera,
+	// so the radii are wide: the beep reads from the overview and comes closer with it.
 	FSoundAttenuationSettings Attenuation;
 	Attenuation.bAttenuate = true;
 	Attenuation.bSpatialize = true;
+	Attenuation.SpatializationAlgorithm = ESoundSpatializationAlgorithm::SPATIALIZATION_Default;
+	Attenuation.StereoSpread = 400.0f;
 	Attenuation.AttenuationShape = EAttenuationShape::Sphere;
 	Attenuation.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
-	Attenuation.dBAttenuationAtMax = -60.0f;
+	Attenuation.dBAttenuationAtMax = Settings.VoteSoundAttenuationAtMax;
 	Attenuation.AttenuationShapeExtents = FVector(Settings.VoteSoundInnerRadius, 0.0f, 0.0f);
 	Attenuation.FalloffDistance = Settings.VoteSoundFalloffDistance;
+	Attenuation.FalloffMode = ENaturalSoundFalloffMode::Hold;
 	Attenuation.bEnableListenerFocus = false;
 	Attenuation.bAttenuateWithLPF = true;
 	Attenuation.bEnableLogFrequencyScaling = true;
 	Attenuation.LPFRadiusMin = Settings.VoteSoundInnerRadius;
 	Attenuation.LPFRadiusMax = Settings.VoteSoundInnerRadius + Settings.VoteSoundFalloffDistance;
-	Attenuation.LPFFrequencyAtMax = 2500.0f;
+	Attenuation.LPFFrequencyAtMax = 3000.0f;
 	Attenuation.bEnableOcclusion = false;
+	Attenuation.bEnableReverbSend = true;
+	Attenuation.ReverbSendMethod = EReverbSendMethod::Linear;
+	Attenuation.ReverbWetLevelMin = Settings.VoteReverbWetNear;
+	Attenuation.ReverbWetLevelMax = Settings.VoteReverbWetFar;
+	Attenuation.ReverbDistanceMin = Settings.VoteSoundInnerRadius;
+	Attenuation.ReverbDistanceMax = Settings.VoteSoundInnerRadius + Settings.VoteSoundFalloffDistance;
+
+	// A costly arrival lands heavier: lower and louder, up to the heavy mark.
+	const float Weight = FMath::Clamp(static_cast<float>(Votes) / FMath::Max(1, Settings.VoteSoundHeavyVotes), 0.0f, 1.0f);
+	const float Pitch = FMath::Lerp(1.0f, Settings.VoteSoundHeavyPitch, Weight);
+	const float Volume = Settings.VoteSoundVolume * FMath::Lerp(1.0f, Settings.VoteSoundHeavyVolume, Weight);
 
 	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAtLocation(World, Sound, Urn->GetActorLocation(), FRotator::ZeroRotator,
-		Settings.VoteSoundVolume, 1.0f, 0.0f, nullptr, nullptr, /*bAutoDestroy*/ true);
+		Volume, Pitch, 0.0f, nullptr, VoteConcurrency, /*bAutoDestroy*/ true);
 	if (Audio == nullptr)
 	{
 		return;
@@ -271,7 +301,41 @@ void UBDObjectiveSubsystem::PlayVoteSound()
 	Audio->bOverrideAttenuation = true;
 	Audio->AttenuationOverrides = Attenuation;
 	Audio->Play();
+	OnVoteSound.Broadcast();
 	UE_LOG(LogBDGrid, Verbose, TEXT("Urn beep at %s."), *Urn->GetActorLocation().ToCompactString());
+}
+
+void UBDObjectiveSubsystem::EnsureOutdoorReverb(UWorld& World)
+{
+	if (bReverbActivated)
+	{
+		return;
+	}
+	bReverbActivated = true;
+
+	const UBDObjectiveSettings& Settings = UBDObjectiveSettings::Get();
+	VoteReverb = Settings.VoteReverbEffect.LoadSynchronous();
+	if (VoteReverb == nullptr)
+	{
+		// An open square in the plain air: little density and diffusion, a quiet early
+		// reflection, a short late tail, the highs absorbed. Nothing of a room.
+		VoteReverb = NewObject<UReverbEffect>(this, TEXT("OutdoorReverb"));
+		VoteReverb->Density = 0.6f;
+		VoteReverb->Diffusion = 0.4f;
+		VoteReverb->Gain = 0.3f;
+		VoteReverb->GainHF = 0.2f;
+		VoteReverb->DecayTime = Settings.VoteReverbDecaySeconds;
+		VoteReverb->DecayHFRatio = 0.5f;
+		VoteReverb->ReflectionsGain = 0.08f;
+		VoteReverb->ReflectionsDelay = 0.03f;
+		VoteReverb->LateGain = 0.15f;
+		VoteReverb->LateDelay = 0.04f;
+		VoteReverb->AirAbsorptionGainHF = 0.99f;
+	}
+
+	// Pinned on the world with a low priority: an audio volume placed on the map wins.
+	UGameplayStatics::ActivateReverbEffect(&World, VoteReverb, TEXT("BDOutdoor"), /*Priority*/ 0.0f, /*Volume*/ 1.0f, /*FadeTime*/ 0.5f);
+	UE_LOG(LogBDGrid, Log, TEXT("Open-air reverb on: %s, %.1fs tail."), *GetNameSafe(VoteReverb), VoteReverb->DecayTime);
 }
 
 void UBDObjectiveSubsystem::DrawZone() const

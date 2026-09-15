@@ -255,10 +255,10 @@ void ABDMatchManager::Tick(const float DeltaSeconds)
 		return;
 	}
 
-	// A win held back by the candidate is taken the moment he is gone between waves.
-	if (IsWinDue())
+	// An end held back by a candidate is settled the moment he is gone between waves.
+	if (IsEndDue())
 	{
-		DeclareVictory();
+		ResolveEnd();
 		return;
 	}
 
@@ -409,31 +409,58 @@ void ABDMatchManager::OnWaveCleared()
 	}
 
 	// The one line a match is audited by afterwards: the scoreboard at the end of every wave.
-	UE_LOG(LogBDMatch, Log, TEXT("Wave %d cleared. Votes: blue %d, red %d."), CurrentWave, VotesBlue, VotesRed);
+	UE_LOG(LogBDMatch, Log, TEXT("Wave %d cleared. Votes: blue %d, red %d, null %d."), CurrentWave, VotesBlue, VotesRed, VotesNull);
 
-	if (IsWinDue())
+	if (IsEndDue())
 	{
-		DeclareVictory();
+		ResolveEnd();
 		return;
 	}
 
 	if (!bWon && CurrentWave >= GetWavesToWin())
 	{
-		UE_LOG(LogBDMatch, Log, TEXT("Wave %d of %d cleared with the candidate on the board: the win waits on him."), CurrentWave, GetWavesToWin());
+		UE_LOG(LogBDMatch, Log, TEXT("Wave %d of %d cleared with a candidate on the board: the count waits on him."), CurrentWave, GetWavesToWin());
 	}
 
 	StartBuildingPhase();
 }
 
-bool ABDMatchManager::IsWinDue() const
+bool ABDMatchManager::IsEndDue() const
 {
-	if (bWon || CurrentWave < GetWavesToWin())
+	if (bWon || IsMatchOver() || CurrentWave < GetWavesToWin())
 	{
 		return false;
 	}
 
 	const UBDCandidateSubsystem* Candidates = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
-	return Candidates == nullptr || Candidates->GetCandidate() == nullptr;
+	return Candidates == nullptr || (!Candidates->HasCandidateOnBoard() && !Candidates->IsReturnActive());
+}
+
+void ABDMatchManager::ResolveEnd()
+{
+	// The count is the verdict: blue ahead, or level, is the win; red ahead is the loss.
+	if (VotesBlue >= VotesRed)
+	{
+		DeclareVictory();
+	}
+	else
+	{
+		DeclareDefeat(FString::Printf(TEXT("red was ahead at the end of wave %d, %d to %d"), CurrentWave, VotesRed, VotesBlue));
+	}
+}
+
+void ABDMatchManager::EqualizeVotesDown(const FString& Why)
+{
+	const int32 Lower = FMath::Min(VotesBlue, VotesRed);
+	if (VotesBlue == Lower && VotesRed == Lower)
+	{
+		return;
+	}
+
+	UE_LOG(LogBDMatch, Log, TEXT("Count levelled downwards (%s): %d blue / %d red -> %d / %d."), *Why, VotesBlue, VotesRed, Lower, Lower);
+	VotesBlue = Lower;
+	VotesRed = Lower;
+	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
 }
 
 int32 ABDMatchManager::GetWavesToWin() const
@@ -490,6 +517,7 @@ bool ABDMatchManager::SaveMatch()
 	Save->Wave = CurrentWave;
 	Save->VotesBlue = VotesBlue;
 	Save->VotesRed = VotesRed;
+	Save->VotesNull = VotesNull;
 	Save->EarlyCallBonus = EarlyCallBonus;
 	Save->GameSpeed = GameSpeed;
 	// Spent before it is written: a load hands back the match, not the save.
@@ -568,6 +596,7 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	CurrentWave = 0;
 	bWon = false;
 	bEndless = false;
+	VotesNull = 0;
 	SetPhase(EBDMatchPhase::Building);
 	DebugResetBudgets();
 
@@ -598,6 +627,7 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	bEndless = Save.bEndless;
 	VotesBlue = Save.VotesBlue;
 	VotesRed = Save.VotesRed;
+	VotesNull = Save.VotesNull;
 	if (DayCycle != nullptr)
 	{
 		DayCycle->SetWave(CurrentWave);
@@ -675,10 +705,18 @@ void ABDMatchManager::AddVotesRed(const int32 Votes)
 	// The urn registers the vote out loud.
 	if (UBDObjectiveSubsystem* Objectives = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDObjectiveSubsystem>() : nullptr)
 	{
-		Objectives->PlayVoteSound();
+		Objectives->PlayVoteSound(Votes);
 	}
 
 	UE_LOG(LogBDMatch, Verbose, TEXT("Red +%d votes, now %d blue / %d red."), Votes, VotesBlue, VotesRed);
+}
+
+void ABDMatchManager::AddVotesNull(const int32 Votes)
+{
+	if (Votes > 0)
+	{
+		VotesNull += Votes;
+	}
 }
 
 bool ABDMatchManager::SpendVotesBlue(const int32 Votes)

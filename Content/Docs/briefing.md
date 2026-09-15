@@ -1,146 +1,105 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-13 10:15**
+**Versão: 2026-09-14 17:10**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
-> Compare a versão acima com a última que você leu.
-
-# Camada de interface — esqueleto funcional
-
-Tudo em UMG. Tudo funcional e SEM ESTILO — visual cru, caixa e texto
-puro. O estilo (assets do Nano, cores, animação) vem depois, por
-cima. Não gastar tempo em aparência agora.
-
-Todo texto visível é FText localizável. Dois idiomas: inglês (padrão)
-e português. String table por idioma, nada de texto hardcoded.
 
 ---
 
-## 1. Fluxo de telas
+## 1. Candidatos como chefes agendados
 
-Sequência de abertura:
+O candidato deixa de ser evento único e vira o sistema de chefes.
 
-```
-Splash (vídeo da marca) → Loading → Menu principal → [Play] → fade → Jogo
-```
+- Um candidato surge a cada 5 ondas (ondas 5, 10, 15... 100) = 20 no
+  total. Expor CandidateInterval (5) em UBDGameBalanceSettings.
+- Cada um mais forte que o anterior. HP = HP do creep daquela onda ×
+  CandidateHealthMultiplier (o x40 que já existe). Como o HP do creep
+  cresce por onda, o candidato da onda 100 é muito mais forte que o
+  da 5, naturalmente.
+- Sai de uma boca sorteada. Lento. Alvo prioritário de todo defensor
+  no alcance.
+- Só um agendado por vez.
 
-- **Splash**: placeholder por enquanto — uma tela preta com o texto
-  "Gurila Games" por 2s, pulável com qualquer tecla. Deixar o ponto
-  de encaixe pronto para trocar por MediaPlayer/vídeo depois.
-- **Loading**: tela simples com indicador de carregamento. Placeholder.
-- **Menu principal**: fundo placeholder (cor sólida ou imagem estática
-  qualquer) com o ponto de encaixe para o cinecut em looping futuro.
-- **Transições**: fade in/out entre todas as telas, incluindo menu →
-  jogo. Duração configurável.
-
-Gerenciar por um GameInstance ou um subsystem de UI que controla qual
-tela está ativa.
+O gatilho antigo "sai quando o vermelho passa o azul" NÃO some — vira
+outra coisa, ver item 3.
 
 ---
 
-## 2. Menu principal
+## 2. Condições de vitória e derrota
 
-Botões:
+Substitui a vitória por sobrevivência.
 
-- **Play** — vai para seleção de dificuldade (ou direto ao jogo, se a
-  seleção ainda não existir; deixar o gancho)
-- **Options** — abre o painel de opções
-- **Quit** — sai do jogo
+DERROTA, por qualquer uma:
 
-Layout cru, empilhado. O visual entra depois.
+- Um candidato alcança a urna — a QUALQUER momento, mesmo na onda 27.
+  Morte súbita. Fase Defeat.
+- Chegar ao fim da onda 100 com o VERMELHO na frente no placar.
 
----
+VITÓRIA:
 
-## 3. Painel de opções
+- Chegar ao fim da onda 100 com o AZUL na frente. Liberta os presos
+  da dificuldade. Endless continua disponível depois.
 
-Três seções, todas persistidas em SaveGame:
+Creep normal chegando na urna NÃO é game over — só soma voto vermelho
+(por HP, como já está). Só CANDIDATO na urna é morte súbita.
 
-**Gráficos**
-
-- Preset de qualidade via Scalability da engine (Low/Medium/High/Epic)
-- Resolução
-- Tela cheia / janela / borderless
-- V-Sync on/off
-
-**Áudio**
-
-- Volume de música (slider 0–100)
-- Volume de efeitos (slider 0–100)
-- Mudo geral (toggle)
-- Ligar os sliders a Sound Classes / Sound Mix reais, para já
-  afetarem o som que existe
-
-**Idioma**
-
-- Inglês (padrão) e Português
-- Troca em runtime via FInternationalization, sem reiniciar — todo
-  FText atualiza na hora
+Atualizar o PLANO.md §8 com isto — a vitória mudou de "sobreviver a X
+ondas" para "vencer a apuração ao fim da onda 100, sem deixar nenhum
+candidato chegar".
 
 ---
 
-## 4. Persistência
+## 3. Retorno dos candidatos (a punição da virada)
 
-UBDSettingsSave (USaveGame) guardando gráficos, áudio e idioma.
+Quando o VERMELHO ultrapassa o AZUL no placar:
 
-- Carregado no início do jogo, antes do menu
-- Aplicado automaticamente
-- Salvo a cada mudança no painel de opções
-- Se não existir save, cria com os defaults (idioma inglês, qualidade
-  auto, volumes em 80)
+- Todos os candidatos JÁ MORTOS nesta partida voltam, cada um com a
+  VIDA ORIGINAL de quando morreu (o da onda 80 volta forte).
+- A onda atual vira SÓ o desfile deles — nenhum creep normal sai
+  durante o retorno.
+- Distribuídos ao longo da duração da onda.
+- Defesas grudam neles (alvo prioritário).
+- Qualquer um que alcance a urna = morte súbita, como qualquer
+  candidato.
 
----
+Se o jogador MATAR TODOS os que voltaram:
 
-## 5. HUD de jogo
+- O placar IGUALA POR BAIXO: azul e vermelho vão ambos ao valor do
+  MENOR (o vermelho). O jogador NÃO ganha votos de brinde — só para
+  de perder. Isso fecha o exploit de provocar a virada de propósito
+  para zerar a dívida dos gastos.
+- A partida segue normal, com os chefes agendados voltando a cada 5
+  ondas.
+- Se o vermelho passar o azul de novo mais tarde, o retorno dispara
+  outra vez.
 
-UMG, sobre o jogo. Substitui o overlay de debug atual.
+Se um dos que voltaram chegar na urna antes de todos morrerem:
 
-### Sempre visível
-
-- **Placar**: votos azul e vermelho, lado a lado, cada um na sua cor
-- **Onda atual** e **cronômetro** até a próxima (ou "montagem" na
-  fase Building)
-- **Velocidade de jogo**: botões 1x / 2x / 4x, com o atual destacado
-- **Bocas ativas da onda** (discreto)
-
-### Sob demanda — ao selecionar um defensor
-
-- Nome, nível atual, dano, alcance, cadência
-- Botão de **upgrade** com o custo
-- Botão de **vender** com o valor de reembolso
-- **CRÍTICO**: antes de confirmar upgrade, venda ou movimentação,
-  mostrar o placar RESULTANTE. Se o gasto for inverter a liderança
-  (WouldInvertScoreboard já existe), destacar em vermelho. É o que
-  impede o jogador de perder sem entender.
-
-### Sob demanda — ao selecionar uma peça para colocar
-
-- Nome, custo, footprint
-- Motivo da recusa quando o preview está inválido (o
-  EBDPlacementRefusal já existe — traduzir os motivos para FText
-  legível)
-
-### Candidato vivo
-
-- Barra de HP do candidato no topo da tela
-- Aviso claro quando ele surge
-- "APURAÇÃO CONGELADA" com contagem durante a pausa pós-morte
+- Derrota (morte súbita).
 
 ---
 
-## 6. Ligar aos sistemas existentes
+## 4. Cor de debug nos candidatos-cubo
 
-Nada de lógica nova de gameplay. O HUD só lê e exibe o que já existe:
+Enquanto os candidatos são cubos de blocagem, dar a cada um uma cor
+distinta pela ordem de surgimento (onda 5 = cor 1, onda 10 = cor 2...),
+só para eu distinguir quais são quando a leva volta na virada.
 
-- Votos: ABDMatchManager (VotesBlue, VotesRed, OnVotesChanged)
-- Onda e fase: ABDMatchManager
-- Seleção e custos: UBDPlacementComponent, ABDTowerBase
-- Candidato: UBDCandidateSubsystem
+- TintColor no material do cubo basta.
+- É debug de blocagem — sai quando os 20 modelos reais de político
+  entrarem. Não investir em paleta elaborada.
 
-Onde faltar um delegate para o HUD escutar, criar — mas sem mudar a
-lógica, só expor.
+---
 
-Desligar o overlay de debug (BD.HUD.Debug) quando o HUD real estiver
-ativo, ou deixar os dois coexistindo atrás de cvar.
+## 5. Economia inflada — registrar, não corrigir agora
+
+A simulação deu ~500 mil votos na onda 68. A mudança de vermelho/azul
+por HP multiplicou a escala. Os custos de peça e upgrade (dezenas)
+ficaram irrelevantes.
+
+NÃO recalibrar agora — é placeholder até o conteúdo real (vários
+atiradores e inimigos). Mas registrar no PLANO que a escala de votos
+e os custos precisam ser recalibrados juntos quando o conteúdo entrar.
 
 ---
 
@@ -148,12 +107,11 @@ ativo, ou deixar os dois coexistindo atrás de cvar.
 
 Compilar limpo nos dois targets.
 
-- Abrir o jogo cai no splash placeholder → loading → menu.
-- Menu: Play entra no jogo com fade; Options abre o painel; Quit sai.
-- Opções: mudar idioma troca os textos na hora; mudar volume afeta o
-  som; mudar qualidade muda o gráfico; tudo persiste ao fechar e
-  reabrir.
-- No jogo: HUD mostra placar, onda, cronômetro, velocidade.
-  Selecionar defensor mostra stats, upgrade com custo e placar
-  resultante, venda com reembolso. Candidato mostra barra de HP.
-- Tudo funcional, visual cru. Estilo é a próxima fase.
+- 20 candidatos ao longo de 100 ondas, um a cada 5, cada um mais forte.
+- Candidato na urna = Defeat imediato, em qualquer onda.
+- Fim da onda 100: azul na frente = vitória, vermelho na frente =
+  derrota.
+- Virada de placar = todos os candidatos mortos voltam com vida
+  original, onda vira só o desfile; matar todos iguala por baixo.
+- Log claro de cada evento (candidato agendado, retorno disparado,
+  igualar por baixo, condição de fim).

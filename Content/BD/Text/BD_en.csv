@@ -44,6 +44,7 @@
 "Options.Back","Back"
 "HUD.Score.Blue","BLUE {Votes}"
 "HUD.Score.Red","RED {Votes}"
+"HUD.Score.Null","NULL {Votes}"
 "HUD.Wave.NoMatch","No match"
 "HUD.Wave.Setup","Preparing the board"
 "HUD.Wave.Building","Wave {Wave} · building · next in {Seconds}s"

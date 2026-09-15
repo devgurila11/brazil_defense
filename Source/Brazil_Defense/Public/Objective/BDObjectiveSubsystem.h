@@ -8,6 +8,8 @@
 #include "BDObjectiveSubsystem.generated.h"
 
 class ABDObjective;
+class UReverbEffect;
+class USoundConcurrency;
 class UBDGridSubsystem;
 class UBDPathfinder;
 class UStaticMesh;
@@ -68,8 +70,12 @@ public:
 	/** Debug: takes the urn off the board. The Goal cell goes back to Free; the actor stays where it is, unplaced. */
 	void ClearObjective();
 
-	/** The urn's beep for a red vote, rate limited: see UBDObjectiveSettings. */
-	void PlayVoteSound();
+	/** The urn's beep for a red vote, rate limited and weighted by the votes: see UBDObjectiveSettings. */
+	void PlayVoteSound(int32 Votes = 1);
+
+	/** Fired each time the beep actually plays, so a picture can pulse with the sound. */
+	DECLARE_MULTICAST_DELEGATE(FBDOnVoteSound);
+	FBDOnVoteSound OnVoteSound;
 
 	/** Whether the urn has been placed this match. Nothing else may be placed before it. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Objective")
@@ -99,6 +105,18 @@ private:
 
 	/** Real time the beep last went off, for the rate limit. */
 	double LastVoteSoundTime = -1.0e9;
+
+	/** Built once from the settings: how many beeps may sound together. */
+	UPROPERTY(Transient)
+	TObjectPtr<USoundConcurrency> VoteConcurrency;
+
+	/** The outdoor reverb, an asset from the settings or one built here; activated once. */
+	UPROPERTY(Transient)
+	TObjectPtr<UReverbEffect> VoteReverb;
+	bool bReverbActivated = false;
+
+	/** Puts the open-air reverb on the world the first time the urn sounds. */
+	void EnsureOutdoorReverb(UWorld& World);
 
 	FBDCellCoord GoalCell;
 	bool bPlaced = false;

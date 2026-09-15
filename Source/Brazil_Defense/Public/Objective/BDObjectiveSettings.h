@@ -8,6 +8,7 @@
 #include "BDObjectiveSettings.generated.h"
 
 class UBDPlaceableData;
+class UReverbEffect;
 class USoundBase;
 
 /**
@@ -82,13 +83,54 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.0", ClampMax = "4.0", UIMin = "0.0", UIMax = "4.0"))
 	float VoteSoundVolume = 1.0f;
 
-	/** Up to this far the beep is at full volume. */
+	/**
+	 * Up to this far from the urn the beep is at full volume. The listener is the match
+	 * camera, whose zoom runs from about 60 m off the board at its lowest to about 330 m
+	 * at the overview: the radii are set to that range, clear when close in and almost
+	 * gone when zoomed all the way out.
+	 */
 	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
-	float VoteSoundInnerRadius = 2000.0f;
+	float VoteSoundInnerRadius = 6000.0f;
 
-	/** Past the inner radius the beep fades to nothing over this distance. */
+	/** Past the inner radius the beep fades over this distance, down to VoteSoundAttenuationAtMax. */
 	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "100.0", UIMin = "100.0", ForceUnits = "cm"))
-	float VoteSoundFalloffDistance = 30000.0f;
+	float VoteSoundFalloffDistance = 28000.0f;
+
+	/** Volume at the far end of the falloff, in dB: almost gone from the overview, not cut. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "-90.0", ClampMax = "0.0", UIMin = "-90.0", UIMax = "0.0"))
+	float VoteSoundAttenuationAtMax = -40.0f;
+
+	/** Votes at which an arrival sounds fully heavy: pitch down to VoteSoundHeavyPitch, volume up to VoteSoundHeavyVolume. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "1", UIMin = "1"))
+	int32 VoteSoundHeavyVotes = 200;
+
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.25", ClampMax = "1.0", UIMin = "0.25", UIMax = "1.0"))
+	float VoteSoundHeavyPitch = 0.7f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "1.0", ClampMax = "3.0", UIMin = "1.0", UIMax = "3.0"))
+	float VoteSoundHeavyVolume = 1.6f;
+
+	/** Most beeps sounding at once; the oldest is cut when one more starts. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "1", ClampMax = "16", UIMin = "1", UIMax = "16"))
+	int32 VoteSoundMaxConcurrent = 4;
+
+	/**
+	 * Outdoor reverb: a short tail, an open square rather than a room. An asset here
+	 * replaces the one built in code from the plain-air numbers below.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (AllowedClasses = "/Script/Engine.ReverbEffect"))
+	TSoftObjectPtr<UReverbEffect> VoteReverbEffect;
+
+	/** Seconds the reverb tail takes to die away when no asset is set. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.1", ClampMax = "5.0", UIMin = "0.1", UIMax = "5.0", ForceUnits = "s"))
+	float VoteReverbDecaySeconds = 1.2f;
+
+	/** How much of the beep goes to the reverb, near the urn and far from it. */
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float VoteReverbWetNear = 0.15f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Vote Sound", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float VoteReverbWetFar = 0.35f;
 
 	/** Whether a cell lies inside the zone. Says nothing about the grid: an out of grid cell can be "in the zone". */
 	bool IsInZone(const FBDCellCoord& Coord) const;

@@ -28,6 +28,9 @@ public:
 	/** Puts the camera back where the match started it. */
 	void ResetCamera();
 
+	/** Debug: sets the height and, optionally, the cell looked at and the turn. */
+	void DebugSetCamera(float Height, const TOptional<FVector>& LookAt, float Yaw);
+
 	/** The fixed camera of the match, spawned at BeginPlay from UBDCameraSettings and the grid. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense")
 	ACameraActor* GetMatchCamera() const { return MatchCamera; }

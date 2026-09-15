@@ -42,9 +42,18 @@ mais.
 
 Uma moeda só, que é placar E dinheiro ao mesmo tempo.
 
-- **Voto AZUL**: ganho a cada inimigo morto. É o placar do jogador.
+- **Voto AZUL**: ganho a cada inimigo morto, valendo o HP dele
+  (`HealthPerVote`, K=1: creep de 10 HP = 10 votos). É o placar do
+  jogador.
 - **Voto VERMELHO**: ganho pelo adversário a cada inimigo que alcança
-  a urna.
+  a urna, também pelo HP — um vazamento na onda 84 vale centenas, a
+  folga do começo não decide nada.
+- **Voto NULO**: dano desperdiçado (overkill, tiros perdidos) na
+  mesma taxa. Só informativo, nunca pontua.
+- Escala inflada de propósito: com votos por HP a partida chega a
+  centenas de milhares de votos e os custos de peça/upgrade (dezenas)
+  viraram irrelevantes. **Não recalibrar agora** — custos e escala de
+  votos são recalibrados juntos quando o conteúdo real entrar.
 - Gastar votos azuis (construir, evoluir, mover, vender com prejuízo)
   DERRUBA o placar azul. Fortalecer a defesa enfraquece a posição
   eleitoral. Essa tensão é a decisão central do jogo.
@@ -60,20 +69,29 @@ Custos e reembolsos:
 
 ---
 
-## 4. O candidato vermelho (clímax)
+## 4. Os candidatos (chefes) e o retorno
 
-- Surge quando o vermelho ULTRAPASSA o azul, e só se ao menos um
-  vermelho já foi marcado. Nunca surge contra jogo perfeito.
-- Sai de uma boca sorteada. Lento. HP = creep da onda × 40.
-- É alvo prioritário de todo defensor no alcance.
-- As ondas normais continuam saindo enquanto ele anda.
-- **Chega na urna → derrota.**
-- **Morre → a apuração PAUSA por 30s, com o vermelho CONGELADO**
-  (chegadas nesse período não contam). Não zera nem iguala o placar —
-  dá fôlego para reforçar. Se o placar seguir invertido, ele volta.
-- Só um por vez.
-- Enquanto ele está no board não há vitória: as ondas seguem saindo até
-  ele morrer (vitória, se a onda-alvo já foi limpa) ou chegar (derrota).
+- Um candidato sai a cada `CandidateInterval` (5) ondas: 20 numa
+  partida de 100. Sai de uma boca sorteada, lento, alvo prioritário de
+  todo defensor no alcance. HP = HP do creep da onda × 40 — o da onda
+  100 é muito mais forte que o da 5. Só um agendado por vez; se a
+  onda dele encontra outro andando, ele vem com a próxima onda livre.
+- Matar um candidato não dá voto. **Qualquer candidato chegando na
+  urna = derrota imediata, em qualquer onda.** Creep normal chegando
+  só soma vermelho.
+- **Retorno (a punição da virada):** quando o vermelho ultrapassa o
+  azul, todos os candidatos já mortos na partida voltam, cada um com
+  a vida original de quando caiu, distribuídos em
+  `ReturnParadeSeconds` (30 s). A onda vira só o desfile deles:
+  nenhum creep normal sai até todos caírem. Matar todos **iguala o
+  placar por baixo** (azul desce até o vermelho) — nada de brinde,
+  só para de sangrar; isso fecha o exploit de provocar a virada para
+  zerar a dívida dos gastos. Um deles na urna = derrota. Nova virada
+  mais tarde = novo retorno.
+- Enquanto há candidato no board (agendado ou de retorno) a partida
+  não se decide: as ondas seguem até ele cair ou chegar.
+- Debug de blocagem: cada cubo ganha uma cor por ordem de surgimento
+  (`TintColor` no material). Sai com os modelos reais.
 
 ---
 
@@ -139,9 +157,12 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 ## 8. Vitória, dificuldade e saves
 
-- VITÓRIA: sobreviver a 100 ondas (`WavesToWin` por dificuldade),
-  libertando presos. Easy solta 1, Normal 2, Hard 3. Pensado para
-  cinco evoluções de torre/personagem e mais tipos de inimigo.
+- FIM DA ONDA 100 (`WavesToWin` por dificuldade) = apuração: **azul
+  na frente (ou empate) vence** e liberta os presos (Easy 1, Normal 2,
+  Hard 3); **vermelho na frente perde**. Se houver candidato andando,
+  a apuração espera ele cair ou chegar.
+- DERROTA também a qualquer momento se um candidato alcança a urna
+  (seção 4).
 - Vencer congela o board como a derrota e oferece seguir em endless:
   as ondas continuam escalando até uma derrota; a vitória fica.
 - Play → tela de dificuldade (resumo do DA, marca de vencida, linha do
@@ -226,6 +247,34 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
+
+- **2026-09-14 (noite, 2) — (commit abaixo)** (desde 795cdc8):
+  - Placar com ícones (cédulas e urna, fixos do HUD, por fração da
+    tela) e feedback de voto: cédula vibra e escala, número dá tick,
+    urna pulsa junto do bipe; rajada não reinicia, no máximo um pulso
+    pendente.
+  - Som da urna 3D a partir do ator, listener preso à câmera (vale
+    para todo som de mundo), raios calibrados pelo zoom (claro a 60 m,
+    quase mudo a 330 m), reverb de exterior construído em código,
+    concurrency máx 4, classe de efeitos.
+  - Briefing 15:30: âncora das bocas (nunca > 5 células do ônibus,
+    pelo passeio ou pelo bloqueio); votos por HP (`HealthPerVote`, azul
+    e vermelho) e nulos por dano desperdiçado; barra de apuração de
+    três faixas com a urna em cima e número flutuante subindo da urna
+    a cada chegada; som ponderado pelo valor; barras de vida dos creeps
+    no canvas (`ABDMatchHUD`), só depois de dano, somem no zoom afastado.
+    `BD.Camera.Set`.
+  - Briefing 17:10 — **regras novas (seções 3, 4 e 8):** candidatos
+    viram chefes agendados a cada 5 ondas com HP do creep da onda × 40;
+    candidato na urna = derrota imediata em qualquer onda; fim da onda
+    100 decidido pelo placar (azul na frente ou empate vence); virada
+    do placar traz de volta todos os candidatos já mortos com a vida
+    original, onda vira só o desfile, matar todos iguala o placar por
+    baixo. O pause de 30 s pós-morte saiu. Cor de debug por ordem nos
+    cubos (`TintColor`). Economia inflada registrada, não corrigida.
+    `BD.Candidate.Return`, `BD.Delay`.
+  - Pendente: registros de candidatos (enviados/caídos) fora do save da
+    partida; `TintColor` depende do material do `DA_Candidate`.
 
 - **2026-09-14 (noite) — 5d0cdd3** (desde fa2c178):
   - Relógio do dia (seção 9): `DawnHour` e faixas de fase nas settings

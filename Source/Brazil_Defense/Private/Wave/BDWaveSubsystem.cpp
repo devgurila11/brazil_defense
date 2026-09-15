@@ -225,6 +225,13 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 
 	WaveEnemyData = Data;
 	WaveSpawnsRemaining = PerPoint * PointCount;
+
+	// A wave that starts under the parade of the fallen sends nobody of its own.
+	if (IsSpawningHeld())
+	{
+		UE_LOG(LogBDWave, Log, TEXT("Wave %d is the candidates' parade: its %d creep(s) are not sent."), Wave, WaveSpawnsRemaining);
+		WaveSpawnsRemaining = 0;
+	}
 	WaveSpawnCursor = 0;
 	WaveSpawnInterval = UBDGameBalanceSettings::Get().GetWaveSpawnInterval(Wave);
 	// The first one goes out on the next tick, not an interval from now.
@@ -329,6 +336,18 @@ bool UBDWaveSubsystem::TryShiftSpawnPoint(const TArray<FBDSpawnPoint>& Points, c
 	FBDSpawnPoint Shifted;
 	Shifted.Cells = NewCells;
 	Shifted.ExitCell = NewCells[NewCells.Num() / 2];
+
+	// Never past the leash from the bus, by either rule: the random walk and the escape
+	// from a blocked exit share the one ceiling.
+	const int32 Leash = FMath::Max(0, UBDGameBalanceSettings::Get().MouthWanderMaxCells);
+	const int32 FromAnchor = FMath::Abs(Shifted.ExitCell.X - Point.AnchorExit.X) + FMath::Abs(Shifted.ExitCell.Y - Point.AnchorExit.Y);
+	if (FromAnchor > Leash)
+	{
+		for (const FBDCellCoord& Cell : NewCells) { Grid->SetCellState(Cell, EBDCellState::Free); }
+		for (const FBDCellCoord& Cell : Point.Cells) { Grid->SetCellState(Cell, EBDCellState::Spawn); }
+		return false;
+	}
+
 	TArray<FBDCellCoord> Route;
 	if (!IsExitOpen(Shifted, bAlongX) || (GoalCells.Num() > 0 && !FindRouteToGoal(Shifted.ExitCell, Route)))
 	{
@@ -337,8 +356,8 @@ bool UBDWaveSubsystem::TryShiftSpawnPoint(const TArray<FBDSpawnPoint>& Points, c
 		return false;
 	}
 
-	UE_LOG(LogBDWave, Log, TEXT("Mouth %d slid %+d cell(s) along its edge: exit %s -> %s."),
-		PointIndex, Shift, *Point.ExitCell.ToString(), *Shifted.ExitCell.ToString());
+	UE_LOG(LogBDWave, Log, TEXT("Mouth %d slid %+d cell(s) along its edge: exit %s -> %s (%d from its bus at %s)."),
+		PointIndex, Shift, *Point.ExitCell.ToString(), *Shifted.ExitCell.ToString(), FromAnchor, *Point.AnchorExit.ToString());
 	return true;
 }
 
@@ -388,6 +407,8 @@ void UBDWaveSubsystem::WanderSpawnPoints(const int32 Wave)
 		if (!IsExitOpen(Point, bAlongX))
 		{
 			const int32 Reach = FMath::Max(Balance.MouthWanderMaxCells, 1) * 2;
+			// Twice the leash in steps from here, since the mouth may already stand off its
+			// bus; the shift itself refuses anything past the leash from the anchor.
 			for (int32 Distance = 1; Distance <= Reach && !bShifted; ++Distance)
 			{
 				const int32 FirstWay = Stream.RandBool() ? 1 : -1;
@@ -687,10 +708,39 @@ void UBDWaveSubsystem::BuildSpawnPoints()
 		FBDSpawnPoint& Point = SpawnPoints.AddDefaulted_GetRef();
 		Point.Cells = MoveTemp(Run);
 		Point.ExitCell = Point.Cells[Point.Cells.Num() / 2];
+		Point.AnchorExit = Point.ExitCell;
 
 		if (!FindRouteToGoal(Point.ExitCell, Point.Route))
 		{
 			++Unreachable;
+		}
+	}
+
+	// The anchors are the authored mouths, where the buses stand: taken from the first
+	// read of the board and matched back to every run since by the nearest one on the
+	// same edge. A mouth never wanders further than the balance allows from its anchor.
+	if (MouthAnchors.Num() == 0)
+	{
+		for (const FBDSpawnPoint& Point : SpawnPoints)
+		{
+			MouthAnchors.Add(Point.ExitCell);
+		}
+	}
+	else
+	{
+		for (FBDSpawnPoint& Point : SpawnPoints)
+		{
+			int32 Best = MAX_int32;
+			for (const FBDCellCoord& Anchor : MouthAnchors)
+			{
+				const bool bSameEdge = Anchor.X == Point.ExitCell.X || Anchor.Y == Point.ExitCell.Y;
+				const int32 Distance = FMath::Abs(Anchor.X - Point.ExitCell.X) + FMath::Abs(Anchor.Y - Point.ExitCell.Y);
+				if (bSameEdge && Distance < Best)
+				{
+					Best = Distance;
+					Point.AnchorExit = Anchor;
+				}
+			}
 		}
 	}
 
@@ -1022,9 +1072,20 @@ int32 UBDWaveSubsystem::GetLivingWaveCreepCount() const
 
 bool UBDWaveSubsystem::IsSpawningHeld() const
 {
+	// While the fallen candidates parade, no ordinary creep walks.
 	const UWorld* World = GetWorld();
 	const UBDCandidateSubsystem* Candidates = World != nullptr ? World->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
-	return Candidates != nullptr && Candidates->IsCountFrozen();
+	return Candidates != nullptr && Candidates->IsReturnActive();
+}
+
+void UBDWaveSubsystem::CancelRemainingSpawns(const TCHAR* Why)
+{
+	if (WaveSpawnsRemaining <= 0)
+	{
+		return;
+	}
+	UE_LOG(LogBDWave, Log, TEXT("Wave %d drops its %d unsent creep(s): %s."), WaveNumber, WaveSpawnsRemaining, Why);
+	WaveSpawnsRemaining = 0;
 }
 
 void UBDWaveSubsystem::GetLivingEnemies(TArray<ABDEnemyBase*>& OutEnemies) const
@@ -1048,6 +1109,19 @@ void UBDWaveSubsystem::ReportWastedDamage(const float Damage, const bool bLostSh
 	{
 		++WaveLostShots;
 	}
+
+	// Null votes: the waste, at the same rate as the score, handed over in whole votes.
+	NullDamageOwed += FMath::Max(0.0f, Damage);
+	const float HealthPerVote = FMath::Max(0.01f, UBDGameBalanceSettings::Get().HealthPerVote);
+	const int32 Whole = FMath::FloorToInt(NullDamageOwed / HealthPerVote);
+	if (Whole > 0)
+	{
+		NullDamageOwed -= Whole * HealthPerVote;
+		if (ABDMatchManager* Match = GetMatch())
+		{
+			Match->AddVotesNull(Whole);
+		}
+	}
 }
 
 void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
@@ -1057,8 +1131,8 @@ void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
 		return;
 	}
 
-	const UBDEnemyData* Data = Enemy->GetData();
-	const int32 Votes = Data != nullptr ? Data->VotesOnArrival : 0;
+	// Worth its health: the later the leak, the more it costs. A candidate is the defeat, not votes.
+	const int32 Votes = Enemy->IsCandidate() ? 0 : UBDGameBalanceSettings::Get().VotesForHealth(Enemy->GetMaxHealth());
 
 	if (ABDMatchManager* Match = GetMatch())
 	{
@@ -1079,8 +1153,11 @@ void UBDWaveSubsystem::NotifyEnemyDied(ABDEnemyBase* Enemy)
 		return;
 	}
 
+	// A candidate scores nothing either way: the candidate subsystem says what his end does.
 	const UBDEnemyData* Data = Enemy->GetData();
-	const int32 Votes = Data != nullptr ? Data->VotesOnDeath : 0;
+	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	const int32 Votes = Enemy->IsCandidate() ? 0
+		: (Balance.bBlueVotesByHealth ? Balance.VotesForHealth(Enemy->GetMaxHealth()) : (Data != nullptr ? Data->VotesOnDeath : 0));
 
 	if (ABDMatchManager* Match = GetMatch())
 	{

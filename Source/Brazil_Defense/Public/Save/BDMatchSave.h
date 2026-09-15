@@ -83,6 +83,9 @@ public:
 	int32 VotesRed = 0;
 
 	UPROPERTY()
+	int32 VotesNull = 0;
+
+	UPROPERTY()
 	int32 EarlyCallBonus = 0;
 
 	UPROPERTY()

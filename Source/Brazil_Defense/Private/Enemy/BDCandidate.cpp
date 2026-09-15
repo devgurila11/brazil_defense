@@ -4,6 +4,7 @@
 
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "Grid/BDGridDebug.h"
@@ -57,10 +58,33 @@ void ABDCandidate::Tick(const float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	ApplyDebugTint();
 	if (IsValid(this))
 	{
 		DrawHealthBar();
 	}
+}
+
+void ABDCandidate::SetDebugTint(const FLinearColor& Color)
+{
+	PendingTint = Color;
+	bTintPending = true;
+	ApplyDebugTint();
+}
+
+void ABDCandidate::ApplyDebugTint()
+{
+	UStaticMeshComponent* Body = GetMesh();
+	if (!bTintPending || Body == nullptr || Body->GetNumMaterials() == 0 || Body->GetMaterial(0) == nullptr)
+	{
+		return;
+	}
+
+	if (UMaterialInstanceDynamic* Dynamic = Body->CreateAndSetMaterialInstanceDynamic(0))
+	{
+		Dynamic->SetVectorParameterValue(TEXT("TintColor"), PendingTint);
+	}
+	bTintPending = false;
 }
 
 void ABDCandidate::DrawHealthBar() const

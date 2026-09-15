@@ -90,9 +90,13 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float CandidateSpeed = 0.5f;
 
-	/** Seconds the waves hold and the red count stays frozen after the candidate is killed. */
-	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
-	float CandidateKillPauseSeconds = 30.0f;
+	/** A candidate walks out with every wave that is a multiple of this: 5 makes twenty over a hundred waves. 0 turns the schedule off. */
+	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0", UIMin = "0"))
+	int32 CandidateInterval = 5;
+
+	/** Seconds the return of the fallen is spread over when the count turns red: the parade's length. */
+	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "1.0", UIMin = "1.0", ForceUnits = "s"))
+	float ReturnParadeSeconds = 30.0f;
 
 	//~ Wave scaling -----------------------------------------------------------
 
@@ -157,6 +161,24 @@ public:
 	/** Most mouths a wave may come out of. 0 means every mouth of the board. */
 	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "0", UIMin = "0"))
 	int32 MaxActiveSpawnPoints = 0;
+
+	//~ Votes by health ------------------------------------------------------------
+	// A vote is worth health: a creep that reaches the urn scores floor(MaxHealth / K)
+	// red, so a leak on wave 84 costs hundreds where one on wave 3 costs a few. Blue
+	// scores the same way for a kill, so both sides grow at the same pace and an early
+	// lead settles nothing. Wasted damage (overkill, lost shots) counts as null votes
+	// at the same rate: shown, never scored.
+
+	/** Health per vote, both sides. 1 makes a 10 hp creep worth 10 votes. */
+	UPROPERTY(config, EditAnywhere, Category = "Votes", meta = (ClampMin = "0.01", UIMin = "0.01"))
+	float HealthPerVote = 1.0f;
+
+	/** Blue by health too (true) or one flat VotesOnDeath per kill (false). */
+	UPROPERTY(config, EditAnywhere, Category = "Votes")
+	bool bBlueVotesByHealth = true;
+
+	/** Votes a creep of this much health is worth. At least 1. */
+	int32 VotesForHealth(float Health) const;
 
 	//~ Wandering mouths ---------------------------------------------------------
 	// The buses do not park: before a wave goes out each mouth may slide along its edge

@@ -40,6 +40,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
 	float GetTimeAlive() const;
 
+	/** Which candidate of the match this is: 1 for the first sent. Set by the candidate subsystem. */
+	UPROPERTY(BlueprintReadOnly, Category = "Brazil Defense|Candidate")
+	int32 Ordinal = 0;
+
+	/** Whether this is one of the fallen come back, rather than his first walk. */
+	UPROPERTY(BlueprintReadOnly, Category = "Brazil Defense|Candidate")
+	bool bReturning = false;
+
+	/**
+	 * Blocking-out colour, so the cubes can be told apart when the fallen return: the
+	 * "TintColor" vector parameter of the mesh's material, when it has one. Goes away
+	 * with the real models.
+	 */
+	void SetDebugTint(const FLinearColor& Color);
+
 protected:
 	//~ Begin ABDEnemyBase interface
 	virtual void Arrive() override;
@@ -54,4 +69,9 @@ private:
 
 	/** World time it was sent out at. */
 	float SpawnTimeSeconds = 0.0f;
+
+	/** The tint asked for, applied once the mesh is up. */
+	FLinearColor PendingTint = FLinearColor::White;
+	bool bTintPending = false;
+	void ApplyDebugTint();
 };

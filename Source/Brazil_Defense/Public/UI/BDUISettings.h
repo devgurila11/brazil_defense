@@ -53,6 +53,53 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.1", ClampMax = "0.4", UIMin = "0.1", UIMax = "0.4"))
 	float SidePanelWidthFraction = 0.18f;
 
+	//~ Scoreboard pictures -----------------------------------------------------
+	// Fixed pictures of the HUD, not pieces: the blue ballot beside the blue count, the
+	// urn between the two counts, the red ballot beside the red count.
+
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> ScoreBlueIcon;
+
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> ScoreUrnIcon;
+
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> ScoreRedIcon;
+
+	/** The null ballot, beside the null count under the bar. Optional until the art lands. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> ScoreNullIcon;
+
+	/** Width of the count bar, as a fraction of the viewport width. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.1", ClampMax = "0.8", UIMin = "0.1", UIMax = "0.8"))
+	float ScoreBarWidthFraction = 0.26f;
+
+	//~ Creep health bars ---------------------------------------------------------
+	// Drawn by ABDMatchHUD over every damaged creep: a fixed width in the world, so the
+	// zoom sizes them, and dropped once thinner than CreepBarMinPixels.
+
+	UPROPERTY(config, EditAnywhere, Category = "Creep Bars", meta = (ClampMin = "10.0", UIMin = "10.0", ForceUnits = "cm"))
+	float CreepBarWorldWidth = 260.0f;
+
+	/** How high above the creep's location the bar floats. */
+	UPROPERTY(config, EditAnywhere, Category = "Creep Bars", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float CreepBarWorldHeight = 220.0f;
+
+	/** Bar height as a fraction of its on-screen width. */
+	UPROPERTY(config, EditAnywhere, Category = "Creep Bars", meta = (ClampMin = "0.05", ClampMax = "0.5", UIMin = "0.05", UIMax = "0.5"))
+	float CreepBarAspect = 0.14f;
+
+	/** Bars narrower than this many pixels are not drawn: the overview stays clean. */
+	UPROPERTY(config, EditAnywhere, Category = "Creep Bars", meta = (ClampMin = "1.0", UIMin = "1.0"))
+	float CreepBarMinPixels = 14.0f;
+
+	/** Height of the ballot pictures, as a fraction of the viewport height; the urn is drawn a little larger. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.02", ClampMax = "0.2", UIMin = "0.02", UIMax = "0.2"))
+	float ScoreIconHeightFraction = 0.045f;
+
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "1.0", ClampMax = "3.0", UIMin = "1.0", UIMax = "3.0"))
+	float ScoreUrnIconScale = 1.5f;
+
 	/** Width of the candidate's health bar, as a fraction of the viewport width. */
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.1", ClampMax = "0.8", UIMin = "0.1", UIMax = "0.8"))
 	float CandidateBarWidthFraction = 0.28f;

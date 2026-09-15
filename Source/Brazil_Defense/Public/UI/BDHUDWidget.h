@@ -16,6 +16,7 @@ class UBDPlacementComponent;
 class UBDWaveSubsystem;
 class UBorder;
 class UButton;
+class UCanvasPanel;
 class UImage;
 class UProgressBar;
 class USizeBox;
@@ -68,6 +69,40 @@ private:
 	void UpdateCandidate(float RealDeltaSeconds);
 	/** Time and phase of the day under the top block, while the sun moves and a moment after. */
 	void UpdateClock();
+
+	//~ Vote feedback ----------------------------------------------------------
+	// A vote makes its ballot shiver (scale 1 -> 1.15 -> 1 with a +-5 degree wobble) and
+	// its count tick; the urn pulses softly when its beep plays. A burst does not restart
+	// the pulse: one runs to the end and at most one more is kept waiting, so a dense
+	// wave reads as a couple of pulses, not a continuous tremor.
+
+	/** One running pulse over a widget's render transform. */
+	struct FBDPulse
+	{
+		float Elapsed = 0.0f;
+		bool bRunning = false;
+		bool bPending = false;
+
+		void Trigger();
+		/** Advances by real seconds. @return true while it moves something. */
+		bool Advance(float DeltaSeconds, float Duration);
+		/** 0 -> 1 -> 0 over the duration; 0 when idle. */
+		float Bump(float Duration) const;
+		/** -1 -> +1 -> -1 wobble over the duration; 0 when idle. */
+		float Wobble(float Duration) const;
+	};
+
+	void HandleVoteSound();
+	void UpdateVotePulses(float RealDeltaSeconds);
+	void ApplyPulse(UWidget* Icon, UWidget* Count, const FBDPulse& Pulse);
+
+	FBDPulse BluePulse;
+	FBDPulse RedPulse;
+	FBDPulse UrnPulse;
+	int32 LastBlueVotes = 0;
+	int32 LastRedVotes = 0;
+	bool bVotesSeen = false;
+	FDelegateHandle VoteSoundHandle;
 	/** The centre box once the match is over: the result, and what the player can do next. */
 	void UpdateEndPanel();
 
@@ -119,8 +154,14 @@ private:
 	/** The item bar: one button per piece of the palette, with what is left of it, and the urn. */
 	void UpdateBuildPanel();
 
+	/** The three bands of the count bar, weighted by the votes. */
+	void UpdateScoreBar();
+
 	/** Sizes that follow the viewport: icon boxes, side panel width, candidate bar. Runs when the viewport changes. */
 	void ApplyResponsiveSizes();
+
+	/** A fixed picture of the HUD in a scale box: the box sets its share of the screen, the scale box keeps the aspect. */
+	USizeBox* MakePicture(TObjectPtr<UImage>& OutImage, UTexture2D* Texture, float Size);
 
 	/** One item of the bar: a picture in a scale box over the words. */
 	UButton* MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutCount);
@@ -152,6 +193,62 @@ private:
 	//~ Always visible
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> BlueScore;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> BlueIconBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> UrnScoreIconBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> RedIconBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> BlueIcon;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> UrnScoreIcon;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> RedIcon;
+
+	//~ The count bar: blue, null, red, in proportion
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> ScoreBarBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> BlueBand;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> NullBand;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> RedBand;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> NullScore;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> NullIconBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> NullIcon;
+
+	//~ Numbers rising from the urn when a creep gets through
+	struct FBDFloater
+	{
+		TObjectPtr<UTextBlock> Text;
+		float Age = 0.0f;
+		int32 Value = 0;
+	};
+	TArray<FBDFloater> Floaters;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UCanvasPanel> RootCanvas;
+
+	void SpawnOrGrowFloater(int32 Votes);
+	void UpdateFloaters(float RealDeltaSeconds);
+	void SetFloaterLook(FBDFloater& Floater) const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> RedScore;

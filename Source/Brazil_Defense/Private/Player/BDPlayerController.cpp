@@ -7,6 +7,7 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/App.h"
 #include "Components/InputComponent.h"
 #include "Grid/BDGridSubsystem.h"
@@ -82,6 +83,13 @@ void ABDPlayerController::SetupMatchCamera()
 	}
 
 	SetViewTarget(MatchCamera);
+
+	// Every world sound is heard from the camera, not from a pawn there is none of: the
+	// zoom is what brings the urn, and later the shooting, near or far.
+	if (UCameraComponent* Camera = MatchCamera->GetCameraComponent())
+	{
+		SetAudioListenerOverride(Camera, FVector::ZeroVector, FRotator::ZeroRotator);
+	}
 
 	UE_LOG(LogBDGrid, Log, TEXT("Match camera at %s looking at %s (height %.0f, pitch %.0f, fov %.0f); WASD moves it, the wheel changes the height between %.0f and %.0f, Q/E or a middle drag turn it near the ground."),
 		*Location.ToCompactString(), *CameraTarget.ToCompactString(), Settings.Height, Settings.PitchDegrees, Settings.FieldOfView, Settings.MinHeight, Settings.Height);
@@ -209,6 +217,43 @@ void ABDPlayerController::ResetCamera()
 	CameraTarget = HomeTarget;
 	CameraHeight = HomeHeight;
 	CameraYaw = 0.0f;
+}
+
+void ABDPlayerController::DebugSetCamera(const float Height, const TOptional<FVector>& LookAt, const float Yaw)
+{
+	CameraHeight = Height;
+	if (LookAt.IsSet())
+	{
+		CameraTarget = LookAt.GetValue();
+	}
+	CameraYaw = Yaw;
+	ClampCameraTarget();
+	UE_LOG(LogBDGrid, Log, TEXT("Camera set: height %.0f, target %s, yaw %.0f."), CameraHeight, *CameraTarget.ToCompactString(), CameraYaw);
+}
+
+namespace BDCameraDebug
+{
+	static void ExecCamera(const TArray<FString>& Args, UWorld* World)
+	{
+		ABDPlayerController* Controller = World != nullptr ? Cast<ABDPlayerController>(World->GetFirstPlayerController()) : nullptr;
+		const UBDGridSubsystem* Grid = UBDGridSubsystem::Get(World);
+		if (Controller == nullptr || Args.Num() < 1)
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Camera.Set <height cm> [cell x] [cell y] [yaw]"));
+			return;
+		}
+		TOptional<FVector> LookAt;
+		if (Args.Num() >= 3 && Grid != nullptr)
+		{
+			LookAt = Grid->CellToWorld(FBDCellCoord(FCString::Atoi(*Args[1]), FCString::Atoi(*Args[2])));
+		}
+		Controller->DebugSetCamera(FCString::Atof(*Args[0]), LookAt, Args.Num() >= 4 ? FCString::Atof(*Args[3]) : 0.0f);
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdCamera(
+		TEXT("BD.Camera.Set"),
+		TEXT("BD.Camera.Set <height cm> [cell x] [cell y] [yaw]: puts the match camera at a height over a cell, turned by yaw."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecCamera));
 }
 
 void ABDPlayerController::HandleRotatePiece()

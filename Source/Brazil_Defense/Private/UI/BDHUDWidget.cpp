@@ -13,7 +13,12 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/Image.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "Components/ScaleBox.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
+#include "Kismet/GameplayStatics.h"
+#include "Objective/BDObjective.h"
 #include "Engine/Texture2D.h"
 #include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
@@ -27,6 +32,7 @@
 #include "Match/BDMatchManager.h"
 #include "Misc/App.h"
 #include "Objective/BDObjectiveSettings.h"
+#include "Objective/BDObjectiveSubsystem.h"
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementComponent.h"
 #include "Placement/BDPlacementSettings.h"
@@ -49,6 +55,26 @@ namespace BDHUDPrivate
 	/** Slate units for an item icon before the viewport fraction takes over. */
 	static constexpr float ItemIconSize = 72.0f;
 	static constexpr float ItemGap = 6.0f;
+	/** Slate units for a scoreboard picture before the viewport fraction takes over. */
+	static constexpr float ScoreIconSize = 44.0f;
+
+	/** The vote feedback: how long, how big, how far it wobbles. */
+	static constexpr float VotePulseSeconds = 0.2f;
+	static constexpr float VotePulseScale = 0.15f;
+	static constexpr float VotePulseDegrees = 5.0f;
+	static constexpr float CountTickScale = 0.10f;
+	static constexpr float UrnPulseSeconds = 0.25f;
+	static constexpr float UrnPulseScale = 0.06f;
+
+	/** The count bar and the numbers that rise from the urn. */
+	static constexpr float ScoreBarWidth = 360.0f;
+	static constexpr float ScoreBarHeight = 14.0f;
+	static const FLinearColor ColorNull = FLinearColor(0.82f, 0.82f, 0.80f);
+	static constexpr float FloaterSeconds = 1.3f;
+	static constexpr float FloaterMergeSeconds = 0.3f;
+	static constexpr float FloaterRise = 130.0f;
+	static constexpr int32 FloaterBaseFont = 22;
+	static constexpr float FloaterFontPerDecade = 16.0f;
 	static const float Speeds[] = { 1.0f, 2.0f, 4.0f };
 
 
@@ -95,18 +121,77 @@ void UBDHUDWidget::BuildTree()
 	// board: only the buttons and the panels are solid.
 	UCanvasPanel* Canvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
 	Canvas->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	RootCanvas = Canvas;
 
 	//~ Top center: scoreboard, wave line, speed, mouths.
 	UVerticalBox* Top = MakeColumn();
 
+	// Blue ballot, blue count, the urn, red count, red ballot: the pictures are the
+	// HUD's own, from the interface settings, each in a scale box sized by the screen.
+	const UBDUISettings& UISettings = UBDUISettings::Get();
 	UHorizontalBox* Scores = MakeRow();
 	BlueScore = MakeText(ScoreFontSize, ColorBlue);
 	RedScore = MakeText(ScoreFontSize, ColorRed);
-	Scores->AddChildToHorizontalBox(BlueScore);
-	UHorizontalBoxSlot* RedSlot = Scores->AddChildToHorizontalBox(RedScore);
-	RedSlot->SetPadding(FMargin(32.0f, 0.0f, 0.0f, 0.0f));
+	BlueIconBox = MakePicture(BlueIcon, UISettings.ScoreBlueIcon.LoadSynchronous(), ScoreIconSize);
+	UrnScoreIconBox = MakePicture(UrnScoreIcon, UISettings.ScoreUrnIcon.LoadSynchronous(), ScoreIconSize * UISettings.ScoreUrnIconScale);
+	RedIconBox = MakePicture(RedIcon, UISettings.ScoreRedIcon.LoadSynchronous(), ScoreIconSize);
+	const auto AddScorePart = [Scores](UWidget* Widget, const float LeftPad)
+	{
+		UHorizontalBoxSlot* PartSlot = Scores->AddChildToHorizontalBox(Widget);
+		PartSlot->SetVerticalAlignment(VAlign_Center);
+		PartSlot->SetPadding(FMargin(LeftPad, 0.0f, 0.0f, 0.0f));
+	};
+	// The count bar between the numbers: three bands, blue for the kills, white for the
+	// waste, red for the arrivals, each as wide as its share. The urn stands on it.
+	ScoreBarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	ScoreBarBox->SetWidthOverride(ScoreBarWidth);
+	ScoreBarBox->SetVisibility(ESlateVisibility::HitTestInvisible);
+	UOverlay* BarOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+	UBorder* BarFrame = MakeBox(ColorPanel, 3.0f);
+	USizeBox* BandsBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	BandsBox->SetHeightOverride(ScoreBarHeight);
+	UHorizontalBox* Bands = MakeRow();
+	const auto MakeBand = [this, Bands](const FLinearColor& Color) -> UBorder*
+	{
+		UBorder* Band = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		Band->SetBrushColor(Color);
+		Band->SetPadding(FMargin(0.0f));
+		UHorizontalBoxSlot* BandSlot = Bands->AddChildToHorizontalBox(Band);
+		BandSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+		return Band;
+	};
+	BlueBand = MakeBand(ColorBlue);
+	NullBand = MakeBand(ColorNull);
+	RedBand = MakeBand(ColorRed);
+	BandsBox->AddChild(Bands);
+	BarFrame->AddChild(BandsBox);
+	UOverlaySlot* FrameSlot = BarOverlay->AddChildToOverlay(BarFrame);
+	FrameSlot->SetHorizontalAlignment(HAlign_Fill);
+	FrameSlot->SetVerticalAlignment(VAlign_Center);
+	UOverlaySlot* UrnOverlaySlot = BarOverlay->AddChildToOverlay(UrnScoreIconBox);
+	UrnOverlaySlot->SetHorizontalAlignment(HAlign_Center);
+	UrnOverlaySlot->SetVerticalAlignment(VAlign_Center);
+	ScoreBarBox->AddChild(BarOverlay);
+
+	AddScorePart(BlueIconBox, 0.0f);
+	AddScorePart(BlueScore, 8.0f);
+	AddScorePart(ScoreBarBox, 16.0f);
+	AddScorePart(RedScore, 16.0f);
+	AddScorePart(RedIconBox, 8.0f);
 	UVerticalBoxSlot* ScoresSlot = Top->AddChildToVerticalBox(Scores);
 	ScoresSlot->SetHorizontalAlignment(HAlign_Center);
+
+	// The null count under the bar: what the defense threw away, shown and never scored.
+	UHorizontalBox* NullRow = MakeRow();
+	NullIconBox = MakePicture(NullIcon, UISettings.ScoreNullIcon.LoadSynchronous(), ScoreIconSize * 0.6f);
+	NullScore = MakeText(SmallFontSize, ColorMuted);
+	UHorizontalBoxSlot* NullIconSlot = NullRow->AddChildToHorizontalBox(NullIconBox);
+	NullIconSlot->SetVerticalAlignment(VAlign_Center);
+	UHorizontalBoxSlot* NullTextSlot = NullRow->AddChildToHorizontalBox(NullScore);
+	NullTextSlot->SetVerticalAlignment(VAlign_Center);
+	NullTextSlot->SetPadding(FMargin(6.0f, 0.0f, 0.0f, 0.0f));
+	UVerticalBoxSlot* NullRowSlot = Top->AddChildToVerticalBox(NullRow);
+	NullRowSlot->SetHorizontalAlignment(HAlign_Center);
 
 	WaveLine = MakeText(LineFontSize);
 	WaveLine->SetJustification(ETextJustify::Center);
@@ -375,6 +460,30 @@ void UBDHUDWidget::BuildTree()
 	ClockLine->SetVisibility(ESlateVisibility::Collapsed);
 }
 
+USizeBox* UBDHUDWidget::MakePicture(TObjectPtr<UImage>& OutImage, UTexture2D* Texture, const float Size)
+{
+	USizeBox* Box = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	Box->SetWidthOverride(Size);
+	Box->SetHeightOverride(Size);
+	Box->SetVisibility(ESlateVisibility::HitTestInvisible);
+	UScaleBox* Scale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
+	Scale->SetStretch(EStretch::ScaleToFit);
+	OutImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	OutImage->SetVisibility(ESlateVisibility::HitTestInvisible);
+	if (Texture != nullptr)
+	{
+		OutImage->SetBrushFromTexture(Texture, /*bMatchSize*/ false);
+	}
+	else
+	{
+		// No picture set: the box takes no room rather than showing a blank.
+		Box->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	Scale->AddChild(OutImage);
+	Box->AddChild(Scale);
+	return Box;
+}
+
 UButton* UBDHUDWidget::MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutCount)
 {
 	using namespace BDHUDPrivate;
@@ -430,6 +539,16 @@ void UBDHUDWidget::ApplyResponsiveSizes()
 		BuildIconBoxes[Index]->SetWidthOverride(Icon);
 		BuildIconBoxes[Index]->SetHeightOverride(Icon);
 	}
+	const float ScoreIcon = FMath::Max(16.0f, Size.Y * Settings.ScoreIconHeightFraction);
+	BlueIconBox->SetWidthOverride(ScoreIcon);
+	BlueIconBox->SetHeightOverride(ScoreIcon);
+	RedIconBox->SetWidthOverride(ScoreIcon);
+	RedIconBox->SetHeightOverride(ScoreIcon);
+	UrnScoreIconBox->SetWidthOverride(ScoreIcon * Settings.ScoreUrnIconScale);
+	UrnScoreIconBox->SetHeightOverride(ScoreIcon * Settings.ScoreUrnIconScale);
+	NullIconBox->SetWidthOverride(ScoreIcon * 0.6f);
+	NullIconBox->SetHeightOverride(ScoreIcon * 0.6f);
+	ScoreBarBox->SetWidthOverride(FMath::Max(120.0f, Size.X * Settings.ScoreBarWidthFraction));
 	SidePanelBox->SetWidthOverride(FMath::Max(200.0f, Size.X * Settings.SidePanelWidthFraction));
 	CandidateBarBox->SetWidthOverride(FMath::Max(160.0f, Size.X * Settings.CandidateBarWidthFraction));
 }
@@ -472,6 +591,11 @@ void UBDHUDWidget::NativeDestruct()
 		Match->OnWaveStarted.Remove(WaveStartedHandle);
 	}
 	BoundMatch.Reset();
+	if (UBDObjectiveSubsystem* Objectives = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDObjectiveSubsystem>() : nullptr)
+	{
+		Objectives->OnVoteSound.Remove(VoteSoundHandle);
+	}
+	VoteSoundHandle.Reset();
 
 	Super::NativeDestruct();
 }
@@ -490,6 +614,16 @@ void UBDHUDWidget::BindMatch()
 	}
 
 	VotesChangedHandle = Match->OnVotesChanged.AddUObject(this, &UBDHUDWidget::HandleVotesChanged);
+	LastBlueVotes = Match->GetVotesBlue();
+	LastRedVotes = Match->GetVotesRed();
+	bVotesSeen = true;
+	if (UBDObjectiveSubsystem* Objectives = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDObjectiveSubsystem>() : nullptr)
+	{
+		if (!VoteSoundHandle.IsValid())
+		{
+			VoteSoundHandle = Objectives->OnVoteSound.AddUObject(this, &UBDHUDWidget::HandleVoteSound);
+		}
+	}
 	PhaseChangedHandle = Match->OnPhaseChanged.AddUObject(this, &UBDHUDWidget::HandlePhaseChanged);
 	WaveStartedHandle = Match->OnWaveStarted.AddUObject(this, &UBDHUDWidget::HandleWaveStarted);
 	BoundMatch = Match;
@@ -503,7 +637,197 @@ void UBDHUDWidget::BindMatch()
 
 void UBDHUDWidget::HandleVotesChanged(const int32 Blue, const int32 Red)
 {
+	// Only the side that went up shivers. The first report of a match, and a load, set
+	// the baseline without a pulse.
+	if (bVotesSeen)
+	{
+		if (Blue > LastBlueVotes) { BluePulse.Trigger(); }
+		if (Red > LastRedVotes)
+		{
+			RedPulse.Trigger();
+			SpawnOrGrowFloater(Red - LastRedVotes);
+		}
+	}
+	LastBlueVotes = Blue;
+	LastRedVotes = Red;
+	bVotesSeen = true;
+
 	UpdateScoreboard();
+}
+
+void UBDHUDWidget::HandleVoteSound()
+{
+	UrnPulse.Trigger();
+}
+
+//~ Numbers from the urn -------------------------------------------------------------
+
+void UBDHUDWidget::SetFloaterLook(FBDFloater& Floater) const
+{
+	using namespace BDHUDPrivate;
+
+	// Bigger with the value, by decades: +5 reads small, +340 reads large, +3000 larger still.
+	FSlateFontInfo Font = Floater.Text->GetFont();
+	Font.Size = FloaterBaseFont + FMath::RoundToInt(FloaterFontPerDecade * FMath::LogX(10.0f, 1.0f + static_cast<float>(Floater.Value)));
+	Floater.Text->SetFont(Font);
+	Floater.Text->SetText(FText::FromString(FString::Printf(TEXT("+%d"), Floater.Value)));
+}
+
+void UBDHUDWidget::SpawnOrGrowFloater(const int32 Votes)
+{
+	using namespace BDHUDPrivate;
+
+	if (Votes <= 0 || RootCanvas == nullptr)
+	{
+		return;
+	}
+
+	// Arrivals a few frames apart are one number, not a stack of them.
+	if (Floaters.Num() > 0 && Floaters.Last().Age < FloaterMergeSeconds)
+	{
+		Floaters.Last().Value += Votes;
+		SetFloaterLook(Floaters.Last());
+		return;
+	}
+
+	FBDFloater& Floater = Floaters.AddDefaulted_GetRef();
+	Floater.Text = MakeText(FloaterBaseFont, ColorRed);
+	Floater.Text->SetJustification(ETextJustify::Center);
+	Floater.Value = Votes;
+	UCanvasPanelSlot* FloaterSlot = RootCanvas->AddChildToCanvas(Floater.Text);
+	FloaterSlot->SetAnchors(FAnchors(0.0f, 0.0f));
+	FloaterSlot->SetAlignment(FVector2D(0.5f, 1.0f));
+	FloaterSlot->SetAutoSize(true);
+	FloaterSlot->SetZOrder(5);
+	SetFloaterLook(Floater);
+}
+
+void UBDHUDWidget::UpdateFloaters(const float RealDeltaSeconds)
+{
+	using namespace BDHUDPrivate;
+
+	if (Floaters.Num() == 0)
+	{
+		return;
+	}
+
+	// Anchored on the urn, in canvas units (the projection is in pixels, past the DPI).
+	APlayerController* Controller = GetOwningPlayer();
+	const ABDObjective* Urn = ABDObjective::Get(GetWorld());
+	FVector2D Screen = FVector2D::ZeroVector;
+	const bool bOnScreen = Controller != nullptr && Urn != nullptr
+		&& UGameplayStatics::ProjectWorldToScreen(Controller, Urn->GetActorLocation() + FVector(0.0f, 0.0f, 150.0f), Screen, /*bPlayerViewportRelative*/ true);
+	const float Scale = FMath::Max(0.01f, UWidgetLayoutLibrary::GetViewportScale(this));
+
+	for (int32 Index = Floaters.Num() - 1; Index >= 0; --Index)
+	{
+		FBDFloater& Floater = Floaters[Index];
+		Floater.Age += RealDeltaSeconds;
+		if (Floater.Age >= FloaterSeconds || Floater.Text == nullptr)
+		{
+			if (Floater.Text != nullptr)
+			{
+				Floater.Text->RemoveFromParent();
+			}
+			Floaters.RemoveAt(Index);
+			continue;
+		}
+
+		const float T = Floater.Age / FloaterSeconds;
+		if (UCanvasPanelSlot* FloaterSlot = Cast<UCanvasPanelSlot>(Floater.Text->Slot))
+		{
+			FloaterSlot->SetPosition(Screen / Scale + FVector2D(0.0f, -FloaterRise * T));
+		}
+		// Up fast, then fading over the second half.
+		Floater.Text->SetRenderOpacity(bOnScreen ? FMath::Clamp((1.0f - T) * 2.0f, 0.0f, 1.0f) : 0.0f);
+	}
+}
+
+//~ Vote feedback -------------------------------------------------------------------
+
+void UBDHUDWidget::FBDPulse::Trigger()
+{
+	if (bRunning)
+	{
+		// Kept, not restarted: the running pulse finishes and one more follows.
+		bPending = true;
+		return;
+	}
+	bRunning = true;
+	Elapsed = 0.0f;
+}
+
+bool UBDHUDWidget::FBDPulse::Advance(const float DeltaSeconds, const float Duration)
+{
+	if (!bRunning)
+	{
+		return false;
+	}
+
+	Elapsed += DeltaSeconds;
+	if (Elapsed >= Duration)
+	{
+		bRunning = bPending;
+		bPending = false;
+		Elapsed = 0.0f;
+		// One frame at rest between two pulses, so they read as two.
+		return true;
+	}
+	return true;
+}
+
+float UBDHUDWidget::FBDPulse::Bump(const float Duration) const
+{
+	if (!bRunning || Duration <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return FMath::Sin(PI * FMath::Clamp(Elapsed / Duration, 0.0f, 1.0f));
+}
+
+float UBDHUDWidget::FBDPulse::Wobble(const float Duration) const
+{
+	if (!bRunning || Duration <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return FMath::Sin(2.0f * PI * FMath::Clamp(Elapsed / Duration, 0.0f, 1.0f));
+}
+
+void UBDHUDWidget::ApplyPulse(UWidget* Icon, UWidget* Count, const FBDPulse& Pulse)
+{
+	using namespace BDHUDPrivate;
+
+	const float Bump = Pulse.Bump(VotePulseSeconds);
+	if (Icon != nullptr)
+	{
+		Icon->SetRenderScale(FVector2D(1.0f + VotePulseScale * Bump));
+		Icon->SetRenderTransformAngle(VotePulseDegrees * Pulse.Wobble(VotePulseSeconds));
+	}
+	if (Count != nullptr)
+	{
+		Count->SetRenderScale(FVector2D(1.0f + CountTickScale * Bump));
+	}
+}
+
+void UBDHUDWidget::UpdateVotePulses(const float RealDeltaSeconds)
+{
+	using namespace BDHUDPrivate;
+
+	// Advanced then applied, so the last frame of a pulse lands back on 1.0 and 0 degrees.
+	const bool bBlueWas = BluePulse.bRunning;
+	const bool bRedWas = RedPulse.bRunning;
+	const bool bUrnWas = UrnPulse.bRunning;
+	BluePulse.Advance(RealDeltaSeconds, VotePulseSeconds);
+	RedPulse.Advance(RealDeltaSeconds, VotePulseSeconds);
+	UrnPulse.Advance(RealDeltaSeconds, UrnPulseSeconds);
+
+	if (bBlueWas || BluePulse.bRunning) { ApplyPulse(BlueIconBox, BlueScore, BluePulse); }
+	if (bRedWas || RedPulse.bRunning) { ApplyPulse(RedIconBox, RedScore, RedPulse); }
+	if (bUrnWas || UrnPulse.bRunning)
+	{
+		UrnScoreIconBox->SetRenderScale(FVector2D(1.0f + UrnPulseScale * UrnPulse.Bump(UrnPulseSeconds)));
+	}
 }
 
 void UBDHUDWidget::HandlePhaseChanged(const EBDMatchPhase NewPhase)
@@ -534,6 +858,8 @@ void UBDHUDWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTi
 	UpdateBuildPanel();
 	UpdateClock();
 	ApplyResponsiveSizes();
+	UpdateVotePulses(static_cast<float>(FApp::GetDeltaTime()));
+	UpdateFloaters(static_cast<float>(FApp::GetDeltaTime()));
 }
 
 void UBDHUDWidget::UpdateClock()
@@ -566,6 +892,33 @@ void UBDHUDWidget::UpdateScoreboard()
 	BlueScore->SetText(BDLoc::Format(TEXT("HUD.Score.Blue"), Args));
 	Args[TEXT("Votes")] = FFormatArgumentValue(Match != nullptr ? Match->GetVotesRed() : 0);
 	RedScore->SetText(BDLoc::Format(TEXT("HUD.Score.Red"), Args));
+	Args[TEXT("Votes")] = FFormatArgumentValue(Match != nullptr ? Match->GetVotesNull() : 0);
+	NullScore->SetText(BDLoc::Format(TEXT("HUD.Score.Null"), Args));
+	UpdateScoreBar();
+}
+
+void UBDHUDWidget::UpdateScoreBar()
+{
+	const ABDMatchManager* Match = GetMatch();
+	const float Blue = Match != nullptr ? static_cast<float>(Match->GetVotesBlue()) : 0.0f;
+	const float Red = Match != nullptr ? static_cast<float>(Match->GetVotesRed()) : 0.0f;
+	const float Null = Match != nullptr ? static_cast<float>(Match->GetVotesNull()) : 0.0f;
+
+	// Fill weights are the shares. Nothing counted yet: the white band stands alone.
+	const bool bEmpty = Blue + Red + Null <= 0.0f;
+	const auto Weight = [](UBorder* Band, const float Value)
+	{
+		if (UHorizontalBoxSlot* BandSlot = Cast<UHorizontalBoxSlot>(Band->Slot))
+		{
+			FSlateChildSize Size(ESlateSizeRule::Fill);
+			Size.Value = FMath::Max(0.0f, Value);
+			BandSlot->SetSize(Size);
+		}
+		Band->SetVisibility(Value > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	};
+	Weight(BlueBand, Blue);
+	Weight(NullBand, bEmpty ? 1.0f : Null);
+	Weight(RedBand, Red);
 }
 
 void UBDHUDWidget::UpdateWaveLine()
@@ -687,11 +1040,11 @@ void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 		CandidateBox->SetVisibility(ESlateVisibility::Collapsed);
 	}
 
-	if (Candidates != nullptr && Candidates->IsCountFrozen())
+	if (Candidates != nullptr && Candidates->IsReturnActive())
 	{
 		FFormatNamedArguments Args;
-		Args.Add(TEXT("Seconds"), FMath::CeilToInt(Candidates->GetPauseRemaining()));
-		FrozenLine->SetText(BDLoc::Format(TEXT("HUD.Candidate.Frozen"), Args));
+		Args.Add(TEXT("Count"), Candidates->GetReturnRemaining());
+		FrozenLine->SetText(BDLoc::Format(TEXT("HUD.Candidate.Return"), Args));
 		FrozenLine->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 	else

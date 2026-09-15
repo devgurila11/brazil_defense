@@ -1,6 +1,7 @@
 // Brazil Defense. Console access to the interface, for driving it without a mouse.
 
 #include "BDLog.h"
+#include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
@@ -175,6 +176,37 @@ namespace BDUIDebug
 		TEXT("BD.UI.Pause"),
 		TEXT("BD.UI.Pause: opens the in-game menu (match paused), or closes it when open. Escape with nothing in hand does the same."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPause));
+
+	/** Runs a console command after a delay: the one way a launch line can act on a running match. */
+	static void ExecDelay(const TArray<FString>& Args, UWorld* World)
+	{
+		if (World == nullptr || Args.Num() < 2)
+		{
+			UE_LOG(LogBDUI, Error, TEXT("Usage: BD.Delay <seconds> <console command...>"));
+			return;
+		}
+		const float Seconds = FCString::Atof(*Args[0]);
+		FString Command;
+		for (int32 Index = 1; Index < Args.Num(); ++Index)
+		{
+			Command += (Index > 1 ? TEXT(" ") : TEXT("")) + Args[Index];
+		}
+		FTimerHandle Handle;
+		TWeakObjectPtr<UWorld> WeakWorld(World);
+		World->GetTimerManager().SetTimer(Handle, [WeakWorld, Command]()
+		{
+			if (UWorld* Target = WeakWorld.Get())
+			{
+				UE_LOG(LogBDUI, Log, TEXT("BD.Delay runs: %s"), *Command);
+				GEngine->Exec(Target, *Command);
+			}
+		}, FMath::Max(0.01f, Seconds), false);
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdDelay(
+		TEXT("BD.Delay"),
+		TEXT("BD.Delay <seconds> <command...>: runs a console command after a delay, in game seconds."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecDelay));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdShot(
 		TEXT("BD.UI.Shot"),

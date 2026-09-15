@@ -11,11 +11,13 @@
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementComponent.h"
 #include "Player/BDPlayerController.h"
+#include "UI/BDMatchHUD.h"
 #include "UI/BDUISubsystem.h"
 
 ABDGameMode::ABDGameMode()
 {
 	PlayerControllerClass = ABDPlayerController::StaticClass();
+	HUDClass = ABDMatchHUD::StaticClass();
 	MatchManagerClass = ABDMatchManager::StaticClass();
 	// The match is looked at through a fixed camera the controller sets up; nothing to fly.
 	DefaultPawnClass = nullptr;

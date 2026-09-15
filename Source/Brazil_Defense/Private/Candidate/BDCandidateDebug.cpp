@@ -55,27 +55,37 @@ namespace BDCandidateDebug
 				*Candidate->GetName(), Candidate->SpawnPointIndex, Candidate->GetCurrentHealth(), Candidate->GetMaxHealth(),
 				Candidate->GetCurrentPathIndex(), Candidate->GetPath().Num(), Candidate->GetTimeAlive());
 		}
-		else if (Candidates->IsCountFrozen())
-		{
-			State = FString::Printf(TEXT("none out; count frozen for %.1fs more, waves held"), Candidates->GetPauseRemaining());
-		}
 		else
 		{
 			State = TEXT("none out");
 		}
 
-		UE_LOG(LogBDCandidate, Log, TEXT("BD.Candidate.Status: %s | scoreboard %d blue / %d red (%s) | %d sent this match | health x%.0f, %.2f cells/s, pause %.0fs."),
+		UE_LOG(LogBDCandidate, Log, TEXT("BD.Candidate.Status: %s | scoreboard %d blue / %d red (%s) | %d sent, %d fallen, return %s (%d left) | every %d waves, health x%.0f, %.2f cells/s."),
 			*State,
 			Match != nullptr ? Match->GetVotesBlue() : 0, Match != nullptr ? Match->GetVotesRed() : 0,
 			Candidates->IsScoreboardInverted() ? TEXT("inverted") : TEXT("not inverted"),
-			Candidates->GetCandidatesSent(),
-			Balance.CandidateHealthMultiplier, Balance.CandidateSpeed, Balance.CandidateKillPauseSeconds);
+			Candidates->GetCandidatesSent(), Candidates->GetFallenCount(),
+			Candidates->IsReturnActive() ? TEXT("active") : TEXT("off"), Candidates->GetReturnRemaining(),
+			Balance.CandidateInterval, Balance.CandidateHealthMultiplier, Balance.CandidateSpeed);
+	}
+
+	static void ExecReturn(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDCandidateSubsystem* Candidates = FindCandidates(World))
+		{
+			Candidates->BeginReturn(TEXT("BD.Candidate.Return forced it"));
+		}
 	}
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdSpawn(
 		TEXT("BD.Candidate.Spawn"),
-		TEXT("BD.Candidate.Spawn: sends the candidate out now, whatever the scoreboard says. One at a time."),
+		TEXT("BD.Candidate.Spawn: sends the next scheduled candidate out now, whatever the wave."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSpawn));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdReturn(
+		TEXT("BD.Candidate.Return"),
+		TEXT("BD.Candidate.Return: brings every fallen candidate back now, as the count turning red would."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecReturn));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(
 		TEXT("BD.Candidate.Status"),

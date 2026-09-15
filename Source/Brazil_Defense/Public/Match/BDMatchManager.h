@@ -100,6 +100,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetVotesRed() const { return VotesRed; }
 
+	/** Null votes: wasted damage at the vote rate. Shown on the count, never scored. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetVotesNull() const { return VotesNull; }
+
+	/** Wasted damage, in votes. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void AddVotesNull(int32 Votes);
+
 	/** True once the first wave has gone out and the maze is locked in. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool IsBuildLocked() const { return CurrentWave >= 1; }
@@ -175,8 +183,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool IsEndless() const { return bEndless; }
 
-	/** Waves to win reached, no win taken yet, and no candidate walking: the next quiet moment is the win. */
-	bool IsWinDue() const;
+	/** The last wave cleared, nothing settled yet, and no candidate walking: the count decides now. */
+	bool IsEndDue() const;
+
+	/** Settles the match by the count: blue ahead or level wins, red ahead loses. */
+	void ResolveEnd();
+
+	/** Brings blue down to red (or red down to blue) so nobody is ahead: what killing the returning candidates buys. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void EqualizeVotesDown(const FString& Why);
 
 	/** Ends the match as a win. Called when the win is due; public so the console can force it. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
@@ -387,6 +402,7 @@ private:
 	float GameSpeed = 1.0f;
 	int32 VotesBlue = 0;
 	int32 VotesRed = 0;
+	int32 VotesNull = 0;
 	bool bWon = false;
 	bool bEndless = false;
 	int32 SavesRemaining = 0;

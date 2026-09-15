@@ -36,6 +36,10 @@ struct FBDSpawnPoint
 	/** Route from ExitCell to the urn, inclusive at both ends. Empty when there is none. */
 	UPROPERTY(BlueprintReadOnly, Category = "Brazil Defense|Wave")
 	TArray<FBDCellCoord> Route;
+
+	/** Where the mouth was authored, under its bus: the wander never takes the exit further than the leash from here. */
+	UPROPERTY(BlueprintReadOnly, Category = "Brazil Defense|Wave")
+	FBDCellCoord AnchorExit;
 };
 
 /**
@@ -177,6 +181,9 @@ public:
 	/** Damage that bought nothing: overkill on a hit, or a shot that arrived on a dead creep. Tallied per wave. */
 	void ReportWastedDamage(float Damage, bool bLostShot);
 
+	/** Drops whatever the running wave still had to send: the wave belongs to the candidates now. */
+	void CancelRemainingSpawns(const TCHAR* Why);
+
 	/** A shot left a tower; damage that actually came off a creep. Tallied per wave, to tell throughput from waste. */
 	void ReportShotFired() { ++WaveShotsFired; }
 	void ReportDamageDealt(float Damage) { WaveDamageDealt += FMath::Max(0.0f, Damage); }
@@ -293,6 +300,12 @@ private:
 	int32 WaveArrived = 0;
 	int32 WaveKilled = 0;
 	float WaveWastedDamage = 0.0f;
+
+	/** Wasted damage not yet handed over as whole null votes. */
+	float NullDamageOwed = 0.0f;
+
+	/** Exit cells of the authored mouths, from the first read of the board. See FBDSpawnPoint::AnchorExit. */
+	TArray<FBDCellCoord> MouthAnchors;
 	int32 WaveLostShots = 0;
 	int32 WaveShotsFired = 0;
 	float WaveDamageDealt = 0.0f;

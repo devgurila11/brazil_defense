@@ -1,4 +1,4 @@
-// Brazil Defense. When the red candidate comes out, and what its end does to the match.
+// Brazil Defense. The candidates: the bosses of the match, and what the count does with them.
 
 #pragma once
 
@@ -11,19 +11,41 @@ class ABDCandidate;
 class ABDMatchManager;
 class UBDWaveSubsystem;
 
+/** A candidate the match has sent: who he was, so he can come back as he was. */
+USTRUCT()
+struct FBDCandidateRecord
+{
+	GENERATED_BODY()
+
+	/** 1 for the first of the match, 2 for the second, and so on. */
+	UPROPERTY()
+	int32 Ordinal = 0;
+
+	/** The wave he first came out on. */
+	UPROPERTY()
+	int32 Wave = 0;
+
+	/** The health he came out with, and comes back with. */
+	UPROPERTY()
+	float MaxHealth = 0.0f;
+};
+
 /**
- * The climax of a match, as a rule: whenever the red counter passes the blue one, and
- * at least one red vote has been scored, a candidate walks out of a mouth drawn among
- * those that have a route. There is never more than one out.
+ * The candidates are the bosses: one walks out every CandidateInterval waves, as tough
+ * as the creeps of that wave times CandidateHealthMultiplier, so the twentieth is far
+ * beyond the first. Slow, out of a drawn mouth, the first thing every defender shoots.
+ * Any candidate reaching the urn, on any wave, ends the match at once.
  *
- * What it does is decided here, not on the actor. Reaching the urn is the defeat. Dying
- * scores nothing and buys a pause: for CandidateKillPauseSeconds no wave goes out, the
- * countdown holds, and the red counter is frozen - arrivals in that window count for
- * nothing. When the pause ends everything resumes, and if the scoreboard is still
- * inverted the candidate comes back with the next wave, not before.
+ * The count decides the rest. When the red counter passes the blue, every candidate
+ * killed so far comes back at the health he fell with, spread over the wave, and no
+ * ordinary creep walks while they do: the wave is their parade. Kill them all and the
+ * count is levelled downwards, blue brought to red - nothing won, only the bleeding
+ * stopped - so throwing the count on purpose buys nothing. One of them at the urn is the
+ * defeat like any other. Pass the count again later and they all come back again.
  *
- * ABDMatchManager and UBDWaveSubsystem ask IsCountFrozen to hold their clocks; the
- * towers ask GetCandidate to know whom to shoot first.
+ * ABDMatchManager asks HasCandidateOnBoard before it settles the match; the towers ask
+ * GetCandidate to know whom to shoot first; UBDWaveSubsystem asks IsReturnActive to hold
+ * its creeps.
  */
 UCLASS()
 class BRAZIL_DEFENSE_API UBDCandidateSubsystem : public UTickableWorldSubsystem
@@ -47,37 +69,49 @@ public:
 
 	//~ State -----------------------------------------------------------------
 
-	/** The candidate on the board, or null. */
+	/** The candidate on the board that came out first, or null. There may be more during a return. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
-	ABDCandidate* GetCandidate() const { return Candidate.Get(); }
+	ABDCandidate* GetCandidate() const;
 
-	/** Whether the pause bought by a kill is running: no wave goes out and red votes are not counted. */
+	/** Every candidate walking right now. */
+	void GetLivingCandidates(TArray<ABDCandidate*>& OutCandidates) const;
+
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
-	bool IsCountFrozen() const { return PauseRemaining > 0.0f; }
+	bool HasCandidateOnBoard() const { return GetCandidate() != nullptr; }
 
-	/** Seconds of pause left. 0 when none is running. */
+	/** Whether the fallen are coming back: no ordinary creep walks until they are all down. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
-	float GetPauseRemaining() const { return PauseRemaining; }
+	bool IsReturnActive() const { return bReturnActive; }
 
-	/** How many candidates this match has sent out. */
+	/** Of the returning candidates, how many are still to be beaten (walking or yet to come out). */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
-	int32 GetCandidatesSent() const { return CandidatesSent; }
+	int32 GetReturnRemaining() const;
 
-	/** Whether the scoreboard calls for a candidate right now, whatever else may be in the way. */
+	/** How many candidates this match has sent out, scheduled ones only. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
+	int32 GetCandidatesSent() const { return Sent.Num(); }
+
+	/** How many of them have been killed at least once. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
+	int32 GetFallenCount() const { return Fallen.Num(); }
+
+	/** Whether red is ahead of blue on the count, with at least one red vote in. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
 	bool IsScoreboardInverted() const;
 
-	//~ Sending it out -------------------------------------------------------------
+	/** Kept for the callers of the old pause: nothing freezes any more. */
+	bool IsCountFrozen() const { return false; }
+	float GetPauseRemaining() const { return 0.0f; }
 
-	/**
-	 * Sends the candidate out, whatever the scoreboard says. Refused, and logged, when
-	 * one is already out, the match is over, or no mouth has a route.
-	 * @return the candidate, or null.
-	 */
+	//~ Sending them out -----------------------------------------------------------
+
+	/** Sends the next scheduled candidate now, whatever the wave. Debug and the schedule both use it. */
 	ABDCandidate* SpawnCandidate(const TCHAR* Why);
 
-	//~ Reports from the candidate. Not meant to be called by anything else. ------
+	/** Starts the return of the fallen now, whatever the count says. Nothing happens with none fallen. */
+	void BeginReturn(const TCHAR* Why);
 
+	//~ Reports from the candidates. Not meant to be called by anything else. ------
 	void NotifyCandidateArrived(ABDCandidate* Arrived);
 	void NotifyCandidateKilled(ABDCandidate* Killed);
 
@@ -91,23 +125,34 @@ private:
 	void HandleWaveStarted(int32 Wave);
 	void HandlePhaseChanged(EBDMatchPhase NewPhase);
 
-	/** Sends the candidate out if the scoreboard asks for it and nothing stands in the way. */
-	void EvaluateTrigger(const TCHAR* Why);
+	/** Spawns a candidate actor for a record, at that record's health. Null when it cannot. */
+	ABDCandidate* SpawnFromRecord(const FBDCandidateRecord& Record, bool bReturning, const TCHAR* Why);
 
-	/** The candidate on the board. Weak: it destroys itself when it ends. */
-	TWeakObjectPtr<ABDCandidate> Candidate;
+	/** Everything from the last match dropped: on a rewind to wave 0. */
+	void ResetForNewMatch();
 
-	/** Seconds left of the pause a kill bought. Counted down here, in dilated time. */
-	float PauseRemaining = 0.0f;
+	/** The one who came out first among those still walking. */
+	TArray<TWeakObjectPtr<ABDCandidate>> Living;
 
-	/**
-	 * Whether a vote change may send the candidate out. Cleared by a kill and set again
-	 * when the next wave goes out: after a kill the candidate returns with a wave, not
-	 * with the next arrival.
-	 */
-	bool bArmed = true;
+	/** Every scheduled candidate sent, in order. */
+	UPROPERTY(Transient)
+	TArray<FBDCandidateRecord> Sent;
 
-	int32 CandidatesSent = 0;
+	/** Those killed at least once, in order of their first death: the ones a return brings back. */
+	UPROPERTY(Transient)
+	TArray<FBDCandidateRecord> Fallen;
+
+	/** A scheduled candidate whose wave came while another was still walking: sent with the next wave. */
+	bool bSchedulePending = false;
+
+	//~ The return
+	bool bReturnActive = false;
+	UPROPERTY(Transient)
+	TArray<FBDCandidateRecord> ReturnQueue;
+	float ReturnTimer = 0.0f;
+	float ReturnInterval = 0.0f;
+	int32 ReturnAlive = 0;
+	int32 ReturnsStarted = 0;
 
 	/** So a board with no route is reported once, not on every vote. */
 	bool bWarnedNoMouth = false;
