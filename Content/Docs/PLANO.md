@@ -250,7 +250,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-23 — COMMIT** (desde 97535c5):
+- **2026-09-23 — 06078e4** (desde 97535c5):
   - **AutoSetup estratégico** (de 2026-09-15, rodada 3 da seção 13):
     urna -> labirinto -> defensores. `BuildMaze` cerca três lados da urna
     e serpenteia a rota mais longa; `BuildCorridorTargets` pontua cada
