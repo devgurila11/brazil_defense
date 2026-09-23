@@ -250,6 +250,60 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-23 — COMMIT** (desde 97535c5):
+  - **AutoSetup estratégico** (de 2026-09-15, rodada 3 da seção 13):
+    urna -> labirinto -> defensores. `BuildMaze` cerca três lados da urna
+    e serpenteia a rota mais longa; `BuildCorridorTargets` pontua cada
+    célula pela rota ao alcance. Cvars `FenceShare`, `MazeStride`,
+    `UrnRing`, `FocusUrn`, `ExtraDividers`. 4 de 4 seeds vencem a 100.
+  - **Só votos e propina.** Só o labirinto é contado agora: divisória,
+    plataforma e urna. Torre e personagem não têm teto — votos e espaço
+    decidem. `TowerBudget`/`CharacterBudget` saíram da dificuldade, do
+    bônus em cadeia, do match manager e do save; o chefe agendado paga
+    só em propina (o aviso "orçamento aumentado" saiu do HUD). Vagas de
+    personagem são contadas no tabuleiro na hora (`CountFreeSlots`),
+    com recusa nova `NoFreeSlot`. Restaurar um save não cobra votos.
+    `ReferenceTowerCount`/`ReferenceCharacterCount` (8/12) ficam só
+    para os relatórios. O resumo da dificuldade mostra os votos de
+    partida no lugar das torres e personagens.
+  - **HUD: dois medidores.** VOTOS com a urna e DINHEIRO PÚBLICO com a
+    Casa da Moeda, sempre visíveis; o ladrão e a seta só aparecem entre
+    eles enquanto ele carrega propina.
+  - **Custo antes de agir.** A barra de construção mostra "restante ·
+    custo" ou, quando a peça não pode ser pega, o motivo em vermelho.
+    Peça na mão mostra o custo e o placar resultante (vermelho se não
+    paga ou se o vermelho passaria na frente). Evolução sem dinheiro
+    diz quanto falta.
+  - **Reforma da economia (mesmo dia, substitui "votos como moeda"
+    acima).** Votos viraram placar puro: nada os gasta
+    (`SpendVotesBlue` e o aviso de inversão saíram). Toda peça,
+    evolução e movimento se paga em DINHEIRO PÚBLICO. Preço de uma
+    peça = fundos que um candidato daquela onda solta ×
+    `ReplacementCostRatio` × custo-base / `ReplacementReferenceCost`
+    (1,0 e 100): a defesa de referência custa um chefe em toda onda
+    (436 na 5, 1161 na 50, 3449 na 100). A evolução sobe com a mesma
+    escala (`GetPriceScale`). Venda e mover usam o preço PAGO
+    (`PaidCost`), e a torre guarda o que gastou em níveis
+    (`EvolutionSpent`); os dois vão no save (-1 em save antigo, com
+    fallback). `StartingFunds` (2000) e `ChainBonus.Funds` (400) na
+    dificuldade; `StartingVotes` ficou só como vantagem no placar.
+    Divisória e plataforma podem ser construídas entre ondas (só a
+    urna trava na onda 1). Desbloqueio por peça em Placement settings
+    (`Unlocks`: caminhão na 10, arquibancada na 25), com recusa
+    `NotUnlocked` e "Libera após a onda N" na barra. O candidato
+    agendado sai PRIMEIRO na onda dele: `OnWaveDealt` da onda +
+    `HoldWaveSpawns(CandidateLeadSeconds = 5)`. HUD: dinheiro público
+    lidera a linha, maior; votos viram "placar azul", pequenos.
+    `BD.Economy.Report` novo: tabuleiro cheio + evolução total = 139%
+    do que a partida paga, então tem que escolher. AutoSetup gasta só
+    uma fatia em plataformas (`PlatformShare`).
+  - **Pendente:** conferir o HUD no PIE (só verificado headless);
+    `Content/imgs/T_UI_*` são cópias sem commit, à espera de decisão;
+    os próximos passos da rodada 3 seguem abertos; `StartingFunds` não
+    está nos assets DA_Difficulty (vale o padrão); evolução custa
+    0,14 de um chefe por nível — `UpgradeCostBase` é calibração; save
+    antigo carrega com 0 de dinheiro público.
+
 - **2026-09-15 — 82f4755** (desde 1319754):
   - **Moeda nova: a propina (seção 3).** Candidato AGENDADO morto solta
     propina = `floor(MaxHealth / HealthPerBribe)`; o contador do ladrão
@@ -652,3 +706,95 @@ curva, e remedir com mais seeds. Construir so morde na abertura: para
 pesar a partida toda o custo teria de escalar com a onda
 (Cost x HealthScale(onda)), que e logica nova. O perfil "defesa media"
 nao existe no simulador — ha so evoluir tudo que da ou nada.
+
+### Rodada 3 — 2026-09-15 (AutoSetup estrategico)
+
+**O que motivou.** As rodadas 1 e 2 mediram um AutoSetup que despejava
+pecas sem estrategia: nao fazia labirinto, nao alongava rota, nao
+isolava a urna, nao concentrava no corredor. A estrategia central do
+jogo e a do Clash of Clans — o labirinto e a defesa PRIMARIA, as
+torres e personagens a secundaria, posicionados ao longo do corredor
+que ele cria. O AutoSetup foi reescrito para jogar assim.
+
+**O que mudou no AutoSetup.** A ordem era urna -> plataformas ->
+personagens -> torres -> cercas; virou urna -> LABIRINTO ->
+defensores (um defensor colocado antes do labirinto fica ao lado de
+uma rota que vai mudar de lugar). `BuildMaze` cerca tres dos quatro
+lados da urna deixando uma porta, depois percorre a rota MAIS LONGA
+colocando uma cerca a cada `MazeStride` celulas e rele as rotas a cada
+cerca. `BuildCorridorTargets` substituiu `BuildStretchTargets`: cada
+celula livre vale o numero de celulas de rota ao alcance de uma torre,
+entao as curvas da serpentina pontuam varias vezes sem caso especial.
+`PlaceFences` e `BuildStretchTargets` foram removidos.
+
+**Parametros de estrategia** (cvars, dao o perfil de jogador):
+`BD.Debug.AutoSetup.FenceShare` (0.4), `MazeStride` (3), `UrnRing` (3),
+`FocusUrn` (0.35), mais `ExtraDividers` e
+`ABDMatchManager::AdjustDividerBudget`, ambos so para medicao.
+
+**Estrategico x despejo** (mesmas seeds, HealthScaleGrowth 1.022,
+evoluindo):
+
+| seed | despejo | estrategico | defensores | nivel medio |
+|---|---|---|---|---|
+| 101 | vitoria 100 | vitoria 100 | 82 -> 74 | 4,71 -> 4,96 |
+| 202 | vitoria 100 | vitoria 100 | 88 -> 84 | 4,55 -> 4,64 |
+| 303 | vitoria 100 | vitoria 100 | 76 -> 74 | 4,89 -> 4,96 |
+| 404 | derrota 26 | **vitoria 100** | 85 -> 76 | 4,12 -> 4,89 |
+
+4 de 4 vitorias. O labirinto custou 320 votos (~8 defensores a menos)
+e ainda assim melhorou tudo: menos pecas significa propina dividida
+entre menos pecas, entao o nivel medio subiu.
+
+**A seed 404 e a prova.** Historico dela: derrota na onda 16 (rodada
+1), na 26 (rodada 2, com E sem evolucao), na 95 (com 1.020) — agora
+vitoria na 100. O candidato decidia 5 de 5 derrotas; com a rota mais
+longa e a defesa no corredor, os 19 chefes morrem antes da urna em
+todas as seeds. O gargalo do candidato se resolveu sozinho, como o
+briefing previu.
+
+**O labirinto entregou.** 32 cercas, rota media 42,3 -> 44,3-46,3
+(+5% a +9%), mais longa 51 -> 63-65 (+24% a +27%), 6 de 6 bocas sempre
+com rota (a validacao `WouldBlockPathEdges` nunca deixa selar).
+
+**Orcamento de cercas e o teto real, nao o FenceShare.** Com
+DividerBudget 32 as cercas custam 320 de 3.100 (10%), entao FenceShare
+0.4 ou 0.9 dao identico — o alvo "40% em cercas" so significa algo com
+DividerBudget acima de ~120. Ganho de rota por orcamento (seed 101,
+stride 2):
+
+| divisorias | cercas | rota media | ganho | mais longa | personagens |
+|---|---|---|---|---|---|
+| 32 (atual) | 32 | 47,0 | +11% | 69 | 53 |
+| 62 | 62 | 50,7 | +20% | 91 | 47 |
+| 102 | 102 | 58,7 | +39% | 127 | 34 |
+| 182 | 124 | 61,3 | +45% | 135 | 29 |
+
+Satura em 124 porque ai o FenceShare passa a morder. Cada cerca a mais
+e um personagem a menos — labirinto e defesa saem do mesmo capital, e
+essa tensao e a decisao estrategica que o jogo tem a oferecer.
+
+**Duas previsoes do briefing que NAO se confirmaram.**
+
+1. O overkill nao caiu: nulo/azul 26,9% no despejo e 26,9% no
+   estrategico, identico. Concentrar no corredor nao reduz desperdicio
+   porque todo atirador usa a prioridade `First` e converge no creep
+   mais adiantado, esteja onde estiver. Reduzir overkill depende de
+   variar a PRIORIDADE DE MIRA, nao a posicao.
+
+2. O vermelho piorou: era 0 / 1.475 / 0 / 1.917 e virou 0 nas quatro.
+   Defesa melhor = menos vazamento = placar 1.365.428 a 0. A apuracao
+   disputada ficou MAIS dificil, nao menos.
+
+**Ressalva de atribuicao.** Labirinto e defesa-no-corredor mudaram
+juntos; esta bateria nao separa qual virou a seed 404. Isolar rodando
+com `FenceShare 0` e `UrnRing 0` (mantem a mira de corredor, tira o
+labirinto), ~35 min.
+
+**Proximos passos em aberto.** (a) O isolamento acima. (b) O vermelho
+continua sem solucao e nenhuma escala resolve — o unico sinal que
+cresce com a pressao sem exigir que a defesa falhe e o NULO, 26,9% do
+azul. (c) Construir so pesa na abertura. (d) Quatro seeds e pouco:
+atribuir quebra a curva pede ~15 por configuracao. (e) Decidir se o
+DividerBudget sobe, com a tabela acima como base. NAO recalibrar
+curvas antes de (a).

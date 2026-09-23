@@ -75,6 +75,7 @@ void ABDTowerBase::InitializeTower(const UBDTowerData* InData)
 {
 	Data = InData;
 	Level = 1;
+	EvolutionSpent = 0;
 	FireCooldown = 0.0f;
 	ReloadRemaining = 0.0f;
 	ShotsInMagazine = Data != nullptr ? Data->MagazineSize : 0;
@@ -174,7 +175,9 @@ int32 ABDTowerBase::GetUpgradeCost() const
 		return 0;
 	}
 
-	return UBDGameBalanceSettings::Get().GetUpgradeCost(Data->UpgradeCostBase, Level + 1);
+	// Priced on the wave, like a piece: a level keeps its weight against a boss all match.
+	const ABDMatchManager* Match = ABDMatchManager::Get(this);
+	return UBDGameBalanceSettings::Get().GetUpgradeCostOnWave(Data->UpgradeCostBase, Level + 1, Match != nullptr ? Match->GetPriceWave() : 1);
 }
 
 float ABDTowerBase::GetDamageAtNextLevel() const
@@ -275,6 +278,7 @@ bool ABDTowerBase::Upgrade()
 	}
 
 	++Level;
+	EvolutionSpent += Cost;
 	UE_LOG(LogBDBribe, Log, TEXT("EVOLVED %s to level %d of %d for %d public money: damage %.1f -> %.1f, %d public money left.%s"),
 		*GetName(), Level, UBDTowerData::MaxLevels, Cost, DamageBefore, GetEffectiveDamage(), Match->GetPublicMoney(),
 		// The one that finishes the floor is worth saying out loud: it is the only thing
@@ -288,6 +292,12 @@ bool ABDTowerBase::Upgrade()
 void ABDTowerBase::DebugSetLevel(const int32 NewLevel)
 {
 	Level = FMath::Clamp(NewLevel, 1, UBDTowerData::MaxLevels);
+}
+
+void ABDTowerBase::RestoreEvolution(const int32 NewLevel, const int32 Spent)
+{
+	Level = FMath::Clamp(NewLevel, 1, UBDTowerData::MaxLevels);
+	EvolutionSpent = Level > 1 ? FMath::Max(0, Spent) : 0;
 }
 
 float ABDTowerBase::GetEffectiveRangeCells() const

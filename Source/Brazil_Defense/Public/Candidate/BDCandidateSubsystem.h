@@ -122,7 +122,8 @@ private:
 	/** Listens to the match once there is one; it is spawned after this subsystem. */
 	void EnsureMatchBinding();
 	void HandleVotesChanged(int32 Blue, int32 Red);
-	void HandleWaveStarted(int32 Wave);
+	/** A wave has been dealt (UBDWaveSubsystem::OnWaveDealt): a scheduled candidate walks out ahead of its creeps. */
+	void HandleWaveDealt(int32 Wave);
 	void HandlePhaseChanged(EBDMatchPhase NewPhase);
 
 	/** Spawns a candidate actor for a record, at that record's health. Null when it cannot. */
@@ -159,6 +160,8 @@ private:
 
 	TWeakObjectPtr<ABDMatchManager> BoundMatch;
 	FDelegateHandle VotesChangedHandle;
-	FDelegateHandle WaveStartedHandle;
+	/** Bound to the wave subsystem rather than the match, so the candidate goes out after the mouths move and before the first creep. */
+	TWeakObjectPtr<UBDWaveSubsystem> BoundWaves;
+	FDelegateHandle WaveDealtHandle;
 	FDelegateHandle PhaseChangedHandle;
 };

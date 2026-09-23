@@ -60,7 +60,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	bool IsMaxLevel() const;
 
-	/** Blue votes the next level costs. 0 at max level. */
+	/** Public money the next level costs on the current wave. 0 at max level. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	int32 GetUpgradeCost() const;
 
@@ -71,15 +71,22 @@ public:
 	/** Whether the next level can be bought right now, and why not when it cannot. */
 	bool CanUpgrade(FString& OutReason) const;
 
-	/** The deal in one line: levels, cost, the score it leaves, the damage it buys, and the inversion warning when due. */
+	/** The deal in one line: levels, cost, the public money it leaves and the damage it buys. */
 	FString DescribeUpgrade() const;
 
-	/** Buys the next level with blue votes. @return false, nothing spent, when it cannot. */
+	/** Buys the next level with public money. @return false, nothing spent, when it cannot. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Tower")
 	bool Upgrade();
 
 	/** Debug: sets the level outright, for nothing. Clamped to the valid range. */
 	void DebugSetLevel(int32 NewLevel);
+
+	/** Public money sunk into this defender's levels so far, at the prices they were bought at. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	int32 GetEvolutionSpent() const { return EvolutionSpent; }
+
+	/** Puts a saved defender back at its level, with what its levels cost when they were bought. */
+	void RestoreEvolution(int32 NewLevel, int32 Spent);
 
 	/** Range actually used in combat, in centimetres: the level range in cells, times the cell size, times the platform multiplier when on one. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
@@ -205,6 +212,10 @@ private:
 
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Tower")
 	int32 Level = 1;
+
+	/** See GetEvolutionSpent. Kept rather than recomputed: prices move with the waves. */
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Tower")
+	int32 EvolutionSpent = 0;
 
 	/** Weak: the creep dies on its own schedule. */
 	TWeakObjectPtr<ABDEnemyBase> CurrentTarget;

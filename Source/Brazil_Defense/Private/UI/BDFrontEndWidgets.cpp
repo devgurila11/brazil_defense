@@ -315,8 +315,9 @@ FText UBDDifficultySelectWidget::Summary(const EBDDifficulty Difficulty) const
 	Args.Add(TEXT("Prisoners"), Data->PrisonersFreed);
 	Args.Add(TEXT("Dividers"), Data->DividerBudget);
 	Args.Add(TEXT("Platforms"), Data->PlatformBudget);
-	Args.Add(TEXT("Towers"), Data->TowerBudget);
-	Args.Add(TEXT("Characters"), Data->CharacterBudget);
+	// The opening capital took the place of the tower and character counts: what the
+	// player walks in with is public money, and how many defenders it buys is up to them.
+	Args.Add(TEXT("Funds"), Data->StartingFunds);
 	Args.Add(TEXT("Saves"), Data->SaveBudget);
 	FText Text = BDLoc::Format(TEXT("Difficulty.Summary"), Args);
 

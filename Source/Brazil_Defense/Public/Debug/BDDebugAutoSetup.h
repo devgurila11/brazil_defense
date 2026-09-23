@@ -50,10 +50,10 @@ public:
 	void ClearAll();
 
 	/**
-	 * Places whatever platform, character and tower budget has been granted since the
-	 * board was built - what the bosses hand out as they fall. Called between waves by
-	 * the simulation, because a defense that never spends its new ceilings is not the
-	 * defense a player would have. Does nothing when no budget is left.
+	 * Spends whatever the board has gained since it was built: platforms still in hand,
+	 * slots left empty, and the public money the bosses paid in. Called between waves by the
+	 * simulation, because a defense that never reinvests its income is not the defense a
+	 * player would have. Does nothing when there is nothing to spend.
 	 * @return how many pieces were placed.
 	 */
 	int32 BuildGrantedBudget();
@@ -76,11 +76,18 @@ private:
 	/** Flips the debug switches a balancing session wants on. */
 	static void ApplyDebugSwitches();
 
+	/**
+	 * How many pieces of a palette the public money in hand buys, at a share of it and at
+	 * the average price of the kinds. This is what decides how big the automatic
+	 * defense gets: nothing counts defenders out any more, so the capital is the whole
+	 * answer.
+	 */
+	int32 AffordableCount(const TArray<TObjectPtr<UBDPlaceableData>>& Pieces, float Share) const;
+
 	bool PlaceObjective(UBDPlacementComponent& Placement, FRandomStream& Stream);
 	int32 PlacePlatforms(UBDPlacementComponent& Placement, FRandomStream& Stream);
 	int32 FillSlots(UBDPlacementComponent& Placement, FRandomStream& Stream);
 	int32 PlaceTowers(UBDPlacementComponent& Placement, FRandomStream& Stream);
-	int32 PlaceFences(UBDPlacementComponent& Placement, FRandomStream& Stream);
 
 	/**
 	 * Puts whatever ground budget is left on the routes no defender covers. The spread
@@ -98,10 +105,37 @@ private:
 	void LogDistribution() const;
 
 	/**
-	 * Spots to try for the next batch of cell pieces: one per piece, each on its own
-	 * stretch of its own route, round robin over the routes. Empty when there are no routes.
+	 * The maze, and it comes before every defender: fences that make the horde walk
+	 * further, because the longer the walk the longer it is under fire. First a ring
+	 * around the urn with one way in, then a serpentine laid across the longest route,
+	 * re-read after every fence because every fence moves it.
+	 *
+	 * The path validation is what keeps this honest: a fence that would seal a mouth off
+	 * is refused by the placement itself, so the maze can never close the board.
+	 * @return how many fences went down.
 	 */
-	void BuildStretchTargets(int32 Count, FRandomStream& Stream, TArray<FBDCellCoord>& OutTargets) const;
+	int32 BuildMaze(UBDPlacementComponent& Placement, FRandomStream& Stream);
+
+	/** Fences the four sides of the urn but one, so the horde has to come in through a door. @return how many went down. */
+	int32 RingTheUrn(UBDPlacementComponent& Placement, FRandomStream& Stream);
+
+	/**
+	 * Spots to try for the next batch of cell pieces, ranked by how much of the route
+	 * they cover: a cell is worth the number of route cells within reach of it, so the
+	 * bends of the serpentine - where the horde passes again and again within one range -
+	 * outscore a straight stretch on their own, with no special case for a corner.
+	 *
+	 * FocusUrn tilts the ranking towards the last cells of the route, which is where the
+	 * candidate has to be stopped. Called after the maze, so the route it ranks is the
+	 * route the horde will actually walk.
+	 */
+	void BuildCorridorTargets(int32 Count, FRandomStream& Stream, TArray<FBDCellCoord>& OutTargets) const;
+
+	/** Average and longest route over the mouths that have one, for the before/after of the maze. */
+	void MeasureRoutes(float& OutAverage, int32& OutLongest, int32& OutRouted) const;
+
+	/** The cell the urn was placed on, remembered so the maze can build around it. */
+	FBDCellCoord ObjectiveCell;
 
 	/** Tries a cell piece around a target cell, any rotation, nearest ring first. @return true when placed. */
 	bool TryPlaceCellPieceNear(UBDPlacementComponent& Placement, UBDPlaceableData* Piece,

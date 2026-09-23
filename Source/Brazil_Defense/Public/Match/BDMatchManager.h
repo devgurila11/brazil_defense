@@ -13,6 +13,7 @@ class UBDDayCycleComponent;
 class UBDDifficultyData;
 class UBDGridSubsystem;
 class UBDMatchSave;
+class UBDPlaceableData;
 class UBDPlacementComponent;
 
 /** Broadcast whenever the match moves to another phase. */
@@ -23,9 +24,6 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnWaveStarted, int32 /*Wave*/);
 
 /** Broadcast whenever either vote counter moves. Carries the new totals, blue then red. */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnVotesChanged, int32 /*Blue*/, int32 /*Red*/);
-
-/** Broadcast when the ceilings go up: extra towers and characters the player may now place. */
-DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnBudgetGranted, int32 /*Towers*/, int32 /*Characters*/);
 
 /** Broadcast whenever either money counter moves: the thief's recovered bribe, then the mint's public money. */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnMoneyChanged, int32 /*Bribe*/, int32 /*PublicMoney*/);
@@ -77,11 +75,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetPlatformsRemaining() const { return PlatformsRemaining; }
 
+	/**
+	 * Platform slots standing empty on the board right now: how many more characters
+	 * could be mounted, if there are votes for them.
+	 *
+	 * Counted off the platforms every time it is asked rather than kept in a field. The
+	 * board is the truth about the board: a platform authored in the level, one built
+	 * this second and one sold all say the same thing to this without anybody having to
+	 * remember to tell it.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
-	int32 GetTowersRemaining() const { return TowersRemaining; }
-
-	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
-	int32 GetCharactersRemaining() const { return CharactersRemaining; }
+	int32 GetFreeCharacterSlots() const;
 
 	/** Health multiplier the creeps of the current wave spawn with. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
@@ -114,7 +118,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void AddVotesNull(int32 Votes);
 
-	/** True once the first wave has gone out and the maze is locked in. */
+	/** True once the first wave has gone out and the urn is locked in where it stands. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool IsBuildLocked() const { return CurrentWave >= 1; }
 
@@ -256,20 +260,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void AddVotesRed(int32 Votes);
 
-	/** Blue votes are the player's currency as well as their score: spending them lowers both. @return false, and nothing spent, when there are not enough. */
-	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
-	bool SpendVotesBlue(int32 Votes);
-
-	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
-	bool CanAffordVotesBlue(int32 Votes) const { return Votes <= VotesBlue; }
+	// Votes are the score and nothing else: no piece, level or move is paid with them, so
+	// nothing here takes them away but the levelling down after the return of the fallen.
 
 	//~ The bribe and the public money -------------------------------------------
-	// The second currency, kept beside the votes and never mixed with them. A scheduled
-	// candidate killed drops the bribe he stole: the thief's counter takes it, then the
-	// mint turns it into public money, which is the only thing evolution is paid with.
-	// Both counters live and die with the match - they are never carried to the next one
-	// - and the conversion between them is driven by UBDBribeSubsystem, which is what
-	// makes the numbers on the HUD climb rather than jump.
+	// The currency of the match, kept apart from the votes and never mixed with them. The
+	// difficulty hands out the starting funds; after that the only source is a scheduled
+	// candidate killed, who drops the bribe he stole: the thief's counter takes it, then
+	// the mint turns it into public money, which is what every piece, level and move is
+	// paid with. Both counters live and die with the match - they are never carried to the
+	// next one - and the conversion between them is driven by UBDBribeSubsystem, which is
+	// what makes the numbers on the HUD climb rather than jump.
 
 	/** Bribe recovered from the thief and not yet converted: the left-hand counter. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
@@ -308,12 +309,32 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetUpgradeCost(const ABDTowerBase* Tower) const;
 
-	/**
-	 * Whether spending this many blue votes would put red ahead of blue. The player may
-	 * still do it, but has to be told: otherwise the candidate flips and it looks like a bug.
-	 */
+	//~ Prices ------------------------------------------------------------------
+	// A piece costs about what a scheduled candidate of the current wave drops, so the
+	// price climbs with the bosses: see UBDGameBalanceSettings, "Price".
+
+	/** The wave prices are read on: the current one, and wave 1 before any has gone out. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
-	bool WouldInvertScoreboard(int32 Cost) const;
+	int32 GetPriceWave() const { return FMath::Max(1, CurrentWave); }
+
+	/** Public money a scheduled candidate on a wave drops. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetCandidateFunds(int32 Wave) const;
+
+	/** Public money a piece costs to build right now. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	int32 GetBuildPrice(const UBDPlaceableData* Piece) const;
+
+	/** The same, on any wave: for the reports. */
+	int32 GetBuildPriceOnWave(const UBDPlaceableData* Piece, int32 Wave) const;
+
+	/** The wave after which a piece can be built. 0 is from the start. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	static int32 GetUnlockWave(const UBDPlaceableData* Piece);
+
+	/** Whether a piece has come into the hand yet. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool IsUnlocked(const UBDPlaceableData* Piece) const { return CurrentWave >= GetUnlockWave(Piece); }
 
 	//~ Moving pieces between waves --------------------------------------------
 
@@ -321,13 +342,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool CanMove() const { return Phase == EBDMatchPhase::Building; }
 
-	/** Fraction of a piece's build cost a move costs on the current wave. */
+	/** Fraction of a piece's price a move costs on the current wave. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	float GetMoveTaxRate() const;
 
-	/** Blue votes a move of a piece of this build cost charges on the current wave. */
+	/** Public money a move of a piece bought for this much charges on the current wave. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
-	int32 GetMoveCost(int32 BuildCost) const;
+	int32 GetMoveCost(int32 PaidCost) const;
 
 	/**
 	 * Sets how fast the match runs. Only the speeds listed in the balance settings are
@@ -340,16 +361,32 @@ public:
 	bool SetGameSpeed(float Speed);
 
 	//~ Budget, asked by the placement gesture ---------------------------------
+	// Only the maze is counted out. Dividers and platforms are a hand the player walks in
+	// with, and the urn is placed once; defenders are held back by the public money they
+	// cost and by the board itself, never by a number. The maze can grow between waves as
+	// well as before the first one: what a piece costs is the brake, not a lock.
 
-	/** Whether the current phase and budget allow placing a piece of this kind. */
+	/** Whether a piece of this kind is the player's to place at all, counted or not. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	static bool IsPlaceableKind(EBDPieceKind Kind);
+
+	/**
+	 * Whether pieces of this kind come out of a counted hand. False for defenders, whose
+	 * only limits are the public money and the board: asking GetBudgetRemaining about them says
+	 * nothing, and treating the 0 it returns as "none left" is the bug this guards.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	static bool HasBudgetCeiling(EBDPieceKind Kind);
+
+	/** Whether the current phase and hand allow placing a piece of this kind. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool CanPlace(EBDPieceKind Kind) const;
 
-	/** Pieces of this kind still in hand, whatever the phase. 0 for a kind the player never places. */
+	/** Pieces of this kind still in hand, whatever the phase. 0 for a kind that is not counted out. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetBudgetRemaining(EBDPieceKind Kind) const;
 
-	/** Charges one piece of this kind to the budget. @return false when it was not allowed. */
+	/** Charges one piece of this kind to the hand, when the kind is counted. @return false when it was not allowed. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	bool ConsumeBudget(EBDPieceKind Kind);
 
@@ -361,41 +398,28 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void RefundRemoval(EBDPieceKind Kind);
 
-	/** Raises the tower and character ceilings: room for more, paid for like any piece. Announced through OnBudgetGranted. */
+	/** Debug and measurement only: moves the divider ceiling, to ask what a different DividerBudget would buy. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
-	void GrantBudget(int32 Towers, int32 Characters, const FString& Why);
-
-	/**
-	 * A platform built carries its own slots into the character ceiling, and takes them
-	 * back out when it leaves. The ceiling therefore follows the board: whatever stands
-	 * on it can always be manned, which is what the block rule of the platforms needs to
-	 * be reachable at all - a platform that can never be filled evolves nothing, ever.
-	 *
-	 * The difficulty's CharacterBudget stays as what the player walks in holding, on top
-	 * of the slots; the bosses still add theirs.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
-	void AdjustCharacterSlots(int32 Delta, const FString& Why);
+	void AdjustDividerBudget(int32 Delta, const FString& Why);
 
 	//~ Selling ------------------------------------------------------------------
 	// Nothing on the board is permanent: any piece can be sold, and the price of having
-	// been wrong is the part of the build cost that does not come back. All of it comes
-	// back before the first wave, half once the waves run, and a divider keeps the full
-	// refund through the grace window: see UBDGameBalanceSettings::GetSellRefundRatio.
-	// Building does not charge votes yet; selling already pays them, because the player
-	// tries things and undoes them.
+	// been wrong is the part of what it was bought for that does not come back. All of it
+	// comes back before the first wave, half once the waves run, and a divider keeps the
+	// full refund through the grace window: see UBDGameBalanceSettings::GetSellRefundRatio.
+	// Always a share of the price paid, never of today's price, and always in public money.
 
-	/** Fraction of the build cost selling a piece of this kind pays back on the current wave. */
+	/** Fraction of the price paid selling a piece of this kind pays back on the current wave. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	float GetSellRefundRatio(EBDPieceKind Kind) const;
 
-	/** Blue votes selling a piece of this kind and build cost pays back right now. */
+	/** Public money selling a piece of this kind, bought for this much, pays back right now. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
-	int32 GetSellRefund(EBDPieceKind Kind, int32 BuildCost) const;
+	int32 GetSellRefund(EBDPieceKind Kind, int32 PaidCost) const;
 
-	/** Pays the sale of a piece into the blue counter. @return the votes paid. */
+	/** Pays the sale of a piece into the mint. @return the public money paid. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
-	int32 RefundSale(EBDPieceKind Kind, int32 BuildCost);
+	int32 RefundSale(EBDPieceKind Kind, int32 PaidCost);
 
 	/** The day cycle driven by this match. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
@@ -406,7 +430,6 @@ public:
 	FBDOnMatchPhaseChanged OnPhaseChanged;
 	FBDOnWaveStarted OnWaveStarted;
 	FBDOnVotesChanged OnVotesChanged;
-	FBDOnBudgetGranted OnBudgetGranted;
 	FBDOnMoneyChanged OnMoneyChanged;
 
 	/** Seed the board was generated from, so a match can be handed over as a number. */
@@ -431,7 +454,7 @@ private:
 	/** Sends the next wave out. */
 	void StartWave();
 
-	/** Counter behind a placeable state, or null when that state is not the player's to place. */
+	/** Counter behind a placeable state, or null when the kind is not counted out. */
 	int32* FindBudget(EBDPieceKind Kind);
 	const int32* FindBudget(EBDPieceKind Kind) const;
 
@@ -443,7 +466,7 @@ private:
 	/** Resolves DifficultyData from Difficulty, falling back to the class defaults. */
 	void ResolveDifficulty();
 
-	/** The budgets of the difficulty, plus the chain bonus when the one below has been won. Votes are not touched. */
+	/** The hand, the starting funds and the head start on the count, plus the chain bonus when the one below has been won. */
 	void ApplyStartingBudgets();
 
 	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Match")
@@ -458,8 +481,6 @@ private:
 	float TimeUntilNextWave = 0.0f;
 	int32 DividersRemaining = 0;
 	int32 PlatformsRemaining = 0;
-	int32 TowersRemaining = 0;
-	int32 CharactersRemaining = 0;
 	int32 ObjectivesRemaining = 0;
 	int32 EarlyCallBonus = 0;
 	float GameSpeed = 1.0f;

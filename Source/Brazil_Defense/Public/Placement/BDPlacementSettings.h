@@ -11,6 +11,20 @@ class UInputAction;
 class UInputMappingContext;
 class UMaterialInterface;
 
+/** From which wave one piece of the palette can be built. */
+USTRUCT()
+struct FBDPieceUnlock
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, Category = "Unlock", meta = (AllowedClasses = "/Script/Brazil_Defense.BDPlaceableData"))
+	TSoftObjectPtr<UBDPlaceableData> Piece;
+
+	/** The piece can be built once this wave has gone out. 0 is from the first building phase. */
+	UPROPERTY(EditAnywhere, Category = "Unlock", meta = (ClampMin = "0", UIMin = "0"))
+	int32 Wave = 0;
+};
+
 /**
  * Everything the placement flow needs that is not a grid dimension.
  * Kept apart from UBDGridSettings so the grid settings stay about the grid.
@@ -32,6 +46,18 @@ public:
 
 	UPROPERTY(config, EditAnywhere, Category = "Palette", meta = (AllowedClasses = "/Script/Brazil_Defense.BDPlaceableData"))
 	TArray<TSoftObjectPtr<UBDPlaceableData>> Palette;
+
+	/**
+	 * When the pieces of the palette come into the hand. A piece not listed is there from
+	 * the start. The match keeps opening up as it goes - a bigger platform, another kind
+	 * of shooter - so the board late on is not the opening board with more of the same
+	 * tower on it. Placeholders, calibrated with the cast.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Palette")
+	TArray<FBDPieceUnlock> Unlocks;
+
+	/** The wave after which a piece can be built: its entry in Unlocks, or 0. */
+	int32 GetUnlockWave(const UBDPlaceableData* Piece) const;
 
 	//~ Input ----------------------------------------------------------------
 

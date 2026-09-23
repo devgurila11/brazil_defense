@@ -78,6 +78,17 @@ int32 UBDGameBalanceSettings::GetUpgradeCost(const int32 UpgradeCostBase, const 
 	return FMath::RoundToInt(FMath::Max(0, UpgradeCostBase) * FMath::Pow(FMath::Max(1.0f, UpgradeCostGrowth), static_cast<float>(FMath::Max(1, Level) - 1)));
 }
 
+int32 UBDGameBalanceSettings::GetUpgradeCostOnWave(const int32 UpgradeCostBase, const int32 Level, const int32 Wave) const
+{
+	const int32 AtWaveOne = GetUpgradeCost(UpgradeCostBase, Level);
+	return AtWaveOne <= 0 ? 0 : FMath::Max(1, FMath::RoundToInt(AtWaveOne * GetPriceScale(Wave)));
+}
+
+float UBDGameBalanceSettings::GetPriceScale(const int32 Wave) const
+{
+	return GetHealthScale(FMath::Max(1, Wave)) / FMath::Max(KINDA_SMALL_NUMBER, GetHealthScale(1));
+}
+
 float UBDGameBalanceSettings::GetUpgradeDamageScale(const int32 Level) const
 {
 	return 1.0f + FMath::Max(0.0f, DamageGrowthPerLevel) * (FMath::Max(1, Level) - 1);
@@ -100,9 +111,31 @@ int32 UBDGameBalanceSettings::BribeForHealth(const float Health) const
 	return FMath::Max(1, FMath::FloorToInt(FMath::Max(0.0f, Health) / FMath::Max(0.01f, HealthPerBribe)));
 }
 
-int32 UBDGameBalanceSettings::GetEvolutionRefund(const int32 UpgradeCostBase, const int32 Level) const
+float UBDGameBalanceSettings::GetCandidateHealth(const float CreepHealth, const int32 Wave) const
 {
-	return FMath::FloorToInt(GetEvolutionSpent(UpgradeCostBase, Level) * FMath::Clamp(EvolutionRefundRatio, 0.0f, 1.0f));
+	return FMath::Max(1.0f, FMath::Max(0.0f, CreepHealth) * GetHealthScale(Wave) * FMath::Max(1.0f, CandidateHealthMultiplier));
+}
+
+int32 UBDGameBalanceSettings::GetCandidateFunds(const float CreepHealth, const int32 Wave) const
+{
+	return BribeForHealth(GetCandidateHealth(CreepHealth, Wave));
+}
+
+int32 UBDGameBalanceSettings::GetReplacementCost(const int32 BaseCost, const float CreepHealth, const int32 Wave) const
+{
+	if (BaseCost <= 0)
+	{
+		return 0;
+	}
+
+	const double Candidate = GetCandidateFunds(CreepHealth, Wave);
+	const double Share = static_cast<double>(BaseCost) / FMath::Max(1, ReplacementReferenceCost);
+	return FMath::Max(1, FMath::RoundToInt(Candidate * FMath::Max(0.0f, ReplacementCostRatio) * Share));
+}
+
+int32 UBDGameBalanceSettings::GetEvolutionRefund(const int32 EvolutionSpent) const
+{
+	return FMath::FloorToInt(FMath::Max(0, EvolutionSpent) * FMath::Clamp(EvolutionRefundRatio, 0.0f, 1.0f));
 }
 
 float UBDGameBalanceSettings::GetMoveTaxRate(const int32 Wave) const

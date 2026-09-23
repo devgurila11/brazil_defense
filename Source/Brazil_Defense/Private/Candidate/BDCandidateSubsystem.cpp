@@ -37,10 +37,14 @@ void UBDCandidateSubsystem::Deinitialize()
 	if (ABDMatchManager* Match = BoundMatch.Get())
 	{
 		Match->OnVotesChanged.Remove(VotesChangedHandle);
-		Match->OnWaveStarted.Remove(WaveStartedHandle);
 		Match->OnPhaseChanged.Remove(PhaseChangedHandle);
 	}
+	if (UBDWaveSubsystem* Waves = BoundWaves.Get())
+	{
+		Waves->OnWaveDealt.Remove(WaveDealtHandle);
+	}
 	BoundMatch.Reset();
+	BoundWaves.Reset();
 	Living.Reset();
 
 	Super::Deinitialize();
@@ -84,9 +88,14 @@ void UBDCandidateSubsystem::EnsureMatchBinding()
 	}
 
 	VotesChangedHandle = Match->OnVotesChanged.AddUObject(this, &UBDCandidateSubsystem::HandleVotesChanged);
-	WaveStartedHandle = Match->OnWaveStarted.AddUObject(this, &UBDCandidateSubsystem::HandleWaveStarted);
 	PhaseChangedHandle = Match->OnPhaseChanged.AddUObject(this, &UBDCandidateSubsystem::HandlePhaseChanged);
 	BoundMatch = Match;
+
+	if (UBDWaveSubsystem* Waves = GetWaves())
+	{
+		WaveDealtHandle = Waves->OnWaveDealt.AddUObject(this, &UBDCandidateSubsystem::HandleWaveDealt);
+		BoundWaves = Waves;
+	}
 }
 
 //~ State ------------------------------------------------------------------------
@@ -170,7 +179,7 @@ void UBDCandidateSubsystem::HandleVotesChanged(const int32 Blue, const int32 Red
 	}
 }
 
-void UBDCandidateSubsystem::HandleWaveStarted(const int32 Wave)
+void UBDCandidateSubsystem::HandleWaveDealt(const int32 Wave)
 {
 	const int32 Interval = FMath::Max(0, UBDGameBalanceSettings::Get().CandidateInterval);
 	const bool bDue = Interval > 0 && Wave % Interval == 0;
@@ -189,7 +198,18 @@ void UBDCandidateSubsystem::HandleWaveStarted(const int32 Wave)
 	}
 
 	bSchedulePending = false;
-	SpawnCandidate(bDue ? TEXT("the schedule") : TEXT("the schedule, owed from an earlier wave"));
+	if (SpawnCandidate(bDue ? TEXT("the schedule") : TEXT("the schedule, owed from an earlier wave")) == nullptr)
+	{
+		return;
+	}
+
+	// He is the first thing out of the buses on his wave: the creeps wait until he has
+	// had a head start, so the player sees him walk out alone and can make him the
+	// priority. In the middle of the horde he went by unnoticed.
+	if (UBDWaveSubsystem* Waves = GetWaves())
+	{
+		Waves->HoldWaveSpawns(UBDGameBalanceSettings::Get().CandidateLeadSeconds, TEXT("the candidate walks out first"));
+	}
 }
 
 void UBDCandidateSubsystem::HandlePhaseChanged(const EBDMatchPhase NewPhase)
@@ -314,12 +334,13 @@ ABDCandidate* UBDCandidateSubsystem::SpawnCandidate(const TCHAR* Why)
 	}
 
 	// As tough as the creeps of the wave, times the multiplier: the later, the tougher.
+	// The same health the match prices pieces off (ABDMatchManager::GetCandidateFunds).
 	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
 	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
 	const UBDEnemyData* WaveCreep = Settings.ResolveWaveEnemy();
 	const UBDEnemyData* Data = Settings.CandidateEnemy.LoadSynchronous();
 	const float BaseHealth = WaveCreep != nullptr ? WaveCreep->MaxHealth : (Data != nullptr ? Data->MaxHealth : 100.0f);
-	const float Health = FMath::Max(1.0f, BaseHealth * Match->GetHealthScale() * FMath::Max(1.0f, Balance.CandidateHealthMultiplier));
+	const float Health = Balance.GetCandidateHealth(BaseHealth, Match->GetCurrentWave());
 
 	FBDCandidateRecord Record;
 	Record.Ordinal = Sent.Num() + 1;
@@ -421,21 +442,15 @@ void UBDCandidateSubsystem::NotifyCandidateKilled(ABDCandidate* Killed)
 		}
 	}
 
-	// A scheduled candidate down is room for more: one more tower and character may be
-	// placed, each still paid for. One of the fallen come back earns nothing, on purpose.
+	// A scheduled candidate down pays in bribe, and in nothing else: there are no ceilings
+	// left to raise, so what a boss is worth is the bag that falls out of him, worth his
+	// own health - the twentieth pays many times what the first did. The bribe subsystem
+	// drops it, counts it and mints it. One of the fallen come back drops nothing, on
+	// purpose: the return is a punishment, and paying for it would make the count worth
+	// throwing.
 	if (!Killed->bReturning)
 	{
 		const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
-		if (Match != nullptr)
-		{
-			Match->GrantBudget(Balance.TowerBudgetPerBoss, Balance.CharacterBudgetPerBoss,
-				FString::Printf(TEXT("candidate %d killed"), Killed->Ordinal));
-		}
-
-		// And the bribe he stole falls out of him: worth his own health, so the twentieth
-		// boss pays many times what the first did. The bribe subsystem drops the bag,
-		// counts it and mints it; the fallen come back drop nothing, the same rule as the
-		// budget above.
 		if (UBDBribeSubsystem* Bribes = UBDBribeSubsystem::Get(this))
 		{
 			Bribes->Collect(Balance.BribeForHealth(Killed->GetMaxHealth()), Killed->GetActorLocation(), Killed->Ordinal);

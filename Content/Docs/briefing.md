@@ -1,101 +1,95 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-15 15:30**
+**Versão: 2026-09-23 14:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# AutoSetup precisa JOGAR, não despejar
+# Reforma da economia: fundos públicos são a moeda, votos são só placar
 
-Descoberta que invalida as métricas anteriores: o AutoSetup espalha
-peças aleatoriamente, sem estratégia. Não faz labirinto, não alonga
-a rota, não isola a urna, não concentra defesa em gargalo. Toda a
-calibração de hoje mediu uma defesa burra — os números não descrevem
-o jogo real.
+Decisão estrutural (fechada com o usuário). Hoje construir custa
+votos, e votos explodem (5,8 milhões na onda 145, torre custa 100 =
+grátis). E os fundos públicos crescem numa escala sã (30 mil na onda
+135). A solução é trocar os papéis.
 
-A estratégia central do jogo é a do Clash of Clans: o LABIRINTO
-(organizadores de fila / cercas) é a defesa primária — alonga a rota
-para a horda sofrer dano o caminho todo. As torres e personagens são
-a secundária, posicionados ao longo do corredor que o labirinto cria.
+## 1. Votos = placar puro, não se gastam
 
-O AutoSetup precisa jogar assim, para as métricas valerem.
+- Voto azul e voto vermelho continuam existindo e continuam sendo o
+  PLACAR da eleição (barra de apuração, condição de vitória/derrota
+  no fim da onda 100).
+- Votos NÃO são mais gastos em nada. Construir e evoluir não tocam
+  nos votos. O modelo "cruel" (gastar derruba o placar) SAI — era
+  baseado em votos como moeda, e votos deixaram de ser moeda.
+- A barra de apuração e a disputa azul/vermelho ficam como estão.
 
----
+## 2. Fundos públicos = moeda única de construção E evolução
 
-## O que o AutoSetup estratégico deve fazer, em ordem
+- Tudo que o jogador coloca (torre, personagem, plataforma, divisória)
+  e toda evolução se paga com FUNDOS PÚBLICOS (a propina convertida).
+- Fundos vêm SÓ dos candidatos agendados mortos (os 20 chefes), como
+  já é. Escassos por natureza.
+- O contador de fundos públicos (Casa da Moeda) vira o recurso central
+  do HUD. O medidor de votos vira informativo (placar), não gastável.
 
-### 1. Construir o labirinto PRIMEIRO
+## 3. Custo de reposição ≈ valor de um candidato
 
-Antes de qualquer torre, gastar cercas para alongar a rota das bocas
-até a urna.
+O ponto central. Hoje construir é barato demais e o mapa enche antes
+de qualquer evolução.
 
-- Isolar a urna: cercar em volta dela deixando só uma entrada
-  estreita (como o muro protege o CV no Clash), forçando a horda a
-  contornar.
-- Criar serpentina: em vez de deixar a rota curta, construir cercas
-  que forcem zigue-zague, maximizando o comprimento do caminho.
-- Respeitar a validação que já existe: NUNCA fechar completamente
-  (WouldBlockPathEdges recusa). Sempre deixar caminho.
-- Medir o ganho: a rota depois do labirinto deve ser
-  significativamente mais longa que a rota direta. Logar o
-  comprimento antes/depois.
+- O custo de construir/repor uma defesa deve ser PRÓXIMO ao que um
+  candidato solta de fundos ao morrer.
+- Efeito: cada chefe morto paga aproximadamente UMA defesa nova OU
+  uma evolução — nunca as duas. Isso força a escolha "construo mais
+  ou evoluo o que tenho?".
+- Como o valor do candidato cresce por onda (HP × fator), o custo de
+  reposição também deve escalar na mesma direção — construir na onda
+  80 custa mais que na onda 10, proporcional aos fundos que os chefes
+  daquela altura dão.
+- Calibrar para que, ao longo dos 20 chefes, o jogador NÃO consiga
+  encher o mapa E evoluir tudo — tem que escolher. A defesa completa
+  e evoluída só na reta final, como já era o alvo da propina.
 
-### 2. Posicionar defesa NO CORREDOR, não espalhada
+## 4. Capital inicial de fundos
 
-Com o labirinto feito, o caminho da horda é conhecido e longo.
+- Como agora tudo se paga com fundos e o jogador começa sem matar
+  chefe nenhum, dar um capital INICIAL de fundos públicos por
+  dificuldade (StartingFunds), para montar a defesa base da fase de
+  montagem.
+- Suficiente para uma defesa inicial decente, não para lotar o mapa.
 
-- Concentrar torres e plataformas ao LONGO desse corredor, onde os
-  creeps passam — não em células aleatórias longe da rota.
-- Priorizar os pontos por onde a horda passa MAIS de uma vez (curvas
-  da serpentina, onde a rota dobra sobre si).
-- Cobrir todas as bocas ativas: nenhuma rota de spawn pode ficar sem
-  defensor ao alcance.
-- Concentrar perto da urna: a última linha de defesa, para o candidato
-  que chega longe na rota.
+## 5. Liberar mais itens, não só torre
 
-### 3. Só então gastar o resto
+Hoje só a torre "reacende" como disponível ao longo do jogo; o mapa
+vira um monte de torres iguais.
 
-Sobrou orçamento/votos depois do labirinto e da cobertura do corredor?
-Reforçar os gargalos e a zona da urna.
+- Divisória, plataformas (stage/truck/bleachers) e personagens devem
+  ir sendo liberados/disponibilizados ao longo das ondas também, não
+  só a torre.
+- Rever a lógica de desbloqueio: o que fica disponível quando. Se há
+  UnlockWave por peça, escalonar para o jogador ter variedade, não
+  só torre repetida.
 
----
+## 6. Candidato sai PRIMEIRO na onda dele
 
-## Parâmetros de estratégia (não hardcodar)
+- Na onda que solta um candidato, ele é o PRIMEIRO a sair, antes de
+  qualquer creep comum, de uma boca sorteada.
+- Motivo: hoje ele vem no meio da horda e passa despercebido — o
+  usuário perdeu na onda 145 sem entender que foi candidato na urna.
+  Saindo primeiro, o jogador vê, reage e prioriza.
 
-Expor para ajuste, para simular jogadores de níveis diferentes:
+## Nota de balanceamento
 
-- Fração do orçamento gasta em cercas antes das torres (ALVO: labirinto
-  primeiro, ex: 40% em cercas).
-- Densidade do labirinto (quão sinuosa a serpentina).
-- Se concentra na urna, distribui no corredor, ou mistura.
+Os valores exatos (custo de reposição, StartingFunds, fator de escala)
+são calibração — e a calibração fina continua pausada até o elenco de
+defesas/inimigos/políticos existir. Implementar a ESTRUTURA agora
+(fundos como moeda, votos como placar, custo atrelado ao candidato) e
+deixar os números como placeholder ajustável em settings.
 
-Isso também dá o "perfil de jogador" que faltava: um AutoSetup que
-faz labirinto denso e concentra bem = jogador bom; um que faz pouco
-labirinto = jogador médio. Assim dá para medir a faixa real de
-dificuldade.
+## Entregável
 
----
-
-## Depois: remedir tudo
-
-Com o AutoSetup jogando de verdade, rodar a bateria de novo e comparar
-com os números de hoje. Provavelmente muda:
-
-- A onda de quebra (labirinto = horda sofre mais = defesa aguenta mais,
-  ou horda tão atrasada que nem chega).
-- O candidato (rota longa = mais tempo sob fogo = mais fácil de matar
-  antes da urna). Isso pode resolver sozinho o gargalo do candidato.
-- O overkill (defesa concentrada no corredor mira melhor).
-
-Reportar as 5 métricas de novo, defesa estratégica, e comparar lado a
-lado com a defesa-despejo de hoje. NÃO recalibrar curvas ainda — medir
-primeiro com a defesa que joga certo, porque tudo pode mudar.
-
----
-
-## Nota sobre os DA\_ de dificuldade
-
-O usuário observou que faltam organizadores de fila para proteger a
-urna. O orçamento de cercas por dificuldade é ajustável nos
-DA_Difficulty (DividerBudget). Se depois de o AutoSetup fazer
-labirinto ainda faltar cerca para isolar a urna, aumentar o
-DividerBudget — mas medir primeiro.
+Compilar os dois alvos. Verificar headless que:
+- Construir e evoluir debitam FUNDOS, não votos.
+- Votos não são mais gastos por nada.
+- Custo de reposição escala com a onda, próximo ao valor do candidato.
+- Candidato sai primeiro na onda dele.
+- Mais tipos de peça disponíveis ao longo do jogo, não só torre.
+Relatório no fim, sem perguntar no meio.

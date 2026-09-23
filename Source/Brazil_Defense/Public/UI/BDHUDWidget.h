@@ -17,6 +17,7 @@ class UBDWaveSubsystem;
 class UBorder;
 class UButton;
 class UCanvasPanel;
+class UHorizontalBox;
 class UImage;
 class UProgressBar;
 class USizeBox;
@@ -114,10 +115,10 @@ private:
 	/** The centre box once the match is over: the result, and what the player can do next. */
 	void UpdateEndPanel();
 
-	/** "Blue B -> B' vs Red R" for a change of Delta votes; bOutInverts when a spend hands the lead over. */
-	FText ResultText(int32 Delta, bool& bOutInverts) const;
+	/** "Public money M -> M'" for a change of Delta; bOutShort, and the shortfall instead, when a spend is more than there is. */
+	FText ResultText(int32 Delta, bool& bOutShort) const;
 
-	/** Puts ResultText on a line, in red when it inverts. */
+	/** Puts ResultText on a line, in red when it falls short. */
 	void SetResultLine(UTextBlock* Line, int32 Delta);
 
 	/** The refusal of the placement gesture as words. */
@@ -162,6 +163,19 @@ private:
 	/** The item bar: one button per piece of the palette, with what is left of it, and the urn. */
 	void UpdateBuildPanel();
 
+	/** What is left of a kind: a hand counts down, a character reads the free slots, a tower is not counted. */
+	FText BuildCountText(EBDPieceKind Kind) const;
+
+	/**
+	 * Why a piece of the bar cannot be taken right now, or None. The bar asks this instead
+	 * of CanPlace alone, because a button that only greys out is the complaint this panel
+	 * exists to answer: whatever stops the piece has to be readable under it.
+	 */
+	EBDPlacementRefusal BuildRefusal(const UBDPlaceableData* Data) const;
+
+	/** The line under a build button: what is left and what it costs, or the reason it cannot be taken. */
+	FText BuildInfoText(const UBDPlaceableData* Data, EBDPlacementRefusal Refusal) const;
+
 	/** The three bands of the count bar, weighted by the votes. */
 	void UpdateScoreBar();
 
@@ -171,8 +185,8 @@ private:
 	/** A fixed picture of the HUD in a scale box: the box sets its share of the screen, the scale box keeps the aspect. */
 	USizeBox* MakePicture(TObjectPtr<UImage>& OutImage, UTexture2D* Texture, float Size);
 
-	/** One item of the bar: a picture in a scale box over the words. */
-	UButton* MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutCount);
+	/** One item of the bar: a picture in a scale box over the name and the info line. */
+	UButton* MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutInfo);
 
 	UFUNCTION()
 	void HandleBuildUrn();
@@ -242,7 +256,23 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UImage> NullIcon;
 
-	//~ The money: the thief's bribe on the left, the mint's public money on the right
+	//~ The two resources, on one row and always up: the votes that build on the left with
+	// the urn, the public money that evolves on the right with the mint. Between them, and
+	// only while something is crossing, the thief with the bribe he has just been relieved
+	// of - the animation of the gain, never a balance anybody can spend.
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> VoteMeter;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> VoteMeterIconBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> VoteMeterIcon;
+
+	/** The thief's part of the row: icon, amount and arrow, shown as one or not at all. */
+	UPROPERTY(Transient)
+	TObjectPtr<UHorizontalBox> BribeGroup;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> BribeScore;
 
@@ -324,13 +354,6 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> CandidateOverflow;
 
-	/** "Budget raised: +1 tower, +1 character", for a moment after a scheduled kill. */
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> RewardNotice;
-	float RewardNoticeRemaining = 0.0f;
-	FDelegateHandle BudgetGrantedHandle;
-	void HandleBudgetGranted(int32 Towers, int32 Characters);
-
 	/** Kept only to keep the old responsive-size code pointing somewhere: the first row's box. */
 
 	UPROPERTY(Transient)
@@ -380,8 +403,9 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> PlacementRefusal;
 
+	/** What the piece in hand costs and the count it would leave: for a build and for a move. */
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> MoveResult;
+	TObjectPtr<UTextBlock> CostResult;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> CancelLabel;

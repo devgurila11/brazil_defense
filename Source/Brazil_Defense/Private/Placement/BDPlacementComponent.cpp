@@ -104,8 +104,11 @@ void UBDPlacementComponent::CancelSelectionIfBudgetExhausted()
 		return;
 	}
 
+	// Only a counted kind can run out. A defender is dropped by the hand when the money
+	// or the board say no, and both of those are answered a frame at a time by the ghost,
+	// not by taking the piece away from the player.
 	const EBDPieceKind Kind = CurrentSelection->GetPieceKind();
-	if (Match->GetBudgetRemaining(Kind) > 0)
+	if (!ABDMatchManager::HasBudgetCeiling(Kind) || Match->GetBudgetRemaining(Kind) > 0)
 	{
 		return;
 	}
@@ -257,6 +260,32 @@ UBDPlatformComponent* UBDPlacementComponent::FindPlatformAt(const FBDCellCoord& 
 	}
 
 	return nullptr;
+}
+
+int32 UBDPlacementComponent::CountFreeSlots() const
+{
+	const UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return 0;
+	}
+
+	int32 Free = 0;
+	for (TObjectIterator<UBDPlatformComponent> It; It; ++It)
+	{
+		const UBDPlatformComponent* Platform = *It;
+		if (Platform->GetWorld() != World || !Platform->bInsideBattleArea || !IsValid(Platform->GetOwner()))
+		{
+			continue;
+		}
+
+		for (int32 Slot = 0; Slot < Platform->Slots.Num(); ++Slot)
+		{
+			Free += Platform->IsSlotFree(Slot) ? 1 : 0;
+		}
+	}
+
+	return Free;
 }
 
 int32 UBDPlacementComponent::FindNearestSlot(const UBDPlatformComponent& Platform, const FVector& Point)
@@ -685,6 +714,7 @@ void UBDPlacementComponent::CaptureBoard(TArray<FBDSavedPiece>& OutPieces) const
 		Saved.Data = FSoftObjectPath(Piece.Data);
 		Saved.Edges = Piece.Edges;
 		Saved.SlotIndex = Piece.SlotIndex;
+		Saved.PaidCost = Piece.PaidCost;
 		if (Piece.IsOnSlot())
 		{
 			Saved.Origin = PlatformCell;
@@ -701,6 +731,7 @@ void UBDPlacementComponent::CaptureBoard(TArray<FBDSavedPiece>& OutPieces) const
 
 		const ABDTowerBase* Tower = Piece.Actors.Num() > 0 ? Cast<ABDTowerBase>(Piece.Actors[0]) : nullptr;
 		Saved.Level = Tower != nullptr ? Tower->GetTowerLevel() : 1;
+		Saved.EvolutionSpent = Tower != nullptr ? Tower->GetEvolutionSpent() : 0;
 	};
 
 	// A wide piece is in the map once per cell it covers; its first actor tells the copies apart.
@@ -751,6 +782,11 @@ int32 UBDPlacementComponent::RestoreBoard(const TArray<FBDSavedPiece>& Pieces)
 
 	const bool bWasLogging = bRefusalLogging;
 	bRefusalLogging = false;
+	// Restoring is not building: these pieces were bought in the match that was saved, and
+	// the balance they left behind comes back from the save further up. Asked to pay again
+	// out of the opening capital, a late board would lose whatever that capital no longer
+	// covers - and nothing caps how big a board gets any more.
+	TGuardValue<bool> RestoringGuard(bRestoring, true);
 	int32 Restored = 0;
 
 	for (const FBDSavedPiece& Saved : Pieces)
@@ -767,6 +803,11 @@ int32 UBDPlacementComponent::RestoreBoard(const TArray<FBDSavedPiece>& Pieces)
 		{
 			continue;
 		}
+
+		// A save from before prices were kept has none: it takes the opening price, which
+		// is what a restored match would charge for it on its first building phase.
+		const ABDMatchManager* Match = GetMatch();
+		RestoringPaidCost = Saved.PaidCost >= 0 ? Saved.PaidCost : (Match != nullptr ? Match->GetBuildPriceOnWave(Data, 1) : 0);
 
 		if (Saved.IsOnSlot())
 		{
@@ -808,7 +849,12 @@ int32 UBDPlacementComponent::RestoreBoard(const TArray<FBDSavedPiece>& Pieces)
 			ABDTowerBase* Tower = Placed != nullptr && Placed->Actors.Num() > 0 ? Cast<ABDTowerBase>(Placed->Actors[0]) : nullptr;
 			if (Tower != nullptr)
 			{
-				Tower->DebugSetLevel(Saved.Level);
+				// A save from before the spend was kept takes the wave 1 prices of its levels.
+				const UBDTowerData* TowerData = Tower->GetData();
+				const int32 Spent = Saved.EvolutionSpent >= 0 || TowerData == nullptr
+					? Saved.EvolutionSpent
+					: UBDGameBalanceSettings::Get().GetEvolutionSpent(TowerData->UpgradeCostBase, Saved.Level);
+				Tower->RestoreEvolution(Saved.Level, Spent);
 			}
 		}
 	}
@@ -1065,17 +1111,17 @@ void UBDPlacementComponent::ReportRefusalChange()
 
 	// One line per change of answer, not per frame: a hover across the board that stays
 	// refused for the same reason says so once.
-	// A move says what it will cost and what the score becomes, so the drop is decided knowing.
+	// A move says what it will cost and what it leaves, so the drop is decided knowing.
 	FString CostText;
 	if (bMoving)
 	{
 		const ABDMatchManager* Match = GetMatch();
 		const int32 Cost = GetMoveCost();
-		const int32 Blue = Match != nullptr ? Match->GetVotesBlue() : 0;
+		const int32 Money = Match != nullptr ? Match->GetPublicMoney() : 0;
 		CostText = IsHoveringMoveOrigin()
 			? TEXT(" (back where it was: no charge)")
-			: FString::Printf(TEXT(" (move tax %d vote(s) at %.0f%%: blue %d -> %d)"),
-				Cost, Match != nullptr ? Match->GetMoveTaxRate() * 100.0f : 0.0f, Blue, Blue - Cost);
+			: FString::Printf(TEXT(" (move tax %d public money at %.0f%%: %d -> %d)"),
+				Cost, Match != nullptr ? Match->GetMoveTaxRate() * 100.0f : 0.0f, Money, Money - Cost);
 	}
 
 	const TCHAR* Verb = bMoving ? TEXT("Move") : TEXT("Placement");
@@ -1127,7 +1173,7 @@ void UBDPlacementComponent::EvaluatePlacement()
 		{
 			CurrentRefusal = EBDPlacementRefusal::MatchRefused;
 		}
-		else if (bMoving && Match != nullptr && !IsHoveringMoveOrigin() && !Match->CanAffordVotesBlue(GetMoveCost()))
+		else if (bMoving && Match != nullptr && !IsHoveringMoveOrigin() && !Match->CanAffordPublicMoney(GetMoveCost()))
 		{
 			CurrentRefusal = EBDPlacementRefusal::CannotAffordMove;
 		}
@@ -1135,20 +1181,35 @@ void UBDPlacementComponent::EvaluatePlacement()
 		{
 			CurrentRefusal = EBDPlacementRefusal::ObjectiveMissing;
 		}
-		else if (!bMoving && Match != nullptr && Match->GetBudgetRemaining(CurrentSelection->GetPieceKind()) <= 0)
+		else if (!bMoving && !bRestoring && Match != nullptr && !Match->IsUnlocked(CurrentSelection))
 		{
-			// Out of pieces is not a phase problem, and it must not read like one.
+			// Not in the hand yet. A restore puts back what the saved match had already
+			// unlocked, on a board rewound to wave 0, so it is not asked.
+			CurrentRefusal = EBDPlacementRefusal::NotUnlocked;
+		}
+		else if (!bMoving && Match != nullptr && ABDMatchManager::HasBudgetCeiling(CurrentSelection->GetPieceKind())
+			&& Match->GetBudgetRemaining(CurrentSelection->GetPieceKind()) <= 0)
+		{
+			// Out of pieces is not a phase problem, and it must not read like one. Only a
+			// counted kind can be out: a defender is never "none left".
 			CurrentRefusal = EBDPlacementRefusal::NoBudgetLeft;
+		}
+		else if (!bMoving && Match != nullptr && CurrentSelection->GetPieceKind() == EBDPieceKind::Character
+			&& Match->GetFreeCharacterSlots() <= 0)
+		{
+			// Nor is a full board. The player needs another platform, not another phase.
+			CurrentRefusal = EBDPlacementRefusal::NoFreeSlot;
 		}
 		else if (!bMoving && Match != nullptr && !Match->CanPlace(CurrentSelection->GetPieceKind()))
 		{
 			CurrentRefusal = EBDPlacementRefusal::MatchRefused;
 		}
-		else if (!bMoving && Match != nullptr && !Match->CanAffordVotesBlue(CurrentSelection->GetBuildCost()))
+		else if (!bMoving && !bRestoring && Match != nullptr && !Match->CanAffordPublicMoney(Match->GetBuildPrice(CurrentSelection)))
 		{
-			// Paid for out of the scoreboard, like everything else: the ghost goes red
-			// before the click, so the player is never surprised by a refusal.
-			CurrentRefusal = EBDPlacementRefusal::NoVotes;
+			// Paid for in public money, like everything else: the ghost goes red before
+			// the click, so the player is never surprised by a refusal. A restore is not
+			// asked to pay: that board was bought in the match that was saved.
+			CurrentRefusal = EBDPlacementRefusal::NoFunds;
 		}
 		else if (IsObjectiveSelection())
 		{
@@ -1571,24 +1632,24 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 		// Charged before the board is touched, so a refused payment leaves everything lifted.
 		ABDMatchManager* Match = GetMatch();
 		const int32 Cost = GetMoveCost();
-		if (Match != nullptr && !Match->SpendVotesBlue(Cost))
+		if (Match != nullptr && !Match->SpendPublicMoney(Cost))
 		{
-			UE_LOG(LogBDGrid, Warning, TEXT("Move of '%s' refused: %d blue vote(s) needed."), *GetNameSafe(CurrentSelection), Cost);
+			UE_LOG(LogBDGrid, Warning, TEXT("Move of '%s' refused: %d public money needed."), *GetNameSafe(CurrentSelection), Cost);
 			return false;
 		}
 
 		if (!DropMovingPiece())
 		{
-			// The board said yes a frame ago and no now. Give the votes back and go home.
+			// The board said yes a frame ago and no now. Give the money back and go home.
 			if (Match != nullptr)
 			{
-				Match->AddVotesBlue(Cost);
+				Match->AddPublicMoney(Cost, TEXT("a move the board refused"));
 			}
 			CancelMove();
 			return false;
 		}
 
-		UE_LOG(LogBDGrid, Log, TEXT("Moved '%s' to %s for %d blue vote(s)."),
+		UE_LOG(LogBDGrid, Log, TEXT("Moved '%s' to %s for %d public money."),
 			*GetNameSafe(MovingPiece.Data),
 			IsEdgeSelection() ? *HoveredEdge.ToString() : *HoveredCell.ToString(), Cost);
 
@@ -1600,10 +1661,13 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 	}
 
 	// Charged before anything is spawned or written, so a refused budget leaves no trace.
-	// Two charges, in this order: the ceiling of the kind, then the votes. The votes go
-	// last because they are the one that can be handed straight back.
-	const int32 BuildCost = CurrentSelection->GetBuildCost();
-	if (ABDMatchManager* Match = GetMatch())
+	// Two charges, in this order: the hand of the kind, when the kind is held at all, then
+	// the public money. The money goes last because it is the one that can be handed
+	// straight back, and for a defender it is the only charge there is. The votes are
+	// never touched: they are the score.
+	ABDMatchManager* PayingMatch = GetMatch();
+	const int32 BuildCost = PayingMatch != nullptr ? PayingMatch->GetBuildPrice(CurrentSelection) : 0;
+	if (ABDMatchManager* Match = PayingMatch)
 	{
 		if (!Match->ConsumeBudget(CurrentSelection->GetPieceKind()))
 		{
@@ -1612,12 +1676,12 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 			return false;
 		}
 
-		if (!Match->SpendVotesBlue(BuildCost))
+		if (!bRestoring && !Match->SpendPublicMoney(BuildCost))
 		{
-			// The ceiling was already charged, so it goes back before leaving.
+			// The hand was already charged, so it goes back before leaving.
 			Match->RefundRemoval(CurrentSelection->GetPieceKind());
-			UE_LOG(LogBDGrid, Verbose, TEXT("Placement of '%s' refused: %d blue vote(s) needed, %d held."),
-				*GetNameSafe(CurrentSelection), BuildCost, Match->GetVotesBlue());
+			UE_LOG(LogBDGrid, Verbose, TEXT("Placement of '%s' refused: %d public money needed, %d held."),
+				*GetNameSafe(CurrentSelection), BuildCost, Match->GetPublicMoney());
 			return false;
 		}
 	}
@@ -1637,6 +1701,7 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 
 	FBDPlacedPiece Piece;
 	Piece.Data = CurrentSelection;
+	Piece.PaidCost = bRestoring ? RestoringPaidCost : BuildCost;
 
 	const bool bPlaced = IsHoveringSlot()
 		? PlaceSlotPiece(Piece)
@@ -1648,16 +1713,14 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 		return false;
 	}
 
-	// A platform carries its slots into the character ceiling: what was built can always
-	// be manned. Asked of the actors, not of the data, because the slots are authored on
-	// the Blueprint and a platform may be turned before it lands.
-	if (const int32 Slots = CountPlatformSlots(Piece))
-	{
-		if (ABDMatchManager* Match = GetMatch())
-		{
-			Match->AdjustCharacterSlots(Slots, FString::Printf(TEXT("'%s' built with %d slot(s)"), *GetNameSafe(Piece.Data), Slots));
-		}
-	}
+	// A platform built is room for characters, and a platform sold takes that room away.
+	// Nothing has to be told: the free slots are counted off the board whenever anybody
+	// asks, so what stands there is the only bookkeeping there is.
+	UE_CLOG(CountPlatformSlots(Piece) > 0, LogBDGrid, Verbose, TEXT("'%s' built with %d slot(s); %d free on the board."),
+		*GetNameSafe(Piece.Data), CountPlatformSlots(Piece), CountFreeSlots());
+	UE_CLOG(!bRestoring && PayingMatch != nullptr, LogBDMatch, Log, TEXT("BUILT '%s' on wave %d for %d public money (a candidate of this wave drops %d): %d left. Votes untouched at %d blue / %d red."),
+		*GetNameSafe(Piece.Data), PayingMatch->GetCurrentWave(), BuildCost, PayingMatch->GetCandidateFunds(PayingMatch->GetPriceWave()),
+		PayingMatch->GetPublicMoney(), PayingMatch->GetVotesBlue(), PayingMatch->GetVotesRed());
 
 	EvaluatePlacement();
 	CancelSelectionIfBudgetExhausted();
@@ -1702,8 +1765,6 @@ const FBDPlacedPiece* UBDPlacementComponent::FindPieceUnderHover() const
 
 void UBDPlacementComponent::ForgetSlotPiecesOn(const FBDPlacedPiece& PlatformPiece)
 {
-	ABDMatchManager* Match = GetMatch();
-
 	for (const AActor* Actor : PlatformPiece.Actors)
 	{
 		const UBDPlatformComponent* Platform = Actor != nullptr ? Actor->FindComponentByClass<UBDPlatformComponent>() : nullptr;
@@ -1725,14 +1786,12 @@ void UBDPlacementComponent::ForgetSlotPiecesOn(const FBDPlacedPiece& PlatformPie
 			// the platform.
 			RefundEvolution(Piece);
 			ForgetPiece(*GetGrid(), Piece);
-			if (Match != nullptr && Piece.Data != nullptr)
-			{
-				// A defender taken back is a defender held again, even when it is the platform
-				// that went. Nothing is paid for it: it was not sold, it is back in the hand.
-				Match->RefundRemoval(Piece.Data->GetPieceKind());
-				UE_LOG(LogBDMatch, Log, TEXT("'%s' back in the hand with its platform, nothing paid: %d left to place."),
-					*Piece.Data->GetName(), Match->GetBudgetRemaining(Piece.Data->GetPieceKind()));
-			}
+			// A defender that rode down with its platform is not sold, so nothing is paid
+			// for it - and there is no hand for it to go back to either: what it cost went
+			// when it was built. The player loses the passengers with the truck, which is
+			// what makes selling a full platform a decision.
+			UE_CLOG(Piece.Data != nullptr, LogBDMatch, Log, TEXT("'%s' went down with its platform, nothing paid back."),
+				*GetNameSafe(Piece.Data));
 		}
 	}
 }
@@ -1855,6 +1914,12 @@ const UBDPlaceableData* UBDPlacementComponent::FindPlaceableOfActor(const AActor
 	return Piece != nullptr ? Piece->Data.Get() : nullptr;
 }
 
+int32 UBDPlacementComponent::FindPaidCostOfActor(const AActor* Actor) const
+{
+	const FBDPlacedPiece* Piece = FindPieceOfActor(Actor);
+	return Piece != nullptr ? Piece->PaidCost : 0;
+}
+
 bool UBDPlacementComponent::TrySellActor(AActor* Actor)
 {
 	const FBDPlacedPiece* Found = FindPieceOfActor(Actor);
@@ -1881,10 +1946,14 @@ bool UBDPlacementComponent::TrySellActor(AActor* Actor)
 void UBDPlacementComponent::RefundRefusedPlacement(const int32 BuildCost)
 {
 	// Charged before the board was touched; if the board then refused, both charges come
-	// straight back. Never a partial payment for a piece that does not exist.
+	// straight back. Never a partial payment for a piece that does not exist - and never
+	// a payment for one that was never charged, which is what a restore is.
 	if (ABDMatchManager* Match = GetMatch())
 	{
-		Match->AddVotesBlue(BuildCost);
+		if (!bRestoring)
+		{
+			Match->AddPublicMoney(BuildCost, TEXT("a placement the board refused"));
+		}
 		if (CurrentSelection != nullptr)
 		{
 			Match->RefundRemoval(CurrentSelection->GetPieceKind());
@@ -1917,8 +1986,8 @@ int32 UBDPlacementComponent::RefundEvolution(const FBDPlacedPiece& Piece)
 
 	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
 	const int32 Level = Tower->GetTowerLevel();
-	const int32 Spent = Balance.GetEvolutionSpent(TowerData->UpgradeCostBase, Level);
-	const int32 Back = Balance.GetEvolutionRefund(TowerData->UpgradeCostBase, Level);
+	const int32 Spent = Tower->GetEvolutionSpent();
+	const int32 Back = Balance.GetEvolutionRefund(Spent);
 	if (Back <= 0)
 	{
 		return 0;
@@ -1963,9 +2032,9 @@ bool UBDPlacementComponent::SellPiece(const FBDPlacedPiece& Piece)
 	// ForgetPiece, on the same rule.
 	const int32 EvolutionBack = RefundEvolution(Piece);
 
-	// And its slots leave the character ceiling with it, counted now while the actors are
-	// still there. The passengers are handed back to the hand inside ForgetPiece, so a
-	// full platform nets out to zero and a half-empty one gives back only what stood on it.
+	// Its slots leave the board with it, and nothing has to be told: the free ones are
+	// counted off the platforms still standing. Read now only so the log can say what
+	// the sale took away with it.
 	const int32 SlotsLeaving = CountPlatformSlots(Piece);
 
 	// The platform's passengers come off first, inside ForgetPiece, and go back to the
@@ -1975,18 +2044,15 @@ bool UBDPlacementComponent::SellPiece(const FBDPlacedPiece& Piece)
 	if (Match != nullptr)
 	{
 		Match->RefundRemoval(Kind);
-		if (SlotsLeaving > 0)
-		{
-			Match->AdjustCharacterSlots(-SlotsLeaving, FString::Printf(TEXT("'%s' sold with %d slot(s)"), *GetNameSafe(Piece.Data), SlotsLeaving));
-		}
+		UE_CLOG(SlotsLeaving > 0, LogBDGrid, Verbose, TEXT("'%s' sold with %d slot(s); %d free on the board."),
+			*GetNameSafe(Piece.Data), SlotsLeaving, CountFreeSlots());
 
-		// Selling pays part of the build cost back in blue votes, which is the score: a
-		// piece sold is a piece that lifts the scoreboard, on purpose.
-		const int32 BuildCost = Piece.Data != nullptr ? Piece.Data->GetBuildCost() : 0;
-		const int32 Refund = Match->RefundSale(Kind, BuildCost);
-		UE_LOG(LogBDMatch, Log, TEXT("Sold '%s' at %s for %d blue vote(s) (%.0f%% of %d) and %d public money back from its levels: now %d blue / %d red, %d public money."),
-			*GetNameSafe(Piece.Data), *Where, Refund, Match->GetSellRefundRatio(Kind) * 100.0f, BuildCost, EvolutionBack,
-			Match->GetVotesBlue(), Match->GetVotesRed(), Match->GetPublicMoney());
+		// Selling pays back a share of what the piece was bought for, in public money. Never
+		// of today's price, and never in votes: the count is the score and nothing else.
+		const int32 Refund = Match->RefundSale(Kind, Piece.PaidCost);
+		UE_LOG(LogBDMatch, Log, TEXT("Sold '%s' at %s for %d public money (%.0f%% of the %d paid) and %d back from its levels: now %d public money, votes untouched at %d blue / %d red."),
+			*GetNameSafe(Piece.Data), *Where, Refund, Match->GetSellRefundRatio(Kind) * 100.0f, Piece.PaidCost, EvolutionBack,
+			Match->GetPublicMoney(), Match->GetVotesBlue(), Match->GetVotesRed());
 	}
 	else
 	{
@@ -2019,7 +2085,7 @@ int32 UBDPlacementComponent::GetMoveCost() const
 		return 0;
 	}
 
-	return Match->GetMoveCost(MovingPiece.Data->GetBuildCost());
+	return Match->GetMoveCost(MovingPiece.PaidCost);
 }
 
 bool UBDPlacementComponent::IsHoveringMoveOrigin() const
@@ -2200,7 +2266,7 @@ bool UBDPlacementComponent::TryBeginMoveAtHovered()
 	}
 	EvaluatePlacement();
 
-	UE_LOG(LogBDGrid, Log, TEXT("Lifted '%s' from %s%s; move tax %d blue vote(s) at %.0f%%."),
+	UE_LOG(LogBDGrid, Log, TEXT("Lifted '%s' from %s%s; move tax %d public money at %.0f%%."),
 		*GetNameSafe(MovingPiece.Data),
 		MovingPiece.Edges.Num() > 0 ? *MoveOriginEdge.ToString() : *MoveOriginCell.ToString(),
 		MoveOriginSlot != INDEX_NONE ? *FString::Printf(TEXT(" slot %d"), MoveOriginSlot) : TEXT(""),

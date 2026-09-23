@@ -49,6 +49,8 @@ namespace BDHUDPrivate
 	static constexpr int32 ScoreFontSize = 28;
 	static constexpr int32 LineFontSize = 18;
 	static constexpr int32 SmallFontSize = 14;
+	/** The purse is the one number the player spends, so it reads first on its row. */
+	static constexpr int32 MintFontSize = 22;
 	static constexpr int32 NoticeFontSize = 26;
 	static constexpr float Margin = 16.0f;
 	static constexpr float PanelWidth = 320.0f;
@@ -85,7 +87,8 @@ namespace BDHUDPrivate
 		TEXT("Refusal.None"), TEXT("Refusal.NoSelection"), TEXT("Refusal.NotHoveringGrid"), TEXT("Refusal.MatchRefused"),
 		TEXT("Refusal.NoBudgetLeft"), TEXT("Refusal.OffGrid"), TEXT("Refusal.CellTaken"), TEXT("Refusal.EdgeOnBorder"),
 		TEXT("Refusal.EdgeTaken"), TEXT("Refusal.WouldBlockPath"), TEXT("Refusal.ObjectiveMissing"), TEXT("Refusal.ObjectiveOutOfZone"),
-		TEXT("Refusal.SlotTaken"), TEXT("Refusal.TowerCannotGoOnSlot"), TEXT("Refusal.CharacterNeedsPlatform"), TEXT("Refusal.CannotAffordMove"), TEXT("Refusal.NoVotes") };
+		TEXT("Refusal.SlotTaken"), TEXT("Refusal.TowerCannotGoOnSlot"), TEXT("Refusal.CharacterNeedsPlatform"), TEXT("Refusal.CannotAffordMove"),
+		TEXT("Refusal.NoFunds"), TEXT("Refusal.NoFreeSlot"), TEXT("Refusal.NotUnlocked") };
 }
 
 //~ Lookups -------------------------------------------------------------------------
@@ -195,28 +198,45 @@ void UBDHUDWidget::BuildTree()
 	UVerticalBoxSlot* NullRowSlot = Top->AddChildToVerticalBox(NullRow);
 	NullRowSlot->SetHorizontalAlignment(HAlign_Center);
 
-	// The money, under the votes and never mixed with them: the thief on the left with
-	// the bribe he has just been relieved of, an arrow, the mint on the right with the
-	// public money that pays for evolution. The thief's is muted because nothing on it
-	// can be spent; only what has crossed to the mint is real.
+	// What is in hand, on one row under the count and never mixed with it. The mint's
+	// public money is the one thing the player spends - every piece, level and move - so
+	// it leads the row, bigger than the rest. The blue votes come after it, small and
+	// muted, labelled as the score they are: they are never spent, and the count bar above
+	// is where the election is read.
+	//
+	// Ahead of the mint, and only while something is crossing, the thief with the bribe he
+	// has just been relieved of and an arrow into the mint. That group is the animation of
+	// the gain, not another resource - nothing held by the thief can be spent, which is why
+	// it leaves the row entirely the moment the bag is empty.
 	UHorizontalBox* MoneyRow = MakeRow();
+	VoteMeterIconBox = MakePicture(VoteMeterIcon, UISettings.ScoreUrnIcon.LoadSynchronous(), ScoreIconSize * 0.8f);
+	VoteMeter = MakeText(SmallFontSize, ColorMuted);
 	BribeIconBox = MakePicture(BribeIcon, UISettings.BribeIcon.LoadSynchronous(), ScoreIconSize * 0.8f);
 	BribeScore = MakeText(LineFontSize, ColorMuted);
 	MoneyArrow = MakeText(LineFontSize, ColorMuted);
 	MoneyArrow->SetText(FText::FromString(TEXT("→")));
 	MintIconBox = MakePicture(MintIcon, UISettings.MintIcon.LoadSynchronous(), ScoreIconSize * 0.8f);
-	MintScore = MakeText(LineFontSize, ColorText);
-	const auto AddMoneyPart = [MoneyRow](UWidget* Widget, const float LeftPad)
+	MintScore = MakeText(MintFontSize, ColorText);
+	const auto AddPart = [](UHorizontalBox* Row, UWidget* Widget, const float LeftPad)
 	{
-		UHorizontalBoxSlot* PartSlot = MoneyRow->AddChildToHorizontalBox(Widget);
+		UHorizontalBoxSlot* PartSlot = Row->AddChildToHorizontalBox(Widget);
 		PartSlot->SetVerticalAlignment(VAlign_Center);
 		PartSlot->SetPadding(FMargin(LeftPad, 0.0f, 0.0f, 0.0f));
 	};
-	AddMoneyPart(BribeIconBox, 0.0f);
-	AddMoneyPart(BribeScore, 6.0f);
-	AddMoneyPart(MoneyArrow, 12.0f);
-	AddMoneyPart(MintIconBox, 12.0f);
-	AddMoneyPart(MintScore, 6.0f);
+	// The thief's own little row, so showing and hiding him is one call and the meters
+	// close up behind him instead of leaving a hole.
+	BribeGroup = MakeRow();
+	AddPart(BribeGroup, BribeIconBox, 0.0f);
+	AddPart(BribeGroup, BribeScore, 6.0f);
+	AddPart(BribeGroup, MoneyArrow, 8.0f);
+	BribeGroup->SetVisibility(ESlateVisibility::Collapsed);
+	AddPart(MoneyRow, BribeGroup, 0.0f);
+
+	AddPart(MoneyRow, MintIconBox, 8.0f);
+	AddPart(MoneyRow, MintScore, 6.0f);
+
+	AddPart(MoneyRow, VoteMeterIconBox, 28.0f);
+	AddPart(MoneyRow, VoteMeter, 6.0f);
 	UVerticalBoxSlot* MoneyRowSlot = Top->AddChildToVerticalBox(MoneyRow);
 	MoneyRowSlot->SetHorizontalAlignment(HAlign_Center);
 	MoneyRowSlot->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 0.0f));
@@ -297,13 +317,6 @@ void UBDHUDWidget::BuildTree()
 	UVerticalBoxSlot* FrozenSlot = CandidateColumn->AddChildToVerticalBox(FrozenLine);
 	FrozenSlot->SetHorizontalAlignment(HAlign_Center);
 
-	RewardNotice = MakeText(LineFontSize, ColorBlue);
-	RewardNotice->SetJustification(ETextJustify::Center);
-	RewardNotice->SetVisibility(ESlateVisibility::Collapsed);
-	UVerticalBoxSlot* RewardSlot = CandidateColumn->AddChildToVerticalBox(RewardNotice);
-	RewardSlot->SetHorizontalAlignment(HAlign_Center);
-	RewardSlot->SetPadding(FMargin(0.0f, 4.0f));
-
 	UVerticalBoxSlot* CandidateColumnSlot = Top->AddChildToVerticalBox(CandidateColumn);
 	CandidateColumnSlot->SetHorizontalAlignment(HAlign_Center);
 	CandidateColumnSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 0.0f));
@@ -351,9 +364,9 @@ void UBDHUDWidget::BuildTree()
 	PlacementRefusal = MakeText(SmallFontSize, ColorRed);
 	PlacementRefusal->SetAutoWrapText(true);
 	PlacementColumn->AddChildToVerticalBox(PlacementRefusal);
-	MoveResult = MakeText(SmallFontSize);
-	MoveResult->SetAutoWrapText(true);
-	PlacementColumn->AddChildToVerticalBox(MoveResult);
+	CostResult = MakeText(SmallFontSize);
+	CostResult->SetAutoWrapText(true);
+	PlacementColumn->AddChildToVerticalBox(CostResult);
 	UButton* CancelButton = MakeButton(CancelLabel, SmallFontSize);
 	CancelButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleCancelSelection);
 	UVerticalBoxSlot* CancelSlot = PlacementColumn->AddChildToVerticalBox(CancelButton);
@@ -533,7 +546,7 @@ USizeBox* UBDHUDWidget::MakePicture(TObjectPtr<UImage>& OutImage, UTexture2D* Te
 	return Box;
 }
 
-UButton* UBDHUDWidget::MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutCount)
+UButton* UBDHUDWidget::MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutInfo)
 {
 	using namespace BDHUDPrivate;
 
@@ -558,9 +571,12 @@ UButton* UBDHUDWidget::MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox
 	OutLabel = MakeText(SmallFontSize, ColorPanelDark);
 	OutLabel->SetJustification(ETextJustify::Center);
 	Column->AddChildToVerticalBox(OutLabel);
-	OutCount = MakeText(SmallFontSize, ColorPanelDark);
-	OutCount->SetJustification(ETextJustify::Center);
-	Column->AddChildToVerticalBox(OutCount);
+	// The info line: what is left and what it costs, or why the piece cannot be taken.
+	// It wraps, because a reason is words and a count is a digit.
+	OutInfo = MakeText(SmallFontSize, ColorPanelDark);
+	OutInfo->SetJustification(ETextJustify::Center);
+	OutInfo->SetAutoWrapText(true);
+	Column->AddChildToVerticalBox(OutInfo);
 
 	Button->AddChild(Column);
 	return Button;
@@ -598,6 +614,8 @@ void UBDHUDWidget::ApplyResponsiveSizes()
 	NullIconBox->SetWidthOverride(ScoreIcon * 0.6f);
 	NullIconBox->SetHeightOverride(ScoreIcon * 0.6f);
 	const float MoneyIcon = FMath::Max(16.0f, Size.Y * Settings.MoneyIconHeightFraction);
+	VoteMeterIconBox->SetWidthOverride(MoneyIcon);
+	VoteMeterIconBox->SetHeightOverride(MoneyIcon);
 	BribeIconBox->SetWidthOverride(MoneyIcon);
 	BribeIconBox->SetHeightOverride(MoneyIcon);
 	MintIconBox->SetWidthOverride(MoneyIcon);
@@ -648,7 +666,6 @@ void UBDHUDWidget::NativeDestruct()
 		Match->OnMoneyChanged.Remove(MoneyChangedHandle);
 		Match->OnPhaseChanged.Remove(PhaseChangedHandle);
 		Match->OnWaveStarted.Remove(WaveStartedHandle);
-		Match->OnBudgetGranted.Remove(BudgetGrantedHandle);
 	}
 	BoundMatch.Reset();
 	if (UBDObjectiveSubsystem* Objectives = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDObjectiveSubsystem>() : nullptr)
@@ -675,7 +692,6 @@ void UBDHUDWidget::BindMatch()
 
 	VotesChangedHandle = Match->OnVotesChanged.AddUObject(this, &UBDHUDWidget::HandleVotesChanged);
 	MoneyChangedHandle = Match->OnMoneyChanged.AddUObject(this, &UBDHUDWidget::HandleMoneyChanged);
-	BudgetGrantedHandle = Match->OnBudgetGranted.AddUObject(this, &UBDHUDWidget::HandleBudgetGranted);
 	LastBlueVotes = Match->GetVotesBlue();
 	LastRedVotes = Match->GetVotesRed();
 	LastBribe = Match->GetBribeHeld();
@@ -735,15 +751,6 @@ void UBDHUDWidget::HandleMoneyChanged(const int32 Bribe, const int32 PublicMoney
 	LastPublicMoney = PublicMoney;
 
 	UpdateMoneyCounters();
-}
-
-void UBDHUDWidget::HandleBudgetGranted(const int32 Towers, const int32 Characters)
-{
-	FFormatNamedArguments Args;
-	Args.Add(TEXT("Towers"), Towers);
-	Args.Add(TEXT("Characters"), Characters);
-	RewardNotice->SetText(BDLoc::Format(TEXT("HUD.Reward.Budget"), Args));
-	RewardNoticeRemaining = UBDUISettings::Get().CandidateNoticeSeconds;
 }
 
 //~ Numbers from the urn -------------------------------------------------------------
@@ -913,7 +920,11 @@ void UBDHUDWidget::UpdateVotePulses(const float RealDeltaSeconds)
 	BribePulse.Advance(RealDeltaSeconds, VotePulseSeconds);
 	MintPulse.Advance(RealDeltaSeconds, VotePulseSeconds);
 
-	if (bBlueWas || BluePulse.bRunning) { ApplyPulse(BlueIconBox, BlueScore, BluePulse); }
+	if (bBlueWas || BluePulse.bRunning)
+	{
+		ApplyPulse(BlueIconBox, BlueScore, BluePulse);
+		ApplyPulse(VoteMeterIconBox, VoteMeter, BluePulse);
+	}
 	if (bRedWas || RedPulse.bRunning) { ApplyPulse(RedIconBox, RedScore, RedPulse); }
 	if (bBribeWas || BribePulse.bRunning) { ApplyPulse(BribeIconBox, BribeScore, BribePulse); }
 	if (bMintWas || MintPulse.bRunning) { ApplyPulse(MintIconBox, MintScore, MintPulse); }
@@ -988,6 +999,9 @@ void UBDHUDWidget::UpdateScoreboard()
 	Args[TEXT("Votes")] = FFormatArgumentValue(Match != nullptr ? Match->GetVotesNull() : 0);
 	NullScore->SetText(BDLoc::Format(TEXT("HUD.Score.Null"), Args));
 	UpdateScoreBar();
+
+	// The vote meter is the blue count read as a balance, so it moves with it.
+	UpdateMoneyCounters();
 }
 
 void UBDHUDWidget::UpdateMoneyCounters()
@@ -995,19 +1009,25 @@ void UBDHUDWidget::UpdateMoneyCounters()
 	using namespace BDHUDPrivate;
 
 	const ABDMatchManager* Match = GetMatch();
+	const int32 Votes = Match != nullptr ? Match->GetVotesBlue() : 0;
 	const int32 Bribe = Match != nullptr ? Match->GetBribeHeld() : 0;
 	const int32 Money = Match != nullptr ? Match->GetPublicMoney() : 0;
 
+	// The blue count said again beside the purse, as the score it is: nothing spends it,
+	// and saying so on the row is what stops the player reading it as money.
 	FFormatNamedArguments Args;
-	Args.Add(TEXT("Amount"), Bribe);
+	Args.Add(TEXT("Amount"), Votes);
+	VoteMeter->SetText(BDLoc::Format(TEXT("HUD.Money.Votes"), Args));
+	Args[TEXT("Amount")] = FFormatArgumentValue(Bribe);
 	BribeScore->SetText(BDLoc::Format(TEXT("HUD.Money.Bribe"), Args));
 	Args[TEXT("Amount")] = FFormatArgumentValue(Money);
 	MintScore->SetText(BDLoc::Format(TEXT("HUD.Money.Public"), Args));
 
-	// The arrow only means something while something is crossing: lit with the thief
-	// holding anything, dark the rest of the time.
-	MoneyArrow->SetColorAndOpacity(FSlateColor(Bribe > 0 ? ColorBlue : ColorPanel));
-	BribeScore->SetColorAndOpacity(FSlateColor(Bribe > 0 ? ColorText : ColorMuted));
+	// The thief is in the row only while he is carrying: an empty bag between the two
+	// meters would read as a third balance the player could spend, and it is not one.
+	BribeGroup->SetVisibility(Bribe > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+	MoneyArrow->SetColorAndOpacity(FSlateColor(ColorBlue));
+	BribeScore->SetColorAndOpacity(FSlateColor(ColorText));
 }
 
 void UBDHUDWidget::UpdateScoreBar()
@@ -1184,10 +1204,6 @@ void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 	}
 	CandidateBox->SetVisibility(Row > 0 ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 
-	// The reward notice, for a moment after a scheduled candidate falls.
-	RewardNoticeRemaining = FMath::Max(0.0f, RewardNoticeRemaining - RealDeltaSeconds);
-	RewardNotice->SetVisibility(RewardNoticeRemaining > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
-
 	if (Candidates != nullptr && Candidates->IsReturnActive())
 	{
 		FFormatNamedArguments Args;
@@ -1203,30 +1219,33 @@ void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 
 //~ Panels ---------------------------------------------------------------------------
 
-FText UBDHUDWidget::ResultText(const int32 Delta, bool& bOutInverts) const
+FText UBDHUDWidget::ResultText(const int32 Delta, bool& bOutShort) const
 {
 	const ABDMatchManager* Match = GetMatch();
-	bOutInverts = false;
+	bOutShort = false;
 	if (Match == nullptr)
 	{
 		return FText::GetEmpty();
 	}
 
-	const int32 Blue = Match->GetVotesBlue();
-	bOutInverts = Delta < 0 && Match->WouldInvertScoreboard(-Delta);
+	// The purse, not the count: nothing the player buys or sells moves the votes, so the
+	// line that used to warn about the count turning now says what is left to spend.
+	const int32 Money = Match->GetPublicMoney();
+	bOutShort = Money + Delta < 0;
 
 	FFormatNamedArguments Args;
-	Args.Add(TEXT("Blue"), Blue);
-	Args.Add(TEXT("After"), Blue + Delta);
-	Args.Add(TEXT("Red"), Match->GetVotesRed());
-	return BDLoc::Format(bOutInverts ? TEXT("HUD.Result.Inverts") : TEXT("HUD.Result"), Args);
+	Args.Add(TEXT("Money"), Money);
+	Args.Add(TEXT("After"), Money + Delta);
+	Args.Add(TEXT("Cost"), -Delta);
+	Args.Add(TEXT("Missing"), -(Money + Delta));
+	return BDLoc::Format(bOutShort ? TEXT("HUD.Result.MoneyShort") : TEXT("HUD.Result.Money"), Args);
 }
 
 void UBDHUDWidget::SetResultLine(UTextBlock* Line, const int32 Delta)
 {
-	bool bInverts = false;
-	Line->SetText(ResultText(Delta, bInverts));
-	Line->SetColorAndOpacity(FSlateColor(bInverts ? ColorRed : ColorMuted));
+	bool bShort = false;
+	Line->SetText(ResultText(Delta, bShort));
+	Line->SetColorAndOpacity(FSlateColor(bShort ? ColorRed : ColorMuted));
 }
 
 void UBDHUDWidget::UpdateDefenderPanel()
@@ -1292,21 +1311,26 @@ void UBDHUDWidget::UpdateDefenderPanel()
 			FFormatNamedArguments MoneyArgs;
 			MoneyArgs.Add(TEXT("Money"), MoneyHeld);
 			MoneyArgs.Add(TEXT("After"), MoneyHeld - Cost);
-			UpgradeResult->SetText(BDLoc::Format(TEXT("HUD.Result.Money"), MoneyArgs));
-			UpgradeResult->SetColorAndOpacity(FSlateColor(Cost > MoneyHeld ? ColorRed : ColorMuted));
+			MoneyArgs.Add(TEXT("Cost"), Cost);
+			MoneyArgs.Add(TEXT("Missing"), Cost - MoneyHeld);
+			// Short of money, the line says so and by how much: a balance going negative in
+			// red is a sum to work out, and the button beside it is already dead.
+			const bool bShort = Cost > MoneyHeld;
+			UpgradeResult->SetText(BDLoc::Format(bShort ? TEXT("HUD.Result.MoneyShort") : TEXT("HUD.Result.Money"), MoneyArgs));
+			UpgradeResult->SetColorAndOpacity(FSlateColor(bShort ? ColorRed : ColorMuted));
 		}
 	}
 	UpgradeButton->SetIsEnabled(bCanUpgrade);
 
-	// Sell: the votes of the build cost, plus the share of the public money its levels
-	// cost, and the scoreboard the votes leave.
+	// Sell: a share of what it was bought for, plus the share of what its levels cost,
+	// all of it public money, and the balance it leaves.
 	const UBDPlaceableData* Placeable = Placement->FindPlaceableOfActor(Tower);
-	const int32 Refund = Placeable != nullptr ? Match->GetSellRefund(Placeable->GetPieceKind(), Placeable->GetBuildCost()) : 0;
-	const int32 MoneyBack = Balance.GetEvolutionRefund(Data->UpgradeCostBase, Tower->GetTowerLevel());
+	const int32 Refund = Placeable != nullptr ? Match->GetSellRefund(Placeable->GetPieceKind(), Placement->FindPaidCostOfActor(Tower)) : 0;
+	const int32 MoneyBack = Balance.GetEvolutionRefund(Tower->GetEvolutionSpent());
 	Args.Add(TEXT("Refund"), Refund);
 	Args.Add(TEXT("Money"), MoneyBack);
 	SellLabel->SetText(BDLoc::Format(MoneyBack > 0 ? TEXT("HUD.Defender.SellEvolved") : TEXT("HUD.Defender.Sell"), Args));
-	SetResultLine(SellResult, Refund);
+	SetResultLine(SellResult, Refund + MoneyBack);
 	SellButton->SetIsEnabled(Placeable != nullptr && Match->CanRemove(Placeable->GetPieceKind()));
 }
 
@@ -1333,7 +1357,7 @@ void UBDHUDWidget::UpdatePlacementPanel()
 
 	FFormatNamedArguments Args;
 	Args.Add(TEXT("Name"), BDLoc::PieceName(Selection));
-	Args.Add(TEXT("Cost"), Selection->GetBuildCost());
+	Args.Add(TEXT("Cost"), Match != nullptr ? Match->GetBuildPrice(Selection) : Selection->GetBuildCost());
 	if (Selection->bOccupiesEdge)
 	{
 		Args.Add(TEXT("Footprint"), FText::AsNumber(FMath::Max(1, Selection->SegmentLength)));
@@ -1358,21 +1382,24 @@ void UBDHUDWidget::UpdatePlacementPanel()
 		PlacementRefusal->SetText(RefusalText(Refusal));
 	}
 
-	if (Placement->IsMoving() && Match != nullptr)
+	// What it costs and the public money it would leave, before the click. A move was
+	// already priced here; a build was not, and a build is the one the player makes over
+	// and over.
+	if (Match != nullptr)
 	{
-		// The cost of the drop and the scoreboard it leaves, on one line.
-		const int32 Cost = Placement->GetMoveCost();
-		bool bInverts = false;
-		FFormatNamedArguments MoveArgs;
-		MoveArgs.Add(TEXT("Cost"), Cost);
-		MoveArgs.Add(TEXT("Result"), ResultText(-Cost, bInverts));
-		MoveResult->SetText(BDLoc::Format(TEXT("HUD.Placement.MoveCost"), MoveArgs));
-		MoveResult->SetColorAndOpacity(FSlateColor(bInverts ? ColorRed : ColorMuted));
-		MoveResult->SetVisibility(ESlateVisibility::Visible);
+		const bool bMoving = Placement->IsMoving();
+		const int32 Cost = bMoving ? Placement->GetMoveCost() : Match->GetBuildPrice(Selection);
+		bool bShort = false;
+		FFormatNamedArguments CostArgs;
+		CostArgs.Add(TEXT("Cost"), Cost);
+		CostArgs.Add(TEXT("Result"), ResultText(-Cost, bShort));
+		CostResult->SetText(BDLoc::Format(bMoving ? TEXT("HUD.Placement.MoveCost") : TEXT("HUD.Placement.BuildCost"), CostArgs));
+		CostResult->SetColorAndOpacity(FSlateColor(bShort ? ColorRed : ColorMuted));
+		CostResult->SetVisibility(ESlateVisibility::Visible);
 	}
 	else
 	{
-		MoveResult->SetVisibility(ESlateVisibility::Collapsed);
+		CostResult->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }
 
@@ -1481,6 +1508,96 @@ void UBDHUDWidget::UpdateSaveButton()
 
 //~ Build panel ---------------------------------------------------------------------
 
+FText UBDHUDWidget::BuildCountText(const EBDPieceKind Kind) const
+{
+	const ABDMatchManager* Match = GetMatch();
+	if (Match == nullptr)
+	{
+		return FText::GetEmpty();
+	}
+
+	// What the number means depends on the kind: the maze is a hand and counts down, a
+	// character reads the slots still free on the board, and a ground tower is not
+	// counted at all - only the votes and the grid stop it, so it has no number to give.
+	if (ABDMatchManager::HasBudgetCeiling(Kind))
+	{
+		return FText::AsNumber(Match->GetBudgetRemaining(Kind));
+	}
+	return Kind == EBDPieceKind::Character ? FText::AsNumber(Match->GetFreeCharacterSlots()) : FText::GetEmpty();
+}
+
+EBDPlacementRefusal UBDHUDWidget::BuildRefusal(const UBDPlaceableData* Data) const
+{
+	const ABDMatchManager* Match = GetMatch();
+	if (Data == nullptr || Match == nullptr)
+	{
+		return EBDPlacementRefusal::MatchRefused;
+	}
+
+	// Asked in the order the player would hit them, and the money last: running out of
+	// public money is the ordinary answer, so the unusual ones have to be able to speak
+	// first. A piece still locked says so before anything else: nothing else matters yet.
+	const EBDPieceKind Kind = Data->GetPieceKind();
+	if (!Match->IsUnlocked(Data))
+	{
+		return EBDPlacementRefusal::NotUnlocked;
+	}
+	if (ABDMatchManager::HasBudgetCeiling(Kind) && Match->GetBudgetRemaining(Kind) <= 0)
+	{
+		return EBDPlacementRefusal::NoBudgetLeft;
+	}
+	if (Kind == EBDPieceKind::Character && Match->GetFreeCharacterSlots() <= 0)
+	{
+		return EBDPlacementRefusal::NoFreeSlot;
+	}
+	if (!Match->CanPlace(Kind))
+	{
+		return EBDPlacementRefusal::MatchRefused;
+	}
+	if (!Match->CanAffordPublicMoney(Match->GetBuildPrice(Data)))
+	{
+		return EBDPlacementRefusal::NoFunds;
+	}
+	return EBDPlacementRefusal::None;
+}
+
+FText UBDHUDWidget::BuildInfoText(const UBDPlaceableData* Data, const EBDPlacementRefusal Refusal) const
+{
+	if (Data == nullptr)
+	{
+		return FText::GetEmpty();
+	}
+
+	// The reason wins the line whenever there is one. A greyed button with a number under
+	// it still says nothing about why it is grey, and that silence is the whole complaint.
+	// A locked piece says when it comes, and short of money says the price, so the player
+	// knows what they are waiting for.
+	const ABDMatchManager* Match = GetMatch();
+	FFormatNamedArguments Args;
+	Args.Add(TEXT("Cost"), Match != nullptr ? Match->GetBuildPrice(Data) : Data->GetBuildCost());
+	if (Refusal == EBDPlacementRefusal::NotUnlocked)
+	{
+		Args.Add(TEXT("Wave"), ABDMatchManager::GetUnlockWave(Data));
+		return BDLoc::Format(TEXT("HUD.Build.Locked"), Args);
+	}
+	if (Refusal == EBDPlacementRefusal::NoFunds)
+	{
+		return BDLoc::Format(TEXT("HUD.Build.NoFunds"), Args);
+	}
+	if (Refusal != EBDPlacementRefusal::None)
+	{
+		return RefusalText(Refusal);
+	}
+
+	const FText Left = BuildCountText(Data->GetPieceKind());
+	if (Left.IsEmpty())
+	{
+		return BDLoc::Format(TEXT("HUD.Build.Cost"), Args);
+	}
+	Args.Add(TEXT("Left"), Left);
+	return BDLoc::Format(TEXT("HUD.Build.Info"), Args);
+}
+
 void UBDHUDWidget::UpdateBuildPanel()
 {
 	using namespace BDHUDPrivate;
@@ -1504,9 +1621,12 @@ void UBDHUDWidget::UpdateBuildPanel()
 		const bool bUrnHeld = Held != nullptr && Held == Urn;
 		UrnButton->SetBackgroundColor(bUrnHeld ? ColorButton : ColorButtonIdle);
 		UrnLabel->SetColorAndOpacity(FSlateColor(bUrnHeld ? ColorPanelDark : ColorText));
-		UrnCount->SetColorAndOpacity(FSlateColor(bUrnHeld ? ColorPanelDark : ColorMuted));
-		UrnCount->SetText(FText::AsNumber(Match != nullptr ? Match->GetObjectivesRemaining() : 0));
-		UrnButton->SetIsEnabled(!bOver);
+		const EBDPlacementRefusal UrnRefusal = bOver ? EBDPlacementRefusal::MatchRefused : BuildRefusal(Urn);
+		const bool bUrnAvailable = UrnRefusal == EBDPlacementRefusal::None;
+		UrnCount->SetColorAndOpacity(FSlateColor(
+			bUrnHeld ? ColorPanelDark : (bUrnAvailable ? ColorMuted : ColorRed)));
+		UrnCount->SetText(BuildInfoText(Urn, UrnRefusal));
+		UrnButton->SetIsEnabled(bUrnAvailable);
 	}
 
 	for (int32 Index = 0; Index < PaletteData.Num(); ++Index)
@@ -1520,10 +1640,15 @@ void UBDHUDWidget::UpdateBuildPanel()
 		const bool bHeld = Held == Data;
 		BuildButtons[Index]->SetBackgroundColor(bHeld ? ColorButton : ColorButtonIdle);
 		BuildLabels[Index]->SetColorAndOpacity(FSlateColor(bHeld ? ColorPanelDark : ColorText));
-		BuildCounts[Index]->SetColorAndOpacity(FSlateColor(bHeld ? ColorPanelDark : ColorMuted));
-		BuildCounts[Index]->SetText(FText::AsNumber(Match != nullptr ? Match->GetBudgetRemaining(Kind) : 0));
-		// Placeable now, by the match's rules for the kind: the urn first, dividers only before wave 1.
-		BuildButtons[Index]->SetIsEnabled(!bOver && Match != nullptr && Match->CanPlace(Kind));
+		// What is left and what it costs, or - when the piece cannot be taken - the reason,
+		// in red. A button that only greys out is the thing the player complained about:
+		// whatever stops the piece is now written under it.
+		const EBDPlacementRefusal Refusal = bOver ? EBDPlacementRefusal::MatchRefused : BuildRefusal(Data);
+		const bool bAvailable = Refusal == EBDPlacementRefusal::None;
+		BuildCounts[Index]->SetColorAndOpacity(FSlateColor(
+			bHeld ? ColorPanelDark : (bAvailable ? ColorMuted : ColorRed)));
+		BuildCounts[Index]->SetText(BuildInfoText(Data, Refusal));
+		BuildButtons[Index]->SetIsEnabled(bAvailable);
 	}
 }
 

@@ -56,6 +56,14 @@ struct FBDPlacedPiece
 	UPROPERTY()
 	int32 SlotIndex = INDEX_NONE;
 
+	/**
+	 * Public money the piece was bought for. Prices climb with the waves, so what a sale
+	 * or a move is worth is a share of this, never of today's price: a piece bought early
+	 * and sold late must not turn a profit.
+	 */
+	UPROPERTY()
+	int32 PaidCost = 0;
+
 	bool IsOnSlot() const { return SlotIndex != INDEX_NONE; }
 };
 
@@ -96,10 +104,14 @@ enum class EBDPlacementRefusal : uint8
 	TowerCannotGoOnSlot,
 	/** The held defender is a character and the cursor is over a ground cell: characters stand on platforms. */
 	CharacterNeedsPlatform,
-	/** Moving the lifted piece here would cost more blue votes than the player has. */
+	/** Moving the lifted piece here would cost more public money than the player has. */
 	CannotAffordMove,
-	/** The piece costs more blue votes than the player holds. Building is paid for out of the score. */
-	NoVotes
+	/** The piece costs more public money than the player holds. */
+	NoFunds,
+	/** Every platform slot on the board is taken: a character has nowhere left to stand. */
+	NoFreeSlot,
+	/** The piece has not come into the hand yet: it unlocks on a later wave. */
+	NotUnlocked
 };
 
 /** Broadcast whenever the hovered cell or its validity changes. */
@@ -124,8 +136,8 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnHoverChanged, const FBDCellCoord& /*Ce
  *
  * Between waves a placed piece can be picked up and put elsewhere. The piece is lifted
  * off the board and held exactly like a fresh selection, so every rule above applies to
- * the destination; dropping it charges the match a share of its build cost in blue
- * votes, and an invalid or cancelled drop puts it back where it was for nothing.
+ * the destination; dropping it charges the match a share of what it was bought for, in
+ * public money, and an invalid or cancelled drop puts it back where it was for nothing.
  *
  * Nothing else here spends money or counts waves: this is only the gesture.
  */
@@ -166,9 +178,9 @@ public:
 
 	/**
 	 * Sells whatever the player put under the cursor: the piece comes off the board, its
-	 * budget comes back per the match rules and part of its build cost is paid back in
-	 * blue votes (ABDMatchManager::RefundSale). A platform takes its passengers with it,
-	 * back to the hand for nothing.
+	 * budget comes back per the match rules and part of what it was bought for is paid
+	 * back in public money (ABDMatchManager::RefundSale). A platform takes its passengers
+	 * down with it, for nothing but what their levels pay back.
 	 * @return false when there is nothing of theirs there, or the match will not let it go.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
@@ -181,6 +193,10 @@ public:
 	/** The placeable a placed actor was spawned from, or null when the actor is not a placed piece. For the HUD to price a sale. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	const UBDPlaceableData* FindPlaceableOfActor(const AActor* Actor) const;
+
+	/** Public money the piece one of whose actors this is was bought for. 0 when it is not a placed piece. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
+	int32 FindPaidCostOfActor(const AActor* Actor) const;
 
 	//~ Moving ---------------------------------------------------------------
 
@@ -214,7 +230,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	bool UpgradeSelectedDefender();
 
-	/** Blue votes dropping the lifted piece would charge. 0 when nothing is lifted. */
+	/** Public money dropping the lifted piece would charge. 0 when nothing is lifted. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	int32 GetMoveCost() const;
 
@@ -295,6 +311,14 @@ public:
 
 	/** The platform standing on a cell inside the battle area, or null. */
 	UBDPlatformComponent* FindPlatformAt(const FBDCellCoord& Coord) const;
+
+	/**
+	 * Slots standing empty across every platform inside the battle area: how many more
+	 * characters the board has room for. Counted on demand, like FindPlatformAt, because
+	 * the platforms are a handful and the board is the only thing that knows the truth -
+	 * one authored in the level counts exactly as much as one built a second ago.
+	 */
+	int32 CountFreeSlots() const;
 
 	/** Turns the held piece until it faces a given number of quarter turns. */
 	void SetRotationSteps(int32 Steps);
@@ -445,7 +469,7 @@ private:
 	 */
 	static int32 CountPlatformSlots(const FBDPlacedPiece& Piece);
 
-	/** Hands back the votes and the ceiling of a placement the board refused after they were charged. */
+	/** Hands back the money and the ceiling of a placement the board refused after they were charged. */
 	void RefundRefusedPlacement(int32 BuildCost);
 	void ForgetPiece(UBDGridSubsystem& Grid, const FBDPlacedPiece& Piece);
 
@@ -540,6 +564,18 @@ private:
 	EBDPlacementRefusal CurrentRefusal = EBDPlacementRefusal::NoSelection;
 	EBDPlacementRefusal LastReportedRefusal = EBDPlacementRefusal::NoSelection;
 	bool bRefusalLogging = true;
+
+	/**
+	 * True only while RestoreBoard is putting a saved board back. Restoring is not
+	 * building: every piece of that board was paid for in the match that was saved, and
+	 * the save carries the balance it was left with. Charging them again out of the
+	 * opening capital would refuse whatever the capital does not cover - which, now that
+	 * nothing caps how many defenders get built, is most of a late board.
+	 */
+	bool bRestoring = false;
+
+	/** What the piece being restored was bought for, from the save: it carries over as its price paid. */
+	int32 RestoringPaidCost = 0;
 
 	/**
 	 * Quarter turns from the piece's authored facing. Kept as steps rather than degrees

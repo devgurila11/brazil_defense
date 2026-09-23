@@ -87,14 +87,12 @@ namespace BDBribeDebug
 		}
 
 		const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
-		const UBDDifficultyData* Difficulty = Match->GetDifficultyData();
 		const int32 Interval = FMath::Max(1, Balance.CandidateInterval);
 		const int32 WavesToWin = Match->GetWavesToWin();
 
-		// The price of the defense: every defender the budgets ever allow, each taken from
-		// level 1 to the top, at the average upgrade cost base of the palette. The bosses
-		// raise the ceilings as they fall, so the fleet the player ends with is bigger
-		// than the one they started with.
+		// The price of the defense: a full board of defenders, each taken from level 1 to
+		// the top, at the average upgrade cost base of the palette. Nothing caps how many
+		// get built, so "full" is the reference count of the balance settings.
 		int32 CostBaseTotal = 0;
 		int32 CostBaseKinds = 0;
 		for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
@@ -117,15 +115,14 @@ namespace BDBribeDebug
 		const int32 FirstStep = Balance.GetUpgradeCost(AverageCostBase, 2);
 
 		const int32 Bosses = WavesToWin / Interval;
-		const int32 StartingDefenders = (Difficulty != nullptr ? Difficulty->TowerBudget + Difficulty->CharacterBudget : 0);
-		const int32 GrantedDefenders = Bosses * (FMath::Max(0, Balance.TowerBudgetPerBoss) + FMath::Max(0, Balance.CharacterBudgetPerBoss));
+		const int32 ReferenceDefenders = FMath::Max(0, Balance.ReferenceTowerCount) + FMath::Max(0, Balance.ReferenceCharacterCount);
 
-		// Two denominators, because they answer different questions and the ceiling on its
-		// own lies: the defense standing on the board right now is what the player is
-		// actually paying to evolve, and the ceiling is what it could become if every
-		// budget the bosses hand out is built. A board that never grows is measured
-		// against the first; the report prints both rather than pretending one is the
-		// truth.
+		// Two denominators, because they answer different questions and one on its own
+		// lies: the defense standing on the board right now is what the player is actually
+		// paying to evolve, and the reference is what a full board is taken to be - there
+		// is no ceiling any more, so that number is told to the report rather than read
+		// off a budget. A board that never grows is measured against the first; the report
+		// prints both rather than pretending one is the truth.
 		int32 OnBoard = 0;
 		if (World != nullptr)
 		{
@@ -134,18 +131,17 @@ namespace BDBribeDebug
 				++OnBoard;
 			}
 		}
-		const int32 Ceiling = StartingDefenders + GrantedDefenders;
-		const int32 Defenders = OnBoard > 0 ? OnBoard : Ceiling;
+		const int32 Defenders = OnBoard > 0 ? OnBoard : ReferenceDefenders;
 		const int64 FullDefense = static_cast<int64>(Defenders) * PerDefender;
-		const int64 CeilingCost = static_cast<int64>(Ceiling) * PerDefender;
+		const int64 ReferenceCost = static_cast<int64>(ReferenceDefenders) * PerDefender;
 
 		UE_LOG(LogBDBribe, Log, TEXT("Bribe report on %s: a boss every %d waves, %d of them to wave %d. Rate: 1 bribe per %.0f health, %.0f%% back on removal."),
 			*UEnum::GetValueAsString(Match->Difficulty), Interval, Bosses, WavesToWin,
 			Balance.HealthPerBribe, Balance.EvolutionRefundRatio * 100.0f);
 		UE_LOG(LogBDBribe, Log, TEXT("  measured against the %d defender(s) on the board: %d each to reach level %d = %lld public money. One level costs %d at the cheapest."),
 			Defenders, PerDefender, UBDTowerData::MaxLevels, FullDefense, FirstStep);
-		UE_LOG(LogBDBribe, Log, TEXT("  the ceiling, if every granted budget is built: %d defender(s) (%d from the difficulty + %d from the bosses) = %lld public money."),
-			Ceiling, StartingDefenders, GrantedDefenders, CeilingCost);
+		UE_LOG(LogBDBribe, Log, TEXT("  the reference full board: %d defender(s) (%d tower(s) + %d character(s)) = %lld public money."),
+			ReferenceDefenders, Balance.ReferenceTowerCount, Balance.ReferenceCharacterCount, ReferenceCost);
 
 		int64 Cumulative = 0;
 		int32 PayableOnWave = 0;
@@ -154,7 +150,7 @@ namespace BDBribeDebug
 		for (int32 Index = 1; Index <= Bosses; ++Index)
 		{
 			const int32 Wave = Index * Interval;
-			const float Health = FMath::Max(1.0f, Enemy->MaxHealth * Balance.GetHealthScale(Wave) * FMath::Max(1.0f, Balance.CandidateHealthMultiplier));
+			const float Health = Balance.GetCandidateHealth(Enemy->MaxHealth, Wave);
 			const int32 Drop = Balance.BribeForHealth(Health);
 			Cumulative += Drop;
 			if (Drop < FirstStep)
@@ -200,7 +196,7 @@ namespace BDBribeDebug
 			{
 				break;
 			}
-			EarnedByTarget += Enemy->MaxHealth * Balance.GetHealthScale(Wave) * FMath::Max(1.0f, Balance.CandidateHealthMultiplier);
+			EarnedByTarget += Balance.GetCandidateHealth(Enemy->MaxHealth, Wave);
 		}
 		if (EarnedByTarget <= 0.0 || FullDefense <= 0)
 		{
@@ -211,6 +207,113 @@ namespace BDBribeDebug
 		UE_LOG(LogBDBribe, Log, TEXT("  to make the full defense payable by wave %d: HealthPerBribe = %.1f (it is %.1f)."),
 			TargetWave, EarnedByTarget / static_cast<double>(FullDefense), Balance.HealthPerBribe);
 	}
+
+	/**
+	 * The economy in one place: what each piece costs and when it comes into the hand,
+	 * and, boss by boss, what a candidate drops against what a piece and a level cost on
+	 * that wave. The two lines at the end are the question the price is calibrated for:
+	 * can the twenty bosses pay for a full board AND a full evolution? The answer is meant
+	 * to be no - they pay for one or the other, and the player chooses.
+	 */
+	static void ExecEconomyReport(const TArray<FString>& Args, UWorld* World)
+	{
+		const ABDMatchManager* Match = FindMatch(World);
+		if (Match == nullptr || Match->GetDifficultyData() == nullptr)
+		{
+			return;
+		}
+
+		const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+		const int32 Interval = FMath::Max(1, Balance.CandidateInterval);
+		const int32 WavesToWin = Match->GetWavesToWin();
+		const int32 StartingFunds = Match->GetDifficultyData()->StartingFunds;
+
+		TArray<const UBDPlaceableData*> Pieces;
+		for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
+		{
+			if (const UBDPlaceableData* Data = Entry.LoadSynchronous())
+			{
+				Pieces.Add(Data);
+			}
+		}
+
+		UE_LOG(LogBDBribe, Log, TEXT("Economy on %s: %d public money to start, a piece of base %d costs %.2f candidate(s), boss every %d waves. Votes are never spent."),
+			*UEnum::GetValueAsString(Match->Difficulty), StartingFunds, Balance.ReplacementReferenceCost, Balance.ReplacementCostRatio, Interval);
+
+		int32 UpgradeBaseTotal = 0;
+		int32 UpgradeBaseKinds = 0;
+		for (const UBDPlaceableData* Data : Pieces)
+		{
+			const UBDTowerData* TowerData = Data->TowerData.LoadSynchronous();
+			if (Data->IsDefender() && TowerData != nullptr)
+			{
+				UpgradeBaseTotal += TowerData->UpgradeCostBase;
+				++UpgradeBaseKinds;
+			}
+			UE_LOG(LogBDBribe, Log, TEXT("  piece %-14s %-9s base %4d | unlocks after wave %3d | price wave 1: %6d, wave 50: %6d, wave 100: %6d"),
+				*Data->GetName(), *StaticEnum<EBDPieceKind>()->GetNameStringByValue(static_cast<int64>(Data->GetPieceKind())),
+				Data->GetBuildCost(), ABDMatchManager::GetUnlockWave(Data),
+				Match->GetBuildPriceOnWave(Data, 1), Match->GetBuildPriceOnWave(Data, 50), Match->GetBuildPriceOnWave(Data, 100));
+		}
+		const int32 UpgradeBase = UpgradeBaseKinds > 0 ? UpgradeBaseTotal / UpgradeBaseKinds : 0;
+
+		// A reference piece is a defender at the reference cost, whatever the palette says:
+		// it is the unit the calibration talks in.
+		const UBDEnemyData* Creep = UBDWaveSettings::Get().ResolveWaveEnemy();
+		const float CreepHealth = Creep != nullptr ? Creep->MaxHealth : 0.0f;
+		int64 Income = StartingFunds;
+		int64 BoardCost = 0;
+		for (int32 Wave = Interval; Wave <= WavesToWin; Wave += Interval)
+		{
+			const int32 Drop = Match->GetCandidateFunds(Wave);
+			const int32 Reference = Balance.GetReplacementCost(Balance.ReplacementReferenceCost, CreepHealth, Wave);
+			const int32 FirstLevel = Balance.GetUpgradeCostOnWave(UpgradeBase, 2, Wave);
+			Income += Drop;
+
+			int32 Available = 0;
+			for (const UBDPlaceableData* Data : Pieces)
+			{
+				Available += ABDMatchManager::GetUnlockWave(Data) <= Wave ? 1 : 0;
+			}
+			UE_LOG(LogBDBribe, Log, TEXT("  boss on wave %3d drops %6d | a reference piece costs %6d (%.2f of the drop), a first level %4d (%.2f) | %d of %d pieces in the hand | %lld earned so far"),
+				Wave, Drop, Reference, Drop > 0 ? static_cast<float>(Reference) / Drop : 0.0f,
+				FirstLevel, Drop > 0 ? static_cast<float>(FirstLevel) / Drop : 0.0f, Available, Pieces.Num(), Income);
+		}
+
+		// The full board at the price of the middle of the match - the waves it is actually
+		// bought over - and the full evolution of it, against everything the match pays.
+		const int32 Mid = FMath::Max(1, WavesToWin / 2);
+		const int32 Defenders = FMath::Max(0, Balance.ReferenceTowerCount) + FMath::Max(0, Balance.ReferenceCharacterCount);
+		// How many of each kind a full board holds, shared evenly over the pieces of that kind.
+		TMap<EBDPieceKind, int32> KindsInPalette;
+		for (const UBDPlaceableData* Data : Pieces)
+		{
+			++KindsInPalette.FindOrAdd(Data->GetPieceKind());
+		}
+		const TMap<EBDPieceKind, int32> FullBoard = {
+			{ EBDPieceKind::Tower, Balance.ReferenceTowerCount },
+			{ EBDPieceKind::Character, Balance.ReferenceCharacterCount },
+			{ EBDPieceKind::Platform, Match->GetDifficultyData()->PlatformBudget },
+			{ EBDPieceKind::Divider, Match->GetDifficultyData()->DividerBudget } };
+		for (const UBDPlaceableData* Data : Pieces)
+		{
+			const EBDPieceKind Kind = Data->GetPieceKind();
+			const int32 Count = FullBoard.FindRef(Kind) / FMath::Max(1, KindsInPalette.FindRef(Kind));
+			BoardCost += static_cast<int64>(Count) * Match->GetBuildPriceOnWave(Data, Mid);
+		}
+		const int64 EvolutionCost = static_cast<int64>(Defenders) * FMath::RoundToInt(Balance.GetEvolutionSpent(UpgradeBase, UBDTowerData::MaxLevels) * Balance.GetPriceScale(Mid));
+
+		UE_LOG(LogBDBribe, Log, TEXT("  the match pays %lld in all (start + %d bosses). At wave %d prices: a full board (%d defenders, the platform and divider hands) %lld, evolving those %d defenders to level %d %lld."),
+			Income, WavesToWin / Interval, Mid, Defenders, BoardCost, Defenders, UBDTowerData::MaxLevels, EvolutionCost);
+		UE_LOG(LogBDBribe, Log, TEXT("  board AND evolution = %lld, %.0f%% of what the match pays: %s."),
+			BoardCost + EvolutionCost, Income > 0 ? 100.0 * (BoardCost + EvolutionCost) / Income : 0.0,
+			BoardCost + EvolutionCost > Income ? TEXT("the player has to choose") : TEXT("BOTH are affordable, the choice is gone"));
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdEconomyReport(
+		TEXT("BD.Economy.Report"),
+		TEXT("BD.Economy.Report: prices and unlock waves of every piece, and boss by boss what a candidate drops against what a piece and a level cost."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecEconomyReport));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(
 		TEXT("BD.Bribe.Status"),

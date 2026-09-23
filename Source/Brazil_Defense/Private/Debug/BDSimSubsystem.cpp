@@ -158,10 +158,10 @@ void UBDSimSubsystem::Tick(const float DeltaTime)
 		return;
 	}
 
-	// What the player would do between waves: build whatever ceiling the fallen bosses
-	// raised, then spend what came in, then stop waiting. Building is first because a new
-	// defender at level 1 is worth more than a level on an old one, and because a player
-	// who just earned a slot uses it.
+	// What the player would do between waves: put the public money the bosses paid in on the
+	// board, then spend what is left on levels, then stop waiting. Building is first
+	// because a new defender at level 1 is worth more than a level on an old one, and
+	// because a player who just earned the price of one buys it.
 	if (UBDDebugAutoSetup* Setup = GetWorld()->GetSubsystem<UBDDebugAutoSetup>())
 	{
 		Setup->BuildGrantedBudget();

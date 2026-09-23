@@ -16,6 +16,9 @@ class UBDEnemyData;
 class UBDGridSubsystem;
 class UBDPathfinder;
 
+/** Broadcast once a wave has been dealt: mouths moved and drawn, creeps counted, nothing sent yet. */
+DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnWaveDealt, int32 /*Wave*/);
+
 /**
  * One entry point of the creeps: a run of adjacent Spawn cells on the border of the
  * board, and the route from it to the urn.
@@ -184,6 +187,22 @@ public:
 	/** Drops whatever the running wave still had to send: the wave belongs to the candidates now. */
 	void CancelRemainingSpawns(const TCHAR* Why);
 
+	/**
+	 * Holds the creeps of the running wave back for a while, so something else goes out
+	 * first: the candidate of the wave. Longer holds win; the next wave starts clean.
+	 */
+	void HoldWaveSpawns(float Seconds, const TCHAR* Why);
+
+	/** Seconds the creeps of the running wave are still held back for. */
+	float GetSpawnHoldRemaining() const { return SpawnHoldRemaining; }
+
+	/**
+	 * A wave has been dealt and has not sent anything yet. What must come out ahead of its
+	 * creeps goes out from here: the mouths have already moved for this wave, and a hold
+	 * asked for now is before the first creep.
+	 */
+	FBDOnWaveDealt OnWaveDealt;
+
 	/** A shot left a tower; damage that actually came off a creep. Tallied per wave, to tell throughput from waste. */
 	void ReportShotFired() { ++WaveShotsFired; }
 	void ReportDamageDealt(float Damage) { WaveDamageDealt += FMath::Max(0.0f, Damage); }
@@ -292,6 +311,9 @@ private:
 	int32 WaveSpawnCursor = 0;
 	float WaveSpawnTimer = 0.0f;
 	float WaveSpawnInterval = 0.0f;
+
+	/** See HoldWaveSpawns. Runs down on the game clock, like the spawn timer it holds. */
+	float SpawnHoldRemaining = 0.0f;
 
 	/** Bookkeeping of the wave out, reported when it clears: the peak is what the balance has to watch. */
 	int32 WaveNumber = 0;

@@ -100,20 +100,21 @@ void ABDMatchManager::BeginPlay()
 	ResolveDifficulty();
 	ApplyStartingBudgets();
 
-	UE_LOG(LogBDMatch, Log, TEXT("Match on %s%s: %d waves to win, %d dividers, %d platforms, %d towers, %d characters, %d saves."),
+	UE_LOG(LogBDMatch, Log, TEXT("Match on %s%s: %d waves to win, %d dividers, %d platforms, %d saves. Defenders are limited by public money alone."),
 		*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Difficulty)),
 		Chosen.IsSet() ? TEXT(" (chosen in the menu)") : TEXT(""),
-		GetWavesToWin(), DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining, SavesRemaining);
+		GetWavesToWin(), DividersRemaining, PlatformsRemaining, SavesRemaining);
 
 	// The vote part of the bonus is the one thing a budget reset must not hand out
-	// again, so it stays here, at the one start a match has. Added to the opening capital
-	// rather than replacing it: the capital is what building is paid for.
+	// again, so it stays here, at the one start a match has: a head start on the count.
 	if (bChainBonusApplied && DifficultyData->ChainBonus.Votes > 0)
 	{
 		VotesBlue += DifficultyData->ChainBonus.Votes;
 	}
 	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
-	UE_LOG(LogBDMatch, Log, TEXT("Opening capital: %d blue vote(s) to build with."), VotesBlue);
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+	UE_LOG(LogBDMatch, Log, TEXT("Opening capital: %d public money to build with; %d blue vote(s) on the count, which are never spent."),
+		PublicMoney, VotesBlue);
 
 	SetupBoard();
 
@@ -149,13 +150,13 @@ void ABDMatchManager::ApplyStartingBudgets()
 {
 	DividersRemaining = DifficultyData->DividerBudget;
 	PlatformsRemaining = DifficultyData->PlatformBudget;
-	TowersRemaining = DifficultyData->TowerBudget;
-	CharactersRemaining = DifficultyData->CharacterBudget;
 	ObjectivesRemaining = 1;
 	SavesRemaining = DifficultyData->SaveBudget;
 
-	// The opening capital. Set rather than added: starting budgets are what a match opens
-	// with, and a rewind has to land on the same number as a fresh start.
+	// The opening capital, in public money, and the head start on the count. Set rather
+	// than added: starting budgets are what a match opens with, and a rewind has to land
+	// on the same numbers as a fresh start.
+	PublicMoney = DifficultyData->StartingFunds;
 	VotesBlue = DifficultyData->StartingVotes;
 
 	const EBDDifficulty Below = GetDifficultyBelow(Difficulty);
@@ -168,13 +169,12 @@ void ABDMatchManager::ApplyStartingBudgets()
 
 	DividersRemaining += Bonus.Dividers;
 	PlatformsRemaining += Bonus.Platforms;
-	TowersRemaining += Bonus.Towers;
-	CharactersRemaining += Bonus.Characters;
 	SavesRemaining += Bonus.Saves;
+	PublicMoney += Bonus.Funds;
 
-	UE_LOG(LogBDMatch, Log, TEXT("Chain bonus for having won %s: +%d votes, +%d dividers, +%d platforms, +%d towers, +%d characters, +%d saves."),
+	UE_LOG(LogBDMatch, Log, TEXT("Chain bonus for having won %s: +%d public money, +%d votes, +%d dividers, +%d platforms, +%d saves."),
 		*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Below)),
-		Bonus.Votes, Bonus.Dividers, Bonus.Platforms, Bonus.Towers, Bonus.Characters, Bonus.Saves);
+		Bonus.Funds, Bonus.Votes, Bonus.Dividers, Bonus.Platforms, Bonus.Saves);
 }
 
 UBDPlacementComponent* ABDMatchManager::GetPlacement() const
@@ -354,8 +354,9 @@ void ABDMatchManager::DebugResetBudgets()
 
 	ApplyStartingBudgets();
 
-	UE_LOG(LogBDMatch, Warning, TEXT("Budgets reset: %d dividers, %d platforms, %d towers, %d characters, 1 objective, %d saves%s."),
-		DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining, SavesRemaining,
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+	UE_LOG(LogBDMatch, Warning, TEXT("Budgets reset: %d public money, %d dividers, %d platforms, 1 objective, %d saves%s. Defenders were never counted."),
+		PublicMoney, DividersRemaining, PlatformsRemaining, SavesRemaining,
 		bChainBonusApplied ? TEXT(" (chain bonus in)") : TEXT(""));
 }
 
@@ -538,8 +539,6 @@ bool ABDMatchManager::SaveMatch()
 	Save->bEndless = bEndless;
 	Save->DividersRemaining = DividersRemaining;
 	Save->PlatformsRemaining = PlatformsRemaining;
-	Save->TowersRemaining = TowersRemaining;
-	Save->CharactersRemaining = CharactersRemaining;
 	Save->SavedAt = FDateTime::Now();
 	Placement->CaptureBoard(Save->Pieces);
 
@@ -619,21 +618,26 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	ObstacleSeed = Save.ObstacleSeed;
 	DebugRegenerateObstacles(ObstacleSeed);
 
+	// Restoring is not building, so it must not touch the money. The balance is read on
+	// both sides of the restore rather than trusted: a board bought over ninety waves
+	// costs many times the opening capital, so a restore that charged would quietly drop
+	// whatever the capital did not cover, and the player would load a thinner board than
+	// the one they saved.
+	const int32 CapitalBeforeRestore = PublicMoney;
 	Placement->RestoreBoard(Save.Pieces);
+	UE_CLOG(PublicMoney != CapitalBeforeRestore, LogBDMatch, Error,
+		TEXT("Restore charged the board: %d public money before, %d after. The saved pieces were paid for once already."),
+		CapitalBeforeRestore, PublicMoney);
 
 	// What the pieces consumed should be what the save says was left; the save wins,
 	// and a mismatch is a piece that did not come back.
-	if (DividersRemaining != Save.DividersRemaining || PlatformsRemaining != Save.PlatformsRemaining
-		|| TowersRemaining != Save.TowersRemaining || CharactersRemaining != Save.CharactersRemaining)
+	if (DividersRemaining != Save.DividersRemaining || PlatformsRemaining != Save.PlatformsRemaining)
 	{
-		UE_LOG(LogBDMatch, Warning, TEXT("Budgets after restore (%d/%d/%d/%d) differ from the saved ones (%d/%d/%d/%d); the saved ones stand."),
-			DividersRemaining, PlatformsRemaining, TowersRemaining, CharactersRemaining,
-			Save.DividersRemaining, Save.PlatformsRemaining, Save.TowersRemaining, Save.CharactersRemaining);
+		UE_LOG(LogBDMatch, Warning, TEXT("Budgets after restore (%d/%d) differ from the saved ones (%d/%d); the saved ones stand."),
+			DividersRemaining, PlatformsRemaining, Save.DividersRemaining, Save.PlatformsRemaining);
 	}
 	DividersRemaining = Save.DividersRemaining;
 	PlatformsRemaining = Save.PlatformsRemaining;
-	TowersRemaining = Save.TowersRemaining;
-	CharactersRemaining = Save.CharactersRemaining;
 
 	CurrentWave = Save.Wave;
 	EarlyCallBonus = Save.EarlyCallBonus;
@@ -738,25 +742,6 @@ void ABDMatchManager::AddVotesNull(const int32 Votes)
 	}
 }
 
-bool ABDMatchManager::SpendVotesBlue(const int32 Votes)
-{
-	if (Votes < 0 || !CanAffordVotesBlue(Votes))
-	{
-		return false;
-	}
-
-	if (Votes == 0)
-	{
-		return true;
-	}
-
-	VotesBlue -= Votes;
-	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
-
-	UE_LOG(LogBDMatch, Verbose, TEXT("Blue -%d votes, now %d blue / %d red."), Votes, VotesBlue, VotesRed);
-	return true;
-}
-
 //~ The bribe and the public money --------------------------------------------------
 
 void ABDMatchManager::AddBribe(const int32 Amount, const FString& Why)
@@ -830,23 +815,23 @@ void ABDMatchManager::DropMoney(const FString& Why)
 	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
 }
 
-void ABDMatchManager::AdjustCharacterSlots(const int32 Delta, const FString& Why)
+int32 ABDMatchManager::GetFreeCharacterSlots() const
+{
+	const UBDPlacementComponent* Placement = GetPlacement();
+	return Placement != nullptr ? Placement->CountFreeSlots() : 0;
+}
+
+void ABDMatchManager::AdjustDividerBudget(const int32 Delta, const FString& Why)
 {
 	if (Delta == 0)
 	{
 		return;
 	}
 
-	const int32 Before = CharactersRemaining;
-	// Clamped at zero: a platform sold hands its passengers back before its slots come
-	// off, so the two cancel out, and anything left over is a rounding of the board, not
-	// a debt the player should carry.
-	CharactersRemaining = FMath::Max(0, CharactersRemaining + Delta);
-
-	UE_LOG(LogBDMatch, Log, TEXT("Character ceiling %s%d (%s): %d -> %d."),
-		Delta > 0 ? TEXT("+") : TEXT(""), Delta, *Why, Before, CharactersRemaining);
-
-	OnBudgetGranted.Broadcast(0, CharactersRemaining - Before);
+	const int32 Before = DividersRemaining;
+	DividersRemaining = FMath::Max(0, DividersRemaining + Delta);
+	UE_LOG(LogBDMatch, Log, TEXT("Divider ceiling %s%d (%s): %d -> %d."),
+		Delta > 0 ? TEXT("+") : TEXT(""), Delta, *Why, Before, DividersRemaining);
 }
 
 int32 ABDMatchManager::GetUpgradeCost(const ABDTowerBase* Tower) const
@@ -854,10 +839,33 @@ int32 ABDMatchManager::GetUpgradeCost(const ABDTowerBase* Tower) const
 	return Tower != nullptr ? Tower->GetUpgradeCost() : 0;
 }
 
-bool ABDMatchManager::WouldInvertScoreboard(const int32 Cost) const
+int32 ABDMatchManager::GetCandidateFunds(const int32 Wave) const
 {
-	// Only a lead that is lost counts as an inversion; a player already behind is told nothing new.
-	return VotesBlue >= VotesRed && VotesBlue - Cost < VotesRed;
+	// The candidate's health is read off the wave creep, like the candidate subsystem
+	// does when it sends one out: the price and the drop are the same number by design.
+	const UBDEnemyData* Creep = UBDWaveSettings::Get().ResolveWaveEnemy();
+	return UBDGameBalanceSettings::Get().GetCandidateFunds(Creep != nullptr ? Creep->MaxHealth : 0.0f, Wave);
+}
+
+int32 ABDMatchManager::GetBuildPriceOnWave(const UBDPlaceableData* Piece, const int32 Wave) const
+{
+	if (Piece == nullptr)
+	{
+		return 0;
+	}
+
+	const UBDEnemyData* Creep = UBDWaveSettings::Get().ResolveWaveEnemy();
+	return UBDGameBalanceSettings::Get().GetReplacementCost(Piece->GetBuildCost(), Creep != nullptr ? Creep->MaxHealth : 0.0f, FMath::Max(1, Wave));
+}
+
+int32 ABDMatchManager::GetBuildPrice(const UBDPlaceableData* Piece) const
+{
+	return GetBuildPriceOnWave(Piece, GetPriceWave());
+}
+
+int32 ABDMatchManager::GetUnlockWave(const UBDPlaceableData* Piece)
+{
+	return UBDPlacementSettings::Get().GetUnlockWave(Piece);
 }
 
 float ABDMatchManager::GetSellRefundRatio(const EBDPieceKind Kind) const
@@ -865,15 +873,15 @@ float ABDMatchManager::GetSellRefundRatio(const EBDPieceKind Kind) const
 	return UBDGameBalanceSettings::Get().GetSellRefundRatio(Kind, CurrentWave);
 }
 
-int32 ABDMatchManager::GetSellRefund(const EBDPieceKind Kind, const int32 BuildCost) const
+int32 ABDMatchManager::GetSellRefund(const EBDPieceKind Kind, const int32 PaidCost) const
 {
-	return FMath::RoundToInt(FMath::Max(0, BuildCost) * GetSellRefundRatio(Kind));
+	return FMath::RoundToInt(FMath::Max(0, PaidCost) * GetSellRefundRatio(Kind));
 }
 
-int32 ABDMatchManager::RefundSale(const EBDPieceKind Kind, const int32 BuildCost)
+int32 ABDMatchManager::RefundSale(const EBDPieceKind Kind, const int32 PaidCost)
 {
-	const int32 Refund = GetSellRefund(Kind, BuildCost);
-	AddVotesBlue(Refund);
+	const int32 Refund = GetSellRefund(Kind, PaidCost);
+	AddPublicMoney(Refund, TEXT("a piece sold"));
 	return Refund;
 }
 
@@ -882,9 +890,9 @@ float ABDMatchManager::GetMoveTaxRate() const
 	return UBDGameBalanceSettings::Get().GetMoveTaxRate(CurrentWave);
 }
 
-int32 ABDMatchManager::GetMoveCost(const int32 BuildCost) const
+int32 ABDMatchManager::GetMoveCost(const int32 PaidCost) const
 {
-	return FMath::RoundToInt(FMath::Max(0, BuildCost) * GetMoveTaxRate());
+	return FMath::RoundToInt(FMath::Max(0, PaidCost) * GetMoveTaxRate());
 }
 
 bool ABDMatchManager::SetGameSpeed(const float Speed)
@@ -910,6 +918,21 @@ bool ABDMatchManager::SetGameSpeed(const float Speed)
 	return true;
 }
 
+bool ABDMatchManager::IsPlaceableKind(const EBDPieceKind Kind)
+{
+	return Kind == EBDPieceKind::Divider || Kind == EBDPieceKind::Platform
+		|| Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character
+		|| Kind == EBDPieceKind::Objective;
+}
+
+bool ABDMatchManager::HasBudgetCeiling(const EBDPieceKind Kind)
+{
+	// The maze is a hand: so many dividers, so many platforms, and one urn. Defenders are
+	// not counted at all - a tower is stopped by the money and by the cells left, a
+	// character by the money and by a slot to stand on.
+	return Kind == EBDPieceKind::Divider || Kind == EBDPieceKind::Platform || Kind == EBDPieceKind::Objective;
+}
+
 int32* ABDMatchManager::FindBudget(const EBDPieceKind Kind)
 {
 	switch (Kind)
@@ -919,12 +942,6 @@ int32* ABDMatchManager::FindBudget(const EBDPieceKind Kind)
 
 	case EBDPieceKind::Platform:
 		return &PlatformsRemaining;
-
-	case EBDPieceKind::Tower:
-		return &TowersRemaining;
-
-	case EBDPieceKind::Character:
-		return &CharactersRemaining;
 
 	case EBDPieceKind::Objective:
 		return &ObjectivesRemaining;
@@ -947,8 +964,13 @@ int32 ABDMatchManager::GetBudgetRemaining(const EBDPieceKind Kind) const
 
 bool ABDMatchManager::CanPlace(const EBDPieceKind Kind) const
 {
+	if (!IsPlaceableKind(Kind))
+	{
+		return false;
+	}
+
 	const int32* Budget = FindBudget(Kind);
-	if (Budget == nullptr || *Budget <= 0)
+	if (Budget != nullptr && *Budget <= 0)
 	{
 		return false;
 	}
@@ -956,10 +978,21 @@ bool ABDMatchManager::CanPlace(const EBDPieceKind Kind) const
 	if (Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character)
 	{
 		// Defenders are the one thing that stays placeable once the maze is locked in.
-		return Phase == EBDMatchPhase::Building || Phase == EBDMatchPhase::WaveActive;
+		if (Phase != EBDMatchPhase::Building && Phase != EBDMatchPhase::WaveActive)
+		{
+			return false;
+		}
+
+		// And a character still needs somewhere to stand. Not a budget: a platform with
+		// every slot taken is a board that has no room for one more, and saying so here
+		// is what keeps the button honest instead of letting the click find out.
+		return Kind != EBDPieceKind::Character || GetFreeCharacterSlots() > 0;
 	}
 
-	return Phase == EBDMatchPhase::Building && !IsBuildLocked();
+	// The maze grows between waves, never under a running one: a fence dropped in front of
+	// a creep mid route is a different game. The urn alone stays where the first wave
+	// found it - everything was built around it.
+	return Phase == EBDMatchPhase::Building && (Kind != EBDPieceKind::Objective || !IsBuildLocked());
 }
 
 bool ABDMatchManager::ConsumeBudget(const EBDPieceKind Kind)
@@ -969,18 +1002,20 @@ bool ABDMatchManager::ConsumeBudget(const EBDPieceKind Kind)
 		return false;
 	}
 
-	int32* Budget = FindBudget(Kind);
-	--(*Budget);
-
-	UE_LOG(LogBDMatch, Verbose, TEXT("Budget for %s is now %d."),
-		*StaticEnum<EBDPieceKind>()->GetNameStringByValue(static_cast<int64>(Kind)), *Budget);
+	// Nothing to charge for an uncounted kind: the money is the whole price of a defender.
+	if (int32* Budget = FindBudget(Kind))
+	{
+		--(*Budget);
+		UE_LOG(LogBDMatch, Verbose, TEXT("Budget for %s is now %d."),
+			*StaticEnum<EBDPieceKind>()->GetNameStringByValue(static_cast<int64>(Kind)), *Budget);
+	}
 
 	return true;
 }
 
 bool ABDMatchManager::CanRemove(const EBDPieceKind Kind) const
 {
-	if (FindBudget(Kind) == nullptr)
+	if (!IsPlaceableKind(Kind))
 	{
 		return false;
 	}
@@ -994,26 +1029,14 @@ bool ABDMatchManager::CanRemove(const EBDPieceKind Kind) const
 
 void ABDMatchManager::RefundRemoval(const EBDPieceKind Kind)
 {
-	// A piece taken back is a piece held again, whenever it happens. What the sale of it
-	// was worth is a separate matter, settled in votes by RefundSale.
+	// A piece taken back is a piece held again, whenever it happens - when the kind is
+	// held at all. A defender sold frees its cell or its slot, and that is the whole of
+	// what comes back to the hand. What the sale was worth is a separate matter, settled
+	// in public money by RefundSale.
 	if (int32* Budget = FindBudget(Kind))
 	{
 		++(*Budget);
 	}
-}
-
-void ABDMatchManager::GrantBudget(const int32 Towers, const int32 Characters, const FString& Why)
-{
-	if (Towers <= 0 && Characters <= 0)
-	{
-		return;
-	}
-
-	TowersRemaining += FMath::Max(0, Towers);
-	CharactersRemaining += FMath::Max(0, Characters);
-	UE_LOG(LogBDMatch, Log, TEXT("Budget raised (%s): +%d tower(s), +%d character(s); now %d towers, %d characters to place."),
-		*Why, Towers, Characters, TowersRemaining, CharactersRemaining);
-	OnBudgetGranted.Broadcast(Towers, Characters);
 }
 
 namespace BDMatchCommands
@@ -1060,14 +1083,14 @@ namespace BDMatchCommands
 		}
 
 		UE_LOG(LogBDMatch, Log,
-			TEXT("Phase %s | wave %d of %d%s (health x%.2f) | %.1fs to next | dividers %d | platforms %d | towers %d | characters %d | objectives %d | speed %.0fx | bonus %d | votes %d blue / %d red"),
+			TEXT("Phase %s | wave %d of %d%s (health x%.2f) | %.1fs to next | dividers %d | platforms %d | free slots %d | objectives %d | speed %.0fx | bonus %d | votes %d blue / %d red | %d public money"),
 			*StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())),
 			Match->GetCurrentWave(), Match->GetWavesToWin(),
 			Match->IsEndless() ? TEXT(" endless") : Match->HasWon() ? TEXT(" won") : TEXT(""),
 			Match->GetHealthScale(), Match->GetTimeUntilNextWave(),
-			Match->GetDividersRemaining(), Match->GetPlatformsRemaining(), Match->GetTowersRemaining(),
-			Match->GetCharactersRemaining(), Match->GetObjectivesRemaining(),
-			Match->GetGameSpeed(), Match->GetEarlyCallBonus(), Match->GetVotesBlue(), Match->GetVotesRed());
+			Match->GetDividersRemaining(), Match->GetPlatformsRemaining(),
+			Match->GetFreeCharacterSlots(), Match->GetObjectivesRemaining(),
+			Match->GetGameSpeed(), Match->GetEarlyCallBonus(), Match->GetVotesBlue(), Match->GetVotesRed(), Match->GetPublicMoney());
 	}
 
 	static void ExecCallWave(const TArray<FString>& Args, UWorld* World)
@@ -1271,9 +1294,8 @@ namespace BDMatchCommands
 		}
 
 		const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
-		const UBDDifficultyData* Difficulty = Match->GetDifficultyData();
 
-		// The defense: budget x DPS at the reference level, per kind, from the palette.
+		// The defense: the reference count x DPS at the reference level, per kind, from the palette.
 		float TowerDps = 0.0f;
 		int32 TowerKinds = 0;
 		float CharacterDps = 0.0f;
@@ -1291,10 +1313,12 @@ namespace BDMatchCommands
 			if (Data->GetPieceKind() == EBDPieceKind::Tower) { TowerDps += Dps; ++TowerKinds; }
 			else if (Data->GetPieceKind() == EBDPieceKind::Character) { CharacterDps += Dps; ++CharacterKinds; }
 		}
-		const int32 TowerBudget = Difficulty != nullptr ? Difficulty->TowerBudget : 0;
-		const int32 CharacterBudget = Difficulty != nullptr ? Difficulty->CharacterBudget : 0;
-		const float DefenseDps = (TowerKinds > 0 ? TowerBudget * TowerDps / TowerKinds : 0.0f)
-			+ (CharacterKinds > 0 ? CharacterBudget * CharacterDps / CharacterKinds : 0.0f);
+		// Nothing caps how many defenders get built any more, so the report is told what a
+		// full board looks like rather than reading it off a ceiling that no longer exists.
+		const int32 TowerCount = Balance.ReferenceTowerCount;
+		const int32 CharacterCount = Balance.ReferenceCharacterCount;
+		const float DefenseDps = (TowerKinds > 0 ? TowerCount * TowerDps / TowerKinds : 0.0f)
+			+ (CharacterKinds > 0 ? CharacterCount * CharacterDps / CharacterKinds : 0.0f);
 
 		// The route: average length over the mouths that have one, at the creep's speed.
 		const TArray<FBDSpawnPoint>& Points = Waves->GetSpawnPoints();
@@ -1309,7 +1333,7 @@ namespace BDMatchCommands
 		const float CapacityPerWave = DefenseDps * RouteSeconds * Balance.ReferenceEngagementEfficiency;
 
 		UE_LOG(LogBDMatch, Log, TEXT("Balance: defense %.0f dps at level %d (%d towers, %d characters), route %.0f cells = %.0fs at %.2f cells/s, efficiency %.0f%% -> %.0f damage per wave."),
-			DefenseDps, Balance.ReferenceMaxLevel, TowerBudget, CharacterBudget, AverageRoute, RouteSeconds, Enemy->MoveSpeed,
+			DefenseDps, Balance.ReferenceMaxLevel, TowerCount, CharacterCount, AverageRoute, RouteSeconds, Enemy->MoveSpeed,
 			Balance.ReferenceEngagementEfficiency * 100.0f, CapacityPerWave);
 
 		const int32 WavesToWin = Match->GetWavesToWin();

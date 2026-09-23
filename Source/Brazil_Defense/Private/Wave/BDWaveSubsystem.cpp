@@ -234,8 +234,10 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 	}
 	WaveSpawnCursor = 0;
 	WaveSpawnInterval = UBDGameBalanceSettings::Get().GetWaveSpawnInterval(Wave);
-	// The first one goes out on the next tick, not an interval from now.
+	// The first one goes out on the next tick, not an interval from now - unless
+	// something asks, once the wave is dealt, to go out ahead of it.
 	WaveSpawnTimer = WaveSpawnInterval;
+	SpawnHoldRemaining = 0.0f;
 
 	WaveNumber = Wave;
 	WaveSpawnedTotal = 0;
@@ -259,6 +261,10 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 		Wave, WaveSpawnsRemaining, *Data->GetName(), PerPoint, PointCount,
 		UBDGameBalanceSettings::Get().GetHealthScale(Wave), WaveSpawnInterval,
 		ActiveSpawnPoints.Num(), *Mouths);
+
+	// Told after the mouths have moved and been drawn, and before anything is sent: the
+	// candidate of the wave walks out here, ahead of the horde.
+	OnWaveDealt.Broadcast(Wave);
 }
 
 namespace BDWavePrivate
@@ -500,6 +506,10 @@ void UBDWaveSubsystem::HandlePhaseChanged(const EBDMatchPhase NewPhase)
 		UE_LOG(LogBDWave, Warning, TEXT("Wave left with %d creep(s) unsent."), WaveSpawnsRemaining);
 		WaveSpawnsRemaining = 0;
 	}
+	if (NewPhase != EBDMatchPhase::WaveActive)
+	{
+		SpawnHoldRemaining = 0.0f;
+	}
 }
 
 void UBDWaveSubsystem::SpawnNextOfWave()
@@ -563,9 +573,18 @@ void UBDWaveSubsystem::Tick(const float DeltaTime)
 
 	EnsureMatchBinding();
 
+	// Held while the candidate of the wave walks out ahead of it: the timer does not run
+	// until the lead is spent, and the first creep then goes out as it would have.
+	if (SpawnHoldRemaining > 0.0f)
+	{
+		SpawnHoldRemaining = FMath::Max(0.0f, SpawnHoldRemaining - DeltaTime);
+		UE_CLOG(SpawnHoldRemaining <= 0.0f && WaveSpawnsRemaining > 0, LogBDWave, Log,
+			TEXT("Wave %d: the lead is over, its %d creep(s) go out."), WaveNumber, WaveSpawnsRemaining);
+	}
+
 	// Held during the pause a candidate kill buys: the timer does not run, so the wave
 	// picks up its rhythm where it left it rather than dumping the backlog at once.
-	if (WaveSpawnsRemaining > 0 && !IsSpawningHeld())
+	if (WaveSpawnsRemaining > 0 && SpawnHoldRemaining <= 0.0f && !IsSpawningHeld())
 	{
 		WaveSpawnTimer += DeltaTime;
 		const float Interval = FMath::Max(0.0f, WaveSpawnInterval);
@@ -1076,6 +1095,17 @@ bool UBDWaveSubsystem::IsSpawningHeld() const
 	const UWorld* World = GetWorld();
 	const UBDCandidateSubsystem* Candidates = World != nullptr ? World->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
 	return Candidates != nullptr && Candidates->IsReturnActive();
+}
+
+void UBDWaveSubsystem::HoldWaveSpawns(const float Seconds, const TCHAR* Why)
+{
+	if (Seconds <= SpawnHoldRemaining)
+	{
+		return;
+	}
+
+	SpawnHoldRemaining = Seconds;
+	UE_LOG(LogBDWave, Log, TEXT("Wave %d holds its %d creep(s) for %.1fs: %s."), WaveNumber, WaveSpawnsRemaining, Seconds, Why);
 }
 
 void UBDWaveSubsystem::CancelRemainingSpawns(const TCHAR* Why)

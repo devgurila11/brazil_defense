@@ -17,9 +17,13 @@ struct FBDChainBonus
 {
 	GENERATED_BODY()
 
-	/** Blue votes the match opens with: a head start on the count, not just on the board. */
+	/** Blue votes the match opens with: a head start on the count. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
 	int32 Votes = 100;
+
+	/** Public money on top of the starting funds: a head start on the board. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
+	int32 Funds = 400;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
 	int32 Dividers = 4;
@@ -28,20 +32,15 @@ struct FBDChainBonus
 	int32 Platforms = 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
-	int32 Towers = 1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
-	int32 Characters = 2;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
 	int32 Saves = 1;
 
-	bool IsEmpty() const { return Votes == 0 && Dividers == 0 && Platforms == 0 && Towers == 0 && Characters == 0 && Saves == 0; }
+	bool IsEmpty() const { return Votes == 0 && Funds == 0 && Dividers == 0 && Platforms == 0 && Saves == 0; }
 };
 
 /**
- * The starting hand of a match: how much the player gets to build with, how many towers
- * they walk in holding, how cluttered the board is and how long the first countdown runs.
+ * The starting hand of a match: how much the player gets to build with, how many pieces
+ * of the maze they walk in holding, how cluttered the board is and how long the first
+ * countdown runs.
  *
  * A data asset rather than settings because difficulty is content: designers add and tune
  * these without touching the project configuration, and a future daily challenge can ship
@@ -65,19 +64,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
 	int32 PlatformBudget = 3;
 
-	/** Ground towers the player may build. Unlike dividers, defenders stay placeable through the waves. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
-	int32 TowerBudget = 8;
-
-	/** Characters the player may mount on platform slots. Separate from towers: they are a different resource. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
-	int32 CharacterBudget = 12;
+	// Defenders have no ceiling of their own. A ground tower is limited by the public money
+	// it costs and by the cells left on the grid; a character by the money and by a free
+	// platform slot to stand on. Two brakes the player can see, instead of a number that
+	// silently greys a button out.
 
 	/**
-	 * Blue votes the player walks in with. Building charges the build cost of every piece,
-	 * so this is the capital the opening defense is paid for: enough for a base, never
-	 * enough for the whole board. From wave 1 the kills pay it back, and every piece added
-	 * after that comes off the scoreboard - which is the cruel model working.
+	 * Public money the player walks in with. Everything is bought with public money and
+	 * the only other source of it is the scheduled candidates, the first of whom is waves
+	 * away, so this is what the opening defense is paid for: a decent base, never the
+	 * whole board. At the default prices a defender on wave 1 costs about 400.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
+	int32 StartingFunds = 2000;
+
+	/**
+	 * Blue votes on the count before the first kill: a head start in the election, and
+	 * nothing more. Votes are never spent, so this is not something to build with.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
 	int32 StartingVotes = 3000;

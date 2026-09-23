@@ -55,8 +55,96 @@ namespace BDAutoSetupPrivate
 		TEXT("BD.Match.FreezeTimer"), TEXT("BD.Day.Freeze"), TEXT("BD.Grid.Debug"),
 		TEXT("BD.Tower.ShowRange"), TEXT("BD.Tower.ShowTarget"), TEXT("BD.HUD.Debug") };
 
-	/** How many fences the setup lays at most, budget allowing: enough to bend the routes, not to seal them. */
-	static constexpr int32 MaxFences = 10;
+	//~ Strategy, exposed so one setup can play like a good player and another like a
+	// careless one, and the gap between them is what the difficulty range really is.
+
+	/** Share of the opening capital, in public money, the maze may spend before a single defender is bought. */
+	static float GFenceShare = 0.4f;
+
+	/** Cells between two fences of the serpentine. Small is a tighter maze and a longer walk. */
+	static int32 GMazeStride = 3;
+
+	/** Sides of the urn to fence, of its four. 3 leaves one door; 0 leaves the urn open. */
+	static int32 GUrnRing = 3;
+
+	/**
+	 * How the capital left after the maze is split between the two kinds of defender.
+	 * Nothing counts defenders any more, so these two numbers are what decides the shape
+	 * of the automatic defense, and without them it has none: the characters would fill
+	 * every slot the platforms opened and leave the ground bare, because they are asked
+	 * first. The tower share is of what the characters did not take, so 1 spends the rest.
+	 */
+	static float GCharacterShare = 0.5f;
+	static float GTowerShare = 1.0f;
+
+	/**
+	 * Share of the money left after the maze spent on platforms, and only while every slot
+	 * standing is manned: a platform costs like a defender now, and a board of empty trucks
+	 * is money that shoots at nothing.
+	 */
+	static float GPlatformShare = 0.25f;
+
+	/** 0 spreads the defense along the whole corridor, 1 piles it at the urn; between is a mix. */
+	static float GFocusUrn = 0.35f;
+
+	/** Route cells within this many cells of a spot count towards its score. Roughly a tower's reach. */
+	static constexpr int32 CorridorRadius = 3;
+
+	static FAutoConsoleVariableRef CVarFenceShare(
+		TEXT("BD.Debug.AutoSetup.FenceShare"),
+		GFenceShare,
+		TEXT("Share of the opening public money the automatic defense spends on the maze before buying any defender. 0 builds no maze."),
+		ECVF_Cheat);
+
+	static FAutoConsoleVariableRef CVarMazeStride(
+		TEXT("BD.Debug.AutoSetup.MazeStride"),
+		GMazeStride,
+		TEXT("Cells between two fences of the serpentine: lower is a denser maze and a longer route."),
+		ECVF_Cheat);
+
+	static FAutoConsoleVariableRef CVarUrnRing(
+		TEXT("BD.Debug.AutoSetup.UrnRing"),
+		GUrnRing,
+		TEXT("How many of the urn's four sides to fence. 3 leaves a single door; 0 leaves it open."),
+		ECVF_Cheat);
+
+	static FAutoConsoleVariableRef CVarCharacterShare(
+		TEXT("BD.Debug.AutoSetup.CharacterShare"),
+		GCharacterShare,
+		TEXT("Share of the capital left after the maze that the automatic defense spends manning platform slots. The rest is left for the ground towers."),
+		ECVF_Cheat);
+
+	static FAutoConsoleVariableRef CVarTowerShare(
+		TEXT("BD.Debug.AutoSetup.TowerShare"),
+		GTowerShare,
+		TEXT("Share of the capital left after the maze and the characters that the automatic defense spends on ground towers. 1 (default) spends all of it."),
+		ECVF_Cheat);
+
+	static FAutoConsoleVariableRef CVarPlatformShare(
+		TEXT("BD.Debug.AutoSetup.PlatformShare"),
+		GPlatformShare,
+		TEXT("Share of the money in hand the automatic defense spends on platforms, and only while no slot stands empty."),
+		ECVF_Cheat);
+
+	static FAutoConsoleVariableRef CVarFocusUrn(
+		TEXT("BD.Debug.AutoSetup.FocusUrn"),
+		GFocusUrn,
+		TEXT("0 spreads the defense along the corridor, 1 piles it around the urn."),
+		ECVF_Cheat);
+
+	/**
+	 * Dividers handed to the match before the maze is built, on top of what the difficulty
+	 * gives. Purely a measuring knob: the fence budget turned out to be what caps the maze,
+	 * so this is how the question "how many would it take" gets a number instead of a guess.
+	 */
+	static int32 GExtraDividers = 0;
+
+	static FAutoConsoleVariableRef CVarExtraDividers(
+		TEXT("BD.Debug.AutoSetup.ExtraDividers"),
+		GExtraDividers,
+		TEXT("Extra dividers granted before the maze is built, to measure what a bigger DividerBudget would buy. 0 uses the difficulty's own."),
+		ECVF_Cheat);
+
 	static constexpr int32 FenceAttemptsPerFence = 4;
 
 	/** Rings of cells around a target tried for a piece, nearest first. */
@@ -254,11 +342,39 @@ void UBDDebugAutoSetup::Run(const int32 Seed, const int32 DefenderLevel)
 	// Hundreds of spots are tried; one line per answer would drown the log.
 	Placement->SetRefusalLogging(false);
 
+	// The urn, then the MAZE, then the defenders. The order is the strategy: fences are
+	// the primary defense because they decide how long the horde walks, and a defender
+	// placed before the maze exists is a defender standing next to a route that is about
+	// to move somewhere else.
 	const bool bUrn = PlaceObjective(*Placement, Stream);
+
+	float RouteBefore = 0.0f;
+	int32 LongestBefore = 0;
+	int32 RoutedBefore = 0;
+	MeasureRoutes(RouteBefore, LongestBefore, RoutedBefore);
+
+	// The measuring knob: a bigger fence budget than the difficulty gives, so the question
+	// of how many fences a real maze needs can be answered with a number.
+	if (BDAutoSetupPrivate::GExtraDividers > 0)
+	{
+		Match->AdjustDividerBudget(BDAutoSetupPrivate::GExtraDividers, TEXT("BD.Debug.AutoSetup.ExtraDividers"));
+	}
+
+	const int32 Fences = bUrn ? BuildMaze(*Placement, Stream) : 0;
+
+	float RouteAfter = 0.0f;
+	int32 LongestAfter = 0;
+	int32 RoutedAfter = 0;
+	MeasureRoutes(RouteAfter, LongestAfter, RoutedAfter);
+
+	UE_LOG(LogBDDebug, Log, TEXT("Maze: %d fence(s), route %.1f -> %.1f cells on average (%+.0f%%), longest %d -> %d, %d of %d mouth(s) still routed."),
+		Fences, RouteBefore, RouteAfter,
+		RouteBefore > 0.0f ? (RouteAfter / RouteBefore - 1.0f) * 100.0f : 0.0f,
+		LongestBefore, LongestAfter, RoutedAfter, RoutedBefore);
+
 	const int32 Platforms = bUrn ? PlacePlatforms(*Placement, Stream) : 0;
 	const int32 Characters = bUrn ? FillSlots(*Placement, Stream) : 0;
 	const int32 Towers = bUrn ? PlaceTowers(*Placement, Stream) : 0;
-	const int32 Fences = bUrn ? PlaceFences(*Placement, Stream) : 0;
 
 	Placement->CancelSelection();
 	Placement->SetRefusalLogging(true);
@@ -271,9 +387,9 @@ void UBDDebugAutoSetup::Run(const int32 Seed, const int32 DefenderLevel)
 		It->DebugSetLevel(Level);
 	}
 
-	UE_LOG(LogBDDebug, Log, TEXT("Auto setup done: urn %s, %d platform(s), %d character(s), %d tower(s), %d fence(s), all defenders at level %d. Budgets left: %d platforms, %d characters, %d towers, %d dividers."),
+	UE_LOG(LogBDDebug, Log, TEXT("Auto setup done: urn %s, %d platform(s), %d character(s), %d tower(s), %d fence(s), all defenders at level %d. Left: %d platforms, %d dividers, %d free slot(s), %d public money."),
 		bUrn ? TEXT("placed") : TEXT("NOT placed"), Platforms, Characters, Towers, Fences, Level,
-		Match->GetPlatformsRemaining(), Match->GetCharactersRemaining(), Match->GetTowersRemaining(), Match->GetDividersRemaining());
+		Match->GetPlatformsRemaining(), Match->GetDividersRemaining(), Match->GetFreeCharacterSlots(), Match->GetPublicMoney());
 
 	LogDistribution();
 }
@@ -287,7 +403,16 @@ int32 UBDDebugAutoSetup::BuildGrantedBudget()
 		return 0;
 	}
 
-	const int32 Waiting = Match->GetPlatformsRemaining() + Match->GetCharactersRemaining() + Match->GetTowersRemaining();
+	// Asked before anything else, because what the capital buys is read off these palettes
+	// and this may be the first call of a session.
+	GatherPlaceables();
+
+	// What there is left to build with: platforms still in hand, slots standing empty, and
+	// whatever the public money earned since the last pass buys. The last one is the new one - the
+	// defense now grows on the income of the waves, not on a ceiling somebody raised.
+	const int32 Waiting = (Match->GetFreeCharacterSlots() > 0 ? 0 : FMath::Min(Match->GetPlatformsRemaining(), AffordableCount(PlatformPieces, BDAutoSetupPrivate::GPlatformShare)))
+		+ FMath::Min(Match->GetFreeCharacterSlots(), AffordableCount(CharacterPieces, BDAutoSetupPrivate::GCharacterShare))
+		+ AffordableCount(TowerPieces, BDAutoSetupPrivate::GTowerShare);
 	if (Waiting <= 0)
 	{
 		return 0;
@@ -297,7 +422,6 @@ int32 UBDDebugAutoSetup::BuildGrantedBudget()
 	// and two passes do not try the same spots.
 	FRandomStream Stream(LastSeed * 7919 + ++GrantedPasses);
 
-	GatherPlaceables();
 	Placement->SetRefusalLogging(false);
 
 	// Platforms first: they are what makes slots for the characters to stand on.
@@ -309,9 +433,9 @@ int32 UBDDebugAutoSetup::BuildGrantedBudget()
 	Placement->SetRefusalLogging(true);
 
 	const int32 Placed = Platforms + Characters + Towers;
-	UE_CLOG(Placed > 0, LogBDDebug, Log, TEXT("Granted budget built (pass %d): %d platform(s), %d character(s), %d tower(s). Left: %d platforms, %d characters, %d towers."),
+	UE_CLOG(Placed > 0, LogBDDebug, Log, TEXT("Income built (pass %d): %d platform(s), %d character(s), %d tower(s). Left: %d platforms, %d free slot(s), %d public money."),
 		GrantedPasses, Platforms, Characters, Towers,
-		Match->GetPlatformsRemaining(), Match->GetCharactersRemaining(), Match->GetTowersRemaining());
+		Match->GetPlatformsRemaining(), Match->GetFreeCharacterSlots(), Match->GetPublicMoney());
 	return Placed;
 }
 
@@ -451,6 +575,8 @@ bool UBDDebugAutoSetup::PlaceObjective(UBDPlacementComponent& Placement, FRandom
 		Placement.SetHoveredCellDirect(Cell);
 		if (Placement.IsCurrentPlacementValid() && Placement.TryPlaceAtHovered())
 		{
+			// Kept so the maze can be built around it without asking the world again.
+			ObjectiveCell = Cell;
 			return true;
 		}
 	}
@@ -459,85 +585,251 @@ bool UBDDebugAutoSetup::PlaceObjective(UBDPlacementComponent& Placement, FRandom
 	return false;
 }
 
-void UBDDebugAutoSetup::BuildStretchTargets(const int32 Count, FRandomStream& Stream, TArray<FBDCellCoord>& OutTargets) const
+void UBDDebugAutoSetup::MeasureRoutes(float& OutAverage, int32& OutLongest, int32& OutRouted) const
+{
+	OutAverage = 0.0f;
+	OutLongest = 0;
+	OutRouted = 0;
+
+	UBDWaveSubsystem* Waves = FindWaves();
+	if (Waves == nullptr)
+	{
+		return;
+	}
+
+	int32 Total = 0;
+	for (const FBDSpawnPoint& Point : Waves->GetSpawnPoints())
+	{
+		if (Point.Route.Num() > 0)
+		{
+			Total += Point.Route.Num();
+			OutLongest = FMath::Max(OutLongest, Point.Route.Num());
+			++OutRouted;
+		}
+	}
+	OutAverage = OutRouted > 0 ? static_cast<float>(Total) / OutRouted : 0.0f;
+}
+
+int32 UBDDebugAutoSetup::RingTheUrn(UBDPlacementComponent& Placement, FRandomStream& Stream)
+{
+	const int32 Sides = FMath::Clamp(BDAutoSetupPrivate::GUrnRing, 0, 3);
+	if (Sides <= 0)
+	{
+		return 0;
+	}
+
+	// The four sides of the cell the urn stands on. At most three go up: the fourth is
+	// the door, and the placement would refuse it anyway once it sealed the last way in.
+	const FBDCellCoord& Urn = ObjectiveCell;
+	TArray<FBDEdgeCoord> Ring;
+	Ring.Add(FBDEdgeCoord(Urn, FBDEdgeCoord::DirectionX));
+	Ring.Add(FBDEdgeCoord(Urn, FBDEdgeCoord::DirectionY));
+	Ring.Add(FBDEdgeCoord(FBDCellCoord(Urn.X - 1, Urn.Y), FBDEdgeCoord::DirectionX));
+	Ring.Add(FBDEdgeCoord(FBDCellCoord(Urn.X, Urn.Y - 1), FBDEdgeCoord::DirectionY));
+
+	for (int32 Index = Ring.Num() - 1; Index > 0; --Index)
+	{
+		Ring.Swap(Index, Stream.RandRange(0, Index));
+	}
+
+	int32 Placed = 0;
+	for (const FBDEdgeCoord& Edge : Ring)
+	{
+		if (Placed >= Sides)
+		{
+			break;
+		}
+
+		Placement.SetRotationSteps(Edge.Direction == FBDEdgeCoord::DirectionX ? 1 : 0);
+		Placement.SetHoveredEdgeDirect(Edge);
+		if (Placement.IsCurrentPlacementValid() && Placement.TryPlaceAtHovered())
+		{
+			++Placed;
+		}
+	}
+
+	UE_CLOG(Placed > 0, LogBDDebug, Verbose, TEXT("  urn ringed on %d of its %d side(s)."), Placed, Ring.Num());
+	return Placed;
+}
+
+int32 UBDDebugAutoSetup::BuildMaze(UBDPlacementComponent& Placement, FRandomStream& Stream)
+{
+	UBDWaveSubsystem* Waves = FindWaves();
+	const ABDMatchManager* Match = FindMatch();
+	UBDPlaceableData* Piece = BDAutoSetupPrivate::Pick(DividerPieces, Stream);
+	if (Waves == nullptr || Match == nullptr || Piece == nullptr)
+	{
+		return 0;
+	}
+
+	// What the maze may spend, and it is spent before anything else asks for money: a
+	// share of the opening capital, and never more fences than the hand holds.
+	const int32 Capital = Match->GetPublicMoney();
+	const int32 Cost = FMath::Max(1, Match->GetBuildPrice(Piece));
+	const int32 ByMoney = FMath::FloorToInt(Capital * FMath::Clamp(BDAutoSetupPrivate::GFenceShare, 0.0f, 1.0f)) / Cost;
+	const int32 Wanted = FMath::Min(ByMoney, Match->GetBudgetRemaining(EBDPieceKind::Divider));
+	if (Wanted <= 0)
+	{
+		return 0;
+	}
+
+	Placement.SelectPlaceable(Piece);
+
+	// The door first: everything that follows bends around it.
+	// (ExtraDividers, when set, was already added to the hand by Run.)
+	int32 Placed = RingTheUrn(Placement, Stream);
+
+	// Then the serpentine. The longest route is always the one worth bending, and it is
+	// asked again after every fence because a fence that lands moves it.
+	const int32 Stride = FMath::Max(1, BDAutoSetupPrivate::GMazeStride);
+	int32 Barren = 0;
+	while (Placed < Wanted && Barren < Wanted * BDAutoSetupPrivate::FenceAttemptsPerFence)
+	{
+		const TArray<FBDCellCoord>* Longest = nullptr;
+		for (const FBDSpawnPoint& Point : Waves->GetSpawnPoints())
+		{
+			if (Point.Route.Num() >= 6 && (Longest == nullptr || Point.Route.Num() > Longest->Num()))
+			{
+				Longest = &Point.Route;
+			}
+		}
+		if (Longest == nullptr)
+		{
+			break;
+		}
+
+		// Walked from the mouth towards the urn, a fence every Stride cells, so the
+		// detours are spread along the whole walk instead of piling at one bend.
+		bool bAny = false;
+		const TArray<FBDCellCoord> Route = *Longest;
+		for (int32 Index = 2; Index + 2 < Route.Num() && Placed < Wanted; Index += Stride)
+		{
+			bool bAdjacent = false;
+			const FBDEdgeCoord Edge = FBDEdgeCoord::Between(Route[Index], Route[Index + 1], bAdjacent);
+			if (!bAdjacent)
+			{
+				continue;
+			}
+
+			Placement.SetRotationSteps(Edge.Direction == FBDEdgeCoord::DirectionX ? 1 : 0);
+			Placement.SetHoveredEdgeDirect(Edge);
+			if (Placement.IsCurrentPlacementValid() && Placement.TryPlaceAtHovered())
+			{
+				++Placed;
+				bAny = true;
+				// The route this loop is walking is stale the moment a fence lands.
+				break;
+			}
+		}
+
+		Barren = bAny ? 0 : Barren + 1;
+	}
+
+	return Placed;
+}
+
+void UBDDebugAutoSetup::BuildCorridorTargets(const int32 Count, FRandomStream& Stream, TArray<FBDCellCoord>& OutTargets) const
 {
 	OutTargets.Reset();
 
 	UBDWaveSubsystem* Waves = FindWaves();
-	if (Waves == nullptr || Count <= 0)
+	const UBDGridSubsystem* Grid = UBDGridSubsystem::Get(GetWorld());
+	if (Waves == nullptr || Grid == nullptr || Count <= 0)
 	{
 		return;
 	}
 
-	// Routes with at least a cell between spawn and urn to stand next to.
-	TArray<const TArray<FBDCellCoord>*> Routes;
+	// Every cell of every route, with how far along its own walk it is: the tail of the
+	// route is what the urn focus pulls towards.
+	TMap<FBDCellCoord, float> RouteCells;
 	for (const FBDSpawnPoint& Point : Waves->GetSpawnPoints())
 	{
-		if (Point.Route.Num() >= 3)
+		const int32 Length = Point.Route.Num();
+		for (int32 Index = 0; Index < Length; ++Index)
 		{
-			Routes.Add(&Point.Route);
+			const float Along = Length > 1 ? static_cast<float>(Index) / (Length - 1) : 1.0f;
+			float& Best = RouteCells.FindOrAdd(Point.Route[Index], 0.0f);
+			Best = FMath::Max(Best, Along);
 		}
 	}
-	if (Routes.Num() == 0)
+	if (RouteCells.Num() == 0)
 	{
 		return;
 	}
 
-	// Round robin over the routes, then each route is cut into as many stretches as it
-	// got pieces and each piece takes the middle of its stretch, give or take.
-	TArray<int32> PerRoute;
-	PerRoute.Init(0, Routes.Num());
-	for (int32 Index = 0; Index < Count; ++Index)
+	// A spot is worth the route it covers: every route cell within a tower's reach counts
+	// once. A bend of the serpentine has the route folded past it several times, so it
+	// scores several times, which is exactly the spot a player would pick.
+	const int32 Radius = BDAutoSetupPrivate::CorridorRadius;
+	const float Focus = FMath::Clamp(BDAutoSetupPrivate::GFocusUrn, 0.0f, 1.0f);
+	TMap<FBDCellCoord, float> Scores;
+	for (const TPair<FBDCellCoord, float>& Cell : RouteCells)
 	{
-		++PerRoute[Index % Routes.Num()];
-	}
-
-	for (int32 RouteIndex = 0; RouteIndex < Routes.Num(); ++RouteIndex)
-	{
-		const TArray<FBDCellCoord>& Route = *Routes[RouteIndex];
-		const int32 Stretches = PerRoute[RouteIndex];
-		for (int32 Stretch = 0; Stretch < Stretches; ++Stretch)
+		for (int32 dY = -Radius; dY <= Radius; ++dY)
 		{
-			const float Fraction = (Stretch + 0.5f + Stream.FRandRange(-BDAutoSetupPrivate::StretchJitter, BDAutoSetupPrivate::StretchJitter)) / Stretches;
-			const int32 CellIndex = FMath::Clamp(FMath::RoundToInt(Fraction * (Route.Num() - 1)), 1, Route.Num() - 2);
-			OutTargets.Add(Route[CellIndex]);
-		}
-	}
-
-	// Interleaved by route already; a shuffle keeps two seeds from placing in the same order.
-	BDAutoSetupPrivate::Shuffle(OutTargets, Stream);
-
-	// Routes are not spread over the board evenly: several can run down the same side and
-	// leave the other half of the map without a target. Bucketed by region and dealt one
-	// per region in turn, every region gets a piece before any region gets a second one.
-	const UBDGridSubsystem* Grid = UBDGridSubsystem::Get(GetWorld());
-	if (Grid == nullptr)
-	{
-		return;
-	}
-
-	TArray<TArray<FBDCellCoord>> Regions;
-	Regions.SetNum(BDAutoSetupPrivate::RegionsPerAxis * BDAutoSetupPrivate::RegionsPerAxis);
-	for (const FBDCellCoord& Target : OutTargets)
-	{
-		Regions[BDAutoSetupPrivate::RegionOf(*Grid, Target)].Add(Target);
-	}
-
-	TArray<FBDCellCoord> Dealt;
-	Dealt.Reserve(OutTargets.Num());
-	for (int32 Round = 0; Dealt.Num() < OutTargets.Num(); ++Round)
-	{
-		for (const TArray<FBDCellCoord>& Region : Regions)
-		{
-			if (Region.IsValidIndex(Round))
+			for (int32 dX = -Radius; dX <= Radius; ++dX)
 			{
-				Dealt.Add(Region[Round]);
+				if (dX * dX + dY * dY > Radius * Radius)
+				{
+					continue;
+				}
+
+				const FBDCellCoord Spot(Cell.Key.X + dX, Cell.Key.Y + dY);
+				if (!Grid->IsValidCoord(Spot) || Grid->GetCellState(Spot) != EBDCellState::Free)
+				{
+					continue;
+				}
+
+				// One point for covering the cell, plus the urn focus on how late in the
+				// walk that cell is: at Focus 0 every stretch is worth the same.
+				Scores.FindOrAdd(Spot, 0.0f) += 1.0f + Focus * 4.0f * Cell.Value;
 			}
 		}
 	}
+	if (Scores.Num() == 0)
+	{
+		return;
+	}
 
-	OutTargets = MoveTemp(Dealt);
+	// A little noise on the way in, so two seeds with the same board do not lay the same
+	// defense down to the cell while the ranking still decides the shape.
+	TArray<TPair<FBDCellCoord, float>> Ranked;
+	Ranked.Reserve(Scores.Num());
+	for (const TPair<FBDCellCoord, float>& Entry : Scores)
+	{
+		Ranked.Emplace(Entry.Key, Entry.Value * Stream.FRandRange(0.9f, 1.1f));
+	}
+	Ranked.Sort([](const TPair<FBDCellCoord, float>& A, const TPair<FBDCellCoord, float>& B)
+	{
+		return A.Value > B.Value;
+	});
+
+	// Taken from the top, but never two touching: a defender on the very next cell covers
+	// almost the same route and the corridor would be armed in one clump.
+	for (const TPair<FBDCellCoord, float>& Entry : Ranked)
+	{
+		if (OutTargets.Num() >= Count)
+		{
+			break;
+		}
+
+		const bool bCrowded = OutTargets.ContainsByPredicate([&Entry](const FBDCellCoord& Taken)
+		{
+			return FMath::Abs(Taken.X - Entry.Key.X) <= 1 && FMath::Abs(Taken.Y - Entry.Key.Y) <= 1;
+		});
+		if (!bCrowded)
+		{
+			OutTargets.Add(Entry.Key);
+		}
+	}
+
+	// Still short (a small board, a short corridor): the best spots again, crowding allowed.
+	for (int32 Index = 0; OutTargets.Num() < Count && Index < Ranked.Num(); ++Index)
+	{
+		OutTargets.Add(Ranked[Index].Key);
+	}
 }
+
 
 bool UBDDebugAutoSetup::TryPlaceCellPieceNear(UBDPlacementComponent& Placement, UBDPlaceableData* Piece,
 	const FBDCellCoord& Target, FRandomStream& Stream) const
@@ -594,6 +886,37 @@ bool UBDDebugAutoSetup::TryPlaceCellPieceNear(UBDPlacementComponent& Placement, 
 	return false;
 }
 
+int32 UBDDebugAutoSetup::AffordableCount(const TArray<TObjectPtr<UBDPlaceableData>>& Pieces, const float Share) const
+{
+	const ABDMatchManager* Match = FindMatch();
+	if (Match == nullptr || Pieces.Num() == 0)
+	{
+		return 0;
+	}
+
+	// The average of the kinds, because the spread passes draw one at random per spot:
+	// asking the cheapest would promise more pieces than the capital pays for, and the
+	// dearest would leave money unspent. Priced on the current wave, like a click would be.
+	// Pieces not unlocked yet are left out: they cannot be bought, whatever they cost.
+	int32 Total = 0;
+	int32 Kinds = 0;
+	for (const TObjectPtr<UBDPlaceableData>& Piece : Pieces)
+	{
+		if (Piece != nullptr && Match->IsUnlocked(Piece))
+		{
+			Total += FMath::Max(1, Match->GetBuildPrice(Piece));
+			++Kinds;
+		}
+	}
+	if (Kinds == 0)
+	{
+		return 0;
+	}
+
+	const int32 AverageCost = FMath::Max(1, Total / Kinds);
+	return FMath::FloorToInt(Match->GetPublicMoney() * FMath::Clamp(Share, 0.0f, 1.0f)) / AverageCost;
+}
+
 int32 UBDDebugAutoSetup::PlacePlatforms(UBDPlacementComponent& Placement, FRandomStream& Stream)
 {
 	const ABDMatchManager* Match = FindMatch();
@@ -602,8 +925,17 @@ int32 UBDDebugAutoSetup::PlacePlatforms(UBDPlacementComponent& Placement, FRando
 		return 0;
 	}
 
+	// Paid for like everything else: a share of the money, never past the hand, and none
+	// while a slot already standing is empty - a player mans what they have first.
+	const int32 Wanted = Match->GetFreeCharacterSlots() > 0 ? 0
+		: FMath::Min(Match->GetBudgetRemaining(EBDPieceKind::Platform), AffordableCount(PlatformPieces, BDAutoSetupPrivate::GPlatformShare));
+	if (Wanted <= 0)
+	{
+		return 0;
+	}
+
 	TArray<FBDCellCoord> Targets;
-	BuildStretchTargets(Match->GetBudgetRemaining(EBDPieceKind::Platform), Stream, Targets);
+	BuildCorridorTargets(Wanted, Stream, Targets);
 
 	int32 Placed = 0;
 	for (const FBDCellCoord& Target : Targets)
@@ -653,6 +985,10 @@ int32 UBDDebugAutoSetup::FillSlots(UBDPlacementComponent& Placement, FRandomStre
 		MostSlots = FMath::Max(MostSlots, Platform->Slots.Num());
 	}
 
+	// What the characters may spend, read once: asked again per slot it would keep taking
+	// a share of a smaller and smaller balance and never leave the towers anything.
+	const int32 Wanted = AffordableCount(CharacterPieces, BDAutoSetupPrivate::GCharacterShare);
+
 	// A slot at a time across every platform, not a platform at a time: twelve characters
 	// over six platforms is two on each, and a platform standing empty beside a full one
 	// is exactly the heap this setup exists to avoid.
@@ -661,7 +997,9 @@ int32 UBDDebugAutoSetup::FillSlots(UBDPlacementComponent& Placement, FRandomStre
 	{
 		for (UBDPlatformComponent* Platform : Platforms)
 		{
-			if (Match->GetBudgetRemaining(EBDPieceKind::Character) <= 0)
+			// A character is held back by the slot it stands on and by the money it costs.
+			// The slot is answered by the loop; this is the other half.
+			if (Placed >= Wanted || AffordableCount(CharacterPieces, 1.0f) <= 0)
 			{
 				return Placed;
 			}
@@ -690,8 +1028,10 @@ int32 UBDDebugAutoSetup::PlaceTowers(UBDPlacementComponent& Placement, FRandomSt
 		return 0;
 	}
 
+	// No ceiling decides this any more: what the capital left in hand buys does. The
+	// characters got their slots first, because a platform standing empty evolves nothing.
 	TArray<FBDCellCoord> Targets;
-	BuildStretchTargets(Match->GetBudgetRemaining(EBDPieceKind::Tower), Stream, Targets);
+	BuildCorridorTargets(AffordableCount(TowerPieces, BDAutoSetupPrivate::GTowerShare), Stream, Targets);
 
 	int32 Placed = 0;
 	for (const FBDCellCoord& Target : Targets)
@@ -718,7 +1058,7 @@ int32 UBDDebugAutoSetup::CoverUncoveredRoutes(UBDPlacementComponent& Placement, 
 	int32 Placed = 0;
 	for (const FBDSpawnPoint& Point : Waves->GetSpawnPoints())
 	{
-		if (Match->GetBudgetRemaining(EBDPieceKind::Tower) <= 0)
+		if (AffordableCount(TowerPieces, 1.0f) <= 0)
 		{
 			break;
 		}
@@ -762,59 +1102,6 @@ int32 UBDDebugAutoSetup::CoverUncoveredRoutes(UBDPlacementComponent& Placement, 
 	return Placed;
 }
 
-int32 UBDDebugAutoSetup::PlaceFences(UBDPlacementComponent& Placement, FRandomStream& Stream)
-{
-	UBDWaveSubsystem* Waves = FindWaves();
-	const ABDMatchManager* Match = FindMatch();
-	UBDPlaceableData* Piece = BDAutoSetupPrivate::Pick(DividerPieces, Stream);
-	if (Waves == nullptr || Match == nullptr || Piece == nullptr)
-	{
-		return 0;
-	}
-
-	const int32 Wanted = FMath::Min(BDAutoSetupPrivate::MaxFences, Match->GetBudgetRemaining(EBDPieceKind::Divider));
-	Placement.SelectPlaceable(Piece);
-
-	// Each fence goes across a route, so the creeps have to bend around it: the routes
-	// are asked again after every fence, since every fence moves them.
-	int32 Placed = 0;
-	for (int32 Attempt = 0; Attempt < Wanted * BDAutoSetupPrivate::FenceAttemptsPerFence && Placed < Wanted; ++Attempt)
-	{
-		TArray<const TArray<FBDCellCoord>*> Routes;
-		for (const FBDSpawnPoint& Point : Waves->GetSpawnPoints())
-		{
-			if (Point.Route.Num() >= 6)
-			{
-				Routes.Add(&Point.Route);
-			}
-		}
-		if (Routes.Num() == 0)
-		{
-			break;
-		}
-
-		const TArray<FBDCellCoord>& Route = *Routes[Stream.RandRange(0, Routes.Num() - 1)];
-		const int32 Index = Stream.RandRange(2, Route.Num() - 4);
-
-		bool bAdjacent = false;
-		const FBDEdgeCoord Edge = FBDEdgeCoord::Between(Route[Index], Route[Index + 1], bAdjacent);
-		if (!bAdjacent)
-		{
-			continue;
-		}
-
-		// Unrotated, the fence runs along X and blocks +Y edges; one turn blocks +X edges.
-		Placement.SetRotationSteps(Edge.Direction == FBDEdgeCoord::DirectionX ? 1 : 0);
-		Placement.SetHoveredEdgeDirect(Edge);
-		if (Placement.IsCurrentPlacementValid() && Placement.TryPlaceAtHovered())
-		{
-			++Placed;
-			UE_LOG(LogBDDebug, Verbose, TEXT("  fence across %s."), *Edge.ToString());
-		}
-	}
-
-	return Placed;
-}
 
 //~ Console -----------------------------------------------------------------------
 

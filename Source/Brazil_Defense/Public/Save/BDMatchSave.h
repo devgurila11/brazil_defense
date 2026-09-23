@@ -38,6 +38,14 @@ struct FBDSavedPiece
 	UPROPERTY()
 	int32 Level = 1;
 
+	/** Public money the piece was bought for, which is what its sale pays a share of. -1 in a save from before it was kept. */
+	UPROPERTY()
+	int32 PaidCost = -1;
+
+	/** Defenders: public money sunk into the levels, at the prices they were bought at. -1 in a save from before it was kept. */
+	UPROPERTY()
+	int32 EvolutionSpent = -1;
+
 	bool IsOnSlot() const { return SlotIndex != INDEX_NONE; }
 	bool IsOnEdge() const { return Edges.Num() > 0; }
 };
@@ -89,7 +97,7 @@ public:
 	UPROPERTY()
 	int32 BribeHeld = 0;
 
-	/** The mint's counter: what evolution is paid with. */
+	/** The mint's counter: what everything is bought with. */
 	UPROPERTY()
 	int32 PublicMoney = 0;
 
@@ -115,11 +123,9 @@ public:
 	UPROPERTY()
 	int32 PlatformsRemaining = 0;
 
-	UPROPERTY()
-	int32 TowersRemaining = 0;
-
-	UPROPERTY()
-	int32 CharactersRemaining = 0;
+	// No defender counts here. A tower and a character are paid for in public money and
+	// held by the board, so restoring the pieces restores everything there was to know
+	// about them - what each was bought for included.
 
 	UPROPERTY()
 	TArray<FBDSavedPiece> Pieces;
