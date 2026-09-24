@@ -79,6 +79,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
 	bool HasCandidateOnBoard() const { return GetCandidate() != nullptr; }
 
+	/** The candidate who reached the urn, 0 while none has. For the post-match report. */
+	int32 GetArrivedOrdinal() const { return ArrivedOrdinal; }
+
 	/** Whether the fallen are coming back: no ordinary creep walks until they are all down. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
 	bool IsReturnActive() const { return bReturnActive; }
@@ -160,6 +163,9 @@ private:
 
 	TWeakObjectPtr<ABDMatchManager> BoundMatch;
 	FDelegateHandle VotesChangedHandle;
+	/** Ordinal of the candidate who reached the urn, 0 while none has. */
+	int32 ArrivedOrdinal = 0;
+
 	/** Bound to the wave subsystem rather than the match, so the candidate goes out after the mouths move and before the first creep. */
 	TWeakObjectPtr<UBDWaveSubsystem> BoundWaves;
 	FDelegateHandle WaveDealtHandle;

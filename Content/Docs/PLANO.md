@@ -250,6 +250,28 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-23 (noite) — COMMIT** (desde b1b73c0):
+  - **Relatório de fim de partida.** Toda partida que lançou ao menos
+    uma onda grava uma linha em `Saved/Logs/PostMatch.csv` e um resumo
+    `POST-MATCH` no LogBDMatch: vitória, derrota, abandono (sair ou
+    carregar um save por cima) e o limite de ondas do `BD.Sim.Run`.
+    53 colunas: identificação (modo Screen/Headless/Sim, seed,
+    dificuldade, resultado, motivo, onda), placar, economia (capital,
+    ganho dos chefes, reembolsos, gasto em construção/evolução/mover,
+    sobra, `LedgerGap` que deve ser 0), defesa por tipo e por peça da
+    paleta, níveis, combate (creeps, candidatos, dano, desperdício,
+    pico) e ritmo (tempo real/de jogo, última onda em que a defesa
+    cresceu). Colunas mudaram → o CSV antigo fica guardado com data.
+    CVar `BD.PostMatch.Enabled`.
+  - Para isso: livro-caixa `FBDMatchLedger` na partida (todo gasto diz
+    se foi construção, evolução ou mover; reembolso e devolução de
+    cobrança recusada separados) e totais de combate da partida no
+    subsistema de ondas.
+  - Verificado: sim de 30 ondas deu ganho 3493 = soma das quedas do
+    `BD.Economy.Report`, caixa fechando em 0; derrota e abandono
+    também geram linha.
+  - **Pendente:** ver a linha de uma partida jogada na tela (PIE).
+
 - **2026-09-23 — 06078e4** (desde 97535c5):
   - **AutoSetup estratégico** (de 2026-09-15, rodada 3 da seção 13):
     urna -> labirinto -> defensores. `BuildMaze` cerca três lados da urna

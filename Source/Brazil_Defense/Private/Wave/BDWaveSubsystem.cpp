@@ -510,6 +510,14 @@ void UBDWaveSubsystem::HandlePhaseChanged(const EBDMatchPhase NewPhase)
 	{
 		SpawnHoldRemaining = 0.0f;
 	}
+
+	// Rewound to its start (the console, or a save being loaded): the totals start over
+	// with the match, like the candidates do.
+	const ABDMatchManager* Match = GetMatch();
+	if (NewPhase == EBDMatchPhase::Building && Match != nullptr && Match->GetCurrentWave() == 0)
+	{
+		ResetMatchTotals();
+	}
 }
 
 void UBDWaveSubsystem::SpawnNextOfWave()
@@ -532,6 +540,8 @@ void UBDWaveSubsystem::SpawnNextOfWave()
 		--WaveSpawnsRemaining;
 		++WaveSpawnedTotal;
 		WavePeakAlive = FMath::Max(WavePeakAlive, LivingEnemies.Num());
+		MatchTotals.PeakAlive = FMath::Max(MatchTotals.PeakAlive, LivingEnemies.Num());
+		++MatchTotals.CreepsSpawned;
 		if (LivingEnemies.Num() > 0 && LivingEnemies.Last() != nullptr)
 		{
 			WaveTotalHealth += LivingEnemies.Last()->GetMaxHealth();
@@ -1135,9 +1145,11 @@ void UBDWaveSubsystem::GetLivingEnemies(TArray<ABDEnemyBase*>& OutEnemies) const
 void UBDWaveSubsystem::ReportWastedDamage(const float Damage, const bool bLostShot)
 {
 	WaveWastedDamage += FMath::Max(0.0f, Damage);
+	MatchTotals.DamageWasted += FMath::Max(0.0f, Damage);
 	if (bLostShot)
 	{
 		++WaveLostShots;
+		++MatchTotals.LostShots;
 	}
 
 	// Null votes: the waste, at the same rate as the score, handed over in whole votes.
@@ -1173,6 +1185,7 @@ void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
 
 	++SpawnLoopArrived;
 	++WaveArrived;
+	MatchTotals.CreepsArrived += Enemy->IsCandidate() ? 0 : 1;
 	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s reached the urn: red +%d."), *Enemy->GetName(), Votes);
 	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s reached the urn: red +%d."), *Enemy->GetName(), Votes);
 	ForgetEnemy(Enemy);
@@ -1198,6 +1211,7 @@ void UBDWaveSubsystem::NotifyEnemyDied(ABDEnemyBase* Enemy)
 
 	++SpawnLoopKilled;
 	++WaveKilled;
+	MatchTotals.CreepsKilled += Enemy->IsCandidate() ? 0 : 1;
 	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
 	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
 	ForgetEnemy(Enemy);

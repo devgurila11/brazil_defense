@@ -18,6 +18,7 @@
 #include "Placement/BDPlacementComponent.h"
 #include "Save/BDMatchSave.h"
 #include "Save/BDProgressSave.h"
+#include "Report/BDPostMatch.h"
 #include "Wave/BDWaveSubsystem.h"
 #include "Wave/BDWaveSettings.h"
 #include "Enemy/BDEnemyData.h"
@@ -115,6 +116,12 @@ void ABDMatchManager::BeginPlay()
 	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
 	UE_LOG(LogBDMatch, Log, TEXT("Opening capital: %d public money to build with; %d blue vote(s) on the count, which are never spent."),
 		PublicMoney, VotesBlue);
+	OpenLedger(-1);
+
+	// Leaving a match half played is an end too, and the report wants it: the world
+	// tearing down is told before the actors lose their components, so the board can
+	// still be counted then. EndPlay stays as the fallback.
+	TearDownHandle = FWorldDelegates::OnWorldBeginTearDown.AddUObject(this, &ABDMatchManager::HandleWorldBeginTearDown);
 
 	SetupBoard();
 
@@ -123,6 +130,45 @@ void ABDMatchManager::BeginPlay()
 	SetGameSpeed(GameSpeed);
 
 	StartBuildingPhase();
+}
+
+void ABDMatchManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	FWorldDelegates::OnWorldBeginTearDown.Remove(TearDownHandle);
+	ReportAbandoned(TEXT("the match was left"));
+	Super::EndPlay(EndPlayReason);
+}
+
+void ABDMatchManager::HandleWorldBeginTearDown(UWorld* World)
+{
+	if (World == GetWorld())
+	{
+		ReportAbandoned(TEXT("the match was left"));
+	}
+}
+
+void ABDMatchManager::OpenLedger(const int32 LoadedAtWave)
+{
+	Ledger = FBDMatchLedger();
+	Ledger.StartingFunds = PublicMoney;
+	Ledger.LoadedAtWave = LoadedAtWave;
+	Ledger.LastGrowthWave = CurrentWave;
+	Ledger.RealStartSeconds = FPlatformTime::Seconds();
+	Ledger.GameStartSeconds = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() : 0.0;
+}
+
+void ABDMatchManager::ReportAbandoned(const FString& Why)
+{
+	// A match that never sent a wave out was not played; one already settled has its row.
+	if (Ledger.bReportWritten || IsMatchOver() || CurrentWave < 1)
+	{
+		return;
+	}
+
+	Ledger.EndReason = Why;
+	Ledger.PublicMoneyAtEnd = PublicMoney;
+	Ledger.BribeHeldAtEnd = BribeHeld;
+	BDPostMatch::Write(*this, TEXT("Abandoned"));
 }
 
 void ABDMatchManager::ResolveDifficulty()
@@ -493,10 +539,16 @@ void ABDMatchManager::DeclareVictory()
 		CurrentWave, GetPrisonersFreed(), VotesBlue, VotesRed);
 	UBDProgressSave::RecordWin(Difficulty);
 
+	// Read before the money goes: the report wants what was left unspent.
+	Ledger.EndReason = FString::Printf(TEXT("the count after wave %d, %d blue to %d red"), CurrentWave, VotesBlue, VotesRed);
+	Ledger.PublicMoneyAtEnd = PublicMoney;
+	Ledger.BribeHeldAtEnd = BribeHeld;
+
 	// The match is settled, so the money is settled with it: what was not spent on the
 	// defense is not kept. Endless starts over on the bribes its own bosses drop.
 	DropMoney(TEXT("the match was won"));
 	SetPhase(EBDMatchPhase::Victory);
+	BDPostMatch::Write(*this, TEXT("Victory"));
 }
 
 //~ Saving ------------------------------------------------------------------------
@@ -586,6 +638,9 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	UE_LOG(LogBDMatch, Log, TEXT("Loading the match saved %s: wave %d, seed %d, %d piece(s)."),
 		*Save.SavedAt.ToString(), Save.Wave, Save.ObstacleSeed, Save.Pieces.Num());
 
+	// The match running now is thrown away for the saved one: it ends here, unfinished.
+	ReportAbandoned(TEXT("a save was loaded over it"));
+
 	if (Save.Difficulty != Difficulty)
 	{
 		Difficulty = Save.Difficulty;
@@ -655,6 +710,9 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	}
 	SetGameSpeed(Save.GameSpeed);
 
+	// The report counts from here: what happened before the save is in no board now.
+	OpenLedger(Save.Wave);
+
 	// Told last, with the board whole: an inverted score sends the candidate out again.
 	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
 	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
@@ -673,6 +731,8 @@ bool ABDMatchManager::ContinueEndless()
 	}
 
 	bEndless = true;
+	// The win has its row; the endless run that follows gets one of its own when it ends.
+	Ledger.bReportWritten = false;
 	UE_LOG(LogBDMatch, Log, TEXT("Endless from wave %d: the win stands, the waves go on."), CurrentWave + 1);
 	StartBuildingPhase();
 	return true;
@@ -688,8 +748,12 @@ void ABDMatchManager::DeclareDefeat(const FString& Reason)
 
 	UE_LOG(LogBDMatch, Log, TEXT("DEFEAT on wave %d: %s. Board frozen. Votes: blue %d, red %d."),
 		CurrentWave, *Reason, VotesBlue, VotesRed);
+	Ledger.EndReason = Reason;
+	Ledger.PublicMoneyAtEnd = PublicMoney;
+	Ledger.BribeHeldAtEnd = BribeHeld;
 	DropMoney(TEXT("the match was lost"));
 	SetPhase(EBDMatchPhase::Defeat);
+	BDPostMatch::Write(*this, TEXT("Defeat"));
 }
 
 void ABDMatchManager::AddVotesBlue(const int32 Votes)
@@ -752,6 +816,7 @@ void ABDMatchManager::AddBribe(const int32 Amount, const FString& Why)
 	}
 
 	BribeHeld += Amount;
+	Ledger.BribeEarned += Amount;
 	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
 	UE_LOG(LogBDBribe, Verbose, TEXT("Bribe +%d (%s): %d held, %d public."), Amount, *Why, BribeHeld, PublicMoney);
 }
@@ -779,11 +844,25 @@ void ABDMatchManager::AddPublicMoney(const int32 Amount, const FString& Why)
 	}
 
 	PublicMoney += Amount;
+	Ledger.Granted += Amount;
 	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
 	UE_LOG(LogBDBribe, Log, TEXT("Public money +%d (%s): now %d."), Amount, *Why, PublicMoney);
 }
 
-bool ABDMatchManager::SpendPublicMoney(const int32 Amount)
+void ABDMatchManager::PayRefund(const int32 Amount, const FString& Why)
+{
+	if (Amount <= 0)
+	{
+		return;
+	}
+
+	PublicMoney += Amount;
+	Ledger.Refunded += Amount;
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+	UE_LOG(LogBDBribe, Log, TEXT("Public money +%d (%s): now %d."), Amount, *Why, PublicMoney);
+}
+
+bool ABDMatchManager::SpendPublicMoney(const int32 Amount, const EBDFundsUse Use)
 {
 	if (Amount < 0 || !CanAffordPublicMoney(Amount))
 	{
@@ -796,9 +875,52 @@ bool ABDMatchManager::SpendPublicMoney(const int32 Amount)
 	}
 
 	PublicMoney -= Amount;
+	switch (Use)
+	{
+	case EBDFundsUse::Build:
+		Ledger.SpentBuild += Amount;
+		++Ledger.PiecesBuilt;
+		Ledger.LastGrowthWave = CurrentWave;
+		break;
+	case EBDFundsUse::Evolve:
+		Ledger.SpentEvolve += Amount;
+		++Ledger.LevelsBought;
+		Ledger.LastGrowthWave = CurrentWave;
+		break;
+	case EBDFundsUse::Move:
+		Ledger.SpentMove += Amount;
+		break;
+	}
 	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
 	UE_LOG(LogBDBribe, Verbose, TEXT("Public money -%d, now %d."), Amount, PublicMoney);
 	return true;
+}
+
+void ABDMatchManager::ReturnPublicMoney(const int32 Amount, const EBDFundsUse Use, const FString& Why)
+{
+	if (Amount <= 0)
+	{
+		return;
+	}
+
+	// The charge is undone rather than refunded: the ledger forgets it was ever made.
+	PublicMoney += Amount;
+	switch (Use)
+	{
+	case EBDFundsUse::Build:
+		Ledger.SpentBuild -= Amount;
+		--Ledger.PiecesBuilt;
+		break;
+	case EBDFundsUse::Evolve:
+		Ledger.SpentEvolve -= Amount;
+		--Ledger.LevelsBought;
+		break;
+	case EBDFundsUse::Move:
+		Ledger.SpentMove -= Amount;
+		break;
+	}
+	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
+	UE_LOG(LogBDBribe, Log, TEXT("Public money +%d back (%s): now %d."), Amount, *Why, PublicMoney);
 }
 
 void ABDMatchManager::DropMoney(const FString& Why)
@@ -881,7 +1003,7 @@ int32 ABDMatchManager::GetSellRefund(const EBDPieceKind Kind, const int32 PaidCo
 int32 ABDMatchManager::RefundSale(const EBDPieceKind Kind, const int32 PaidCost)
 {
 	const int32 Refund = GetSellRefund(Kind, PaidCost);
-	AddPublicMoney(Refund, TEXT("a piece sold"));
+	PayRefund(Refund, TEXT("a piece sold"));
 	return Refund;
 }
 

@@ -1632,7 +1632,7 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 		// Charged before the board is touched, so a refused payment leaves everything lifted.
 		ABDMatchManager* Match = GetMatch();
 		const int32 Cost = GetMoveCost();
-		if (Match != nullptr && !Match->SpendPublicMoney(Cost))
+		if (Match != nullptr && !Match->SpendPublicMoney(Cost, EBDFundsUse::Move))
 		{
 			UE_LOG(LogBDGrid, Warning, TEXT("Move of '%s' refused: %d public money needed."), *GetNameSafe(CurrentSelection), Cost);
 			return false;
@@ -1643,7 +1643,7 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 			// The board said yes a frame ago and no now. Give the money back and go home.
 			if (Match != nullptr)
 			{
-				Match->AddPublicMoney(Cost, TEXT("a move the board refused"));
+				Match->ReturnPublicMoney(Cost, EBDFundsUse::Move, TEXT("a move the board refused"));
 			}
 			CancelMove();
 			return false;
@@ -1676,7 +1676,7 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 			return false;
 		}
 
-		if (!bRestoring && !Match->SpendPublicMoney(BuildCost))
+		if (!bRestoring && !Match->SpendPublicMoney(BuildCost, EBDFundsUse::Build))
 		{
 			// The hand was already charged, so it goes back before leaving.
 			Match->RefundRemoval(CurrentSelection->GetPieceKind());
@@ -1952,7 +1952,7 @@ void UBDPlacementComponent::RefundRefusedPlacement(const int32 BuildCost)
 	{
 		if (!bRestoring)
 		{
-			Match->AddPublicMoney(BuildCost, TEXT("a placement the board refused"));
+			Match->ReturnPublicMoney(BuildCost, EBDFundsUse::Build, TEXT("a placement the board refused"));
 		}
 		if (CurrentSelection != nullptr)
 		{
@@ -1993,7 +1993,7 @@ int32 UBDPlacementComponent::RefundEvolution(const FBDPlacedPiece& Piece)
 		return 0;
 	}
 
-	Match->AddPublicMoney(Back, FString::Printf(TEXT("'%s' at level %d taken off the board"), *GetNameSafe(Piece.Data), Level));
+	Match->PayRefund(Back, FString::Printf(TEXT("'%s' at level %d taken off the board"), *GetNameSafe(Piece.Data), Level));
 	UE_LOG(LogBDBribe, Log, TEXT("EVOLUTION REFUND for '%s' at level %d: %d of the %d public money it cost comes back (%.0f%%), %d lost."),
 		*GetNameSafe(Piece.Data), Level, Back, Spent, Balance.EvolutionRefundRatio * 100.0f, Spent - Back);
 	return Back;

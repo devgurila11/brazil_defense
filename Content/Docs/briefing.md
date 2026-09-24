@@ -1,95 +1,79 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-23 14:00**
+**Versão: 2026-09-23 19:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Reforma da economia: fundos públicos são a moeda, votos são só placar
+# Relatório de fim de partida (post-match report)
 
-Decisão estrutural (fechada com o usuário). Hoje construir custa
-votos, e votos explodem (5,8 milhões na onda 145, torre custa 100 =
-grátis). E os fundos públicos crescem numa escala sã (30 mil na onda
-135). A solução é trocar os papéis.
+Ao terminar QUALQUER partida jogada na tela (vitória, derrota ou sair),
+gravar um relatório com os parâmetros gerais da partida — para
+acumular dados reais de teste e calibrar o balanceamento com número,
+não só com o olho.
 
-## 1. Votos = placar puro, não se gastam
+## Onde e como
 
-- Voto azul e voto vermelho continuam existindo e continuam sendo o
-  PLACAR da eleição (barra de apuração, condição de vitória/derrota
-  no fim da onda 100).
-- Votos NÃO são mais gastos em nada. Construir e evoluir não tocam
-  nos votos. O modelo "cruel" (gastar derruba o placar) SAI — era
-  baseado em votos como moeda, e votos deixaram de ser moeda.
-- A barra de apuração e a disputa azul/vermelho ficam como estão.
+- Gravar num arquivo próprio, acrescentando (append) a cada partida:
+  Saved/Logs/PostMatch.csv (uma linha por partida) OU um .log legível.
+  CSV é melhor — dá para abrir em planilha e comparar dezenas de
+  partidas.
+- Também logar um resumo legível no fim (LogBDMatch) para leitura
+  rápida.
+- Vale tanto para partida na tela quanto para as simuladas
+  (BD.Sim.Run), com uma coluna dizendo qual foi.
 
-## 2. Fundos públicos = moeda única de construção E evolução
+## Dados por partida (as colunas)
 
-- Tudo que o jogador coloca (torre, personagem, plataforma, divisória)
-  e toda evolução se paga com FUNDOS PÚBLICOS (a propina convertida).
-- Fundos vêm SÓ dos candidatos agendados mortos (os 20 chefes), como
-  já é. Escassos por natureza.
-- O contador de fundos públicos (Casa da Moeda) vira o recurso central
-  do HUD. O medidor de votos vira informativo (placar), não gastável.
+Identificação:
 
-## 3. Custo de reposição ≈ valor de um candidato
+- Data/hora, seed, dificuldade, se foi simulação ou jogada na tela.
+- Resultado: vitória / derrota / abandonada.
+- Onda alcançada. Motivo do fim (candidato na urna / apuração onda
+  100 / abandono).
 
-O ponto central. Hoje construir é barato demais e o mapa enche antes
-de qualquer evolução.
+Placar:
 
-- O custo de construir/repor uma defesa deve ser PRÓXIMO ao que um
-  candidato solta de fundos ao morrer.
-- Efeito: cada chefe morto paga aproximadamente UMA defesa nova OU
-  uma evolução — nunca as duas. Isso força a escolha "construo mais
-  ou evoluo o que tenho?".
-- Como o valor do candidato cresce por onda (HP × fator), o custo de
-  reposição também deve escalar na mesma direção — construir na onda
-  80 custa mais que na onda 10, proporcional aos fundos que os chefes
-  daquela altura dão.
-- Calibrar para que, ao longo dos 20 chefes, o jogador NÃO consiga
-  encher o mapa E evoluir tudo — tem que escolher. A defesa completa
-  e evoluída só na reta final, como já era o alvo da propina.
+- Votos azul e vermelho no fim, e a razão entre eles.
+- Nulos no fim.
 
-## 4. Capital inicial de fundos
+Economia:
 
-- Como agora tudo se paga com fundos e o jogador começa sem matar
-  chefe nenhum, dar um capital INICIAL de fundos públicos por
-  dificuldade (StartingFunds), para montar a defesa base da fase de
-  montagem.
-- Suficiente para uma defesa inicial decente, não para lotar o mapa.
+- Fundos públicos ganhos no total (soma dos candidatos).
+- Fundos gastos em construção vs. em evolução (separado).
+- Fundos que sobraram no fim.
+- Capital inicial usado.
 
-## 5. Liberar mais itens, não só torre
+Defesa:
 
-Hoje só a torre "reacende" como disponível ao longo do jogo; o mapa
-vira um monte de torres iguais.
+- Nº de cada tipo no fim: torres, personagens, plataformas
+  (por tipo), divisórias.
+- Nível médio dos defensores e nível máximo atingido.
+- Quantas evoluções foram compradas.
 
-- Divisória, plataformas (stage/truck/bleachers) e personagens devem
-  ir sendo liberados/disponibilizados ao longo das ondas também, não
-  só a torre.
-- Rever a lógica de desbloqueio: o que fica disponível quando. Se há
-  UnlockWave por peça, escalonar para o jogador ter variedade, não
-  só torre repetida.
+Combate:
 
-## 6. Candidato sai PRIMEIRO na onda dele
+- Creeps mortos, creeps que chegaram na urna.
+- Candidatos mortos (dos 20) e qual chegou na urna, se algum.
+- Dano total aplicado, overkill total (nulo), % de desperdício.
+- Pico de creeps vivos simultâneos.
 
-- Na onda que solta um candidato, ele é o PRIMEIRO a sair, antes de
-  qualquer creep comum, de uma boca sorteada.
-- Motivo: hoje ele vem no meio da horda e passa despercebido — o
-  usuário perdeu na onda 145 sem entender que foi candidato na urna.
-  Saindo primeiro, o jogador vê, reage e prioriza.
+Ritmo:
 
-## Nota de balanceamento
+- Duração da partida (tempo real e nº de ondas).
+- Onda em que a defesa "estabilizou" (parou de crescer) se der para
+  medir.
 
-Os valores exatos (custo de reposição, StartingFunds, fator de escala)
-são calibração — e a calibração fina continua pausada até o elenco de
-defesas/inimigos/políticos existir. Implementar a ESTRUTURA agora
-(fundos como moeda, votos como placar, custo atrelado ao candidato) e
-deixar os números como placeholder ajustável em settings.
+## Objetivo
+
+Depois de várias partidas, esse CSV mostra padrões: em que onda se
+perde mais, se os fundos sobram ou faltam, se a evolução acompanha, se
+o placar fica disputado ou é atropelo. É a base de dados para a
+calibração final (que continua pausada até o elenco, mas os dados vão
+se acumulando desde já).
 
 ## Entregável
 
-Compilar os dois alvos. Verificar headless que:
-- Construir e evoluir debitam FUNDOS, não votos.
-- Votos não são mais gastos por nada.
-- Custo de reposição escala com a onda, próximo ao valor do candidato.
-- Candidato sai primeiro na onda dele.
-- Mais tipos de peça disponíveis ao longo do jogo, não só torre.
-Relatório no fim, sem perguntar no meio.
+- PostMatch.csv sendo escrito ao fim de cada partida (tela e sim).
+- Resumo legível no log.
+- Confirmar com uma partida simulada que a linha sai completa e os
+  números batem com o BD.Economy.Report.

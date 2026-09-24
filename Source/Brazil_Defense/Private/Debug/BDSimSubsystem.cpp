@@ -13,6 +13,7 @@
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
 #include "Misc/App.h"
+#include "Report/BDPostMatch.h"
 #include "Stats/Stats.h"
 #include "Tower/BDTowerBase.h"
 #include "Tower/BDTowerData.h"
@@ -153,6 +154,10 @@ void UBDSimSubsystem::Tick(const float DeltaTime)
 	// The cap: reported from the building phase after the wave, so the last wave is in.
 	if (Match->GetCurrentWave() >= TargetWaves)
 	{
+		Match->GetLedgerMutable().EndReason = FString::Printf(TEXT("the simulation stopped at wave %d"), TargetWaves);
+		Match->GetLedgerMutable().PublicMoneyAtEnd = Match->GetPublicMoney();
+		Match->GetLedgerMutable().BribeHeldAtEnd = Match->GetBribeHeld();
+		BDPostMatch::Write(*Match, TEXT("WaveCap"));
 		Report(TEXT("WAVE CAP"));
 		Stop();
 		return;

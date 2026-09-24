@@ -272,7 +272,7 @@ bool ABDTowerBase::Upgrade()
 	ABDMatchManager* Match = ABDMatchManager::Get(this);
 	const int32 Cost = GetUpgradeCost();
 	const float DamageBefore = GetEffectiveDamage();
-	if (Match == nullptr || !Match->SpendPublicMoney(Cost))
+	if (Match == nullptr || !Match->SpendPublicMoney(Cost, EBDFundsUse::Evolve))
 	{
 		return false;
 	}

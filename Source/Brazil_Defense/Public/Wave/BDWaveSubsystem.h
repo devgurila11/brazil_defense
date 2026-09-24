@@ -16,6 +16,20 @@ class UBDEnemyData;
 class UBDGridSubsystem;
 class UBDPathfinder;
 
+/** What the creeps of a whole match did, for the post-match report. Reset when the match is rewound. */
+struct FBDMatchCombatTotals
+{
+	/** Ordinary creeps only: the candidates are counted by their own subsystem. */
+	int32 CreepsKilled = 0;
+	int32 CreepsArrived = 0;
+	int32 CreepsSpawned = 0;
+	int32 PeakAlive = 0;
+	int32 ShotsFired = 0;
+	int32 LostShots = 0;
+	float DamageDealt = 0.0f;
+	float DamageWasted = 0.0f;
+};
+
 /** Broadcast once a wave has been dealt: mouths moved and drawn, creeps counted, nothing sent yet. */
 DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnWaveDealt, int32 /*Wave*/);
 
@@ -204,8 +218,14 @@ public:
 	FBDOnWaveDealt OnWaveDealt;
 
 	/** A shot left a tower; damage that actually came off a creep. Tallied per wave, to tell throughput from waste. */
-	void ReportShotFired() { ++WaveShotsFired; }
-	void ReportDamageDealt(float Damage) { WaveDamageDealt += FMath::Max(0.0f, Damage); }
+	void ReportShotFired() { ++WaveShotsFired; ++MatchTotals.ShotsFired; }
+	void ReportDamageDealt(float Damage) { WaveDamageDealt += FMath::Max(0.0f, Damage); MatchTotals.DamageDealt += FMath::Max(0.0f, Damage); }
+
+	/** What the creeps of this match did so far. */
+	const FBDMatchCombatTotals& GetMatchTotals() const { return MatchTotals; }
+
+	/** Starts the match totals over: a rewind, or a save loaded. */
+	void ResetMatchTotals() { MatchTotals = FBDMatchCombatTotals(); }
 
 	//~ Reports from the creeps. Not meant to be called by anything else. -----
 
@@ -314,6 +334,8 @@ private:
 
 	/** See HoldWaveSpawns. Runs down on the game clock, like the spawn timer it holds. */
 	float SpawnHoldRemaining = 0.0f;
+
+	FBDMatchCombatTotals MatchTotals;
 
 	/** Bookkeeping of the wave out, reported when it clears: the peak is what the balance has to watch. */
 	int32 WaveNumber = 0;

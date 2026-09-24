@@ -236,6 +236,7 @@ void UBDCandidateSubsystem::ResetForNewMatch()
 	bSchedulePending = false;
 	ReturnAlive = 0;
 	ReturnsStarted = 0;
+	ArrivedOrdinal = 0;
 }
 
 //~ Sending them out ---------------------------------------------------------------
@@ -407,9 +408,10 @@ void UBDCandidateSubsystem::NotifyCandidateArrived(ABDCandidate* Arrived)
 		Match != nullptr ? Match->GetVotesBlue() : 0, Match != nullptr ? Match->GetVotesRed() : 0);
 
 	Living.Remove(Arrived);
+	ArrivedOrdinal = Arrived->Ordinal;
 	if (Match != nullptr)
 	{
-		Match->DeclareDefeat(TEXT("a candidate reached the urn"));
+		Match->DeclareDefeat(FString::Printf(TEXT("candidate %d%s reached the urn"), Arrived->Ordinal, Arrived->bReturning ? TEXT(" (returning)") : TEXT("")));
 	}
 }
 

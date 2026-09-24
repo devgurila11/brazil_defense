@@ -28,6 +28,50 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnVotesChanged, int32 /*Blue*/, int32 /*
 /** Broadcast whenever either money counter moves: the thief's recovered bribe, then the mint's public money. */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FBDOnMoneyChanged, int32 /*Bribe*/, int32 /*PublicMoney*/);
 
+/** What public money was spent on, so the post-match report can tell building from evolving. */
+UENUM(BlueprintType)
+enum class EBDFundsUse : uint8
+{
+	Build,
+	Move,
+	Evolve
+};
+
+/**
+ * Where the public money of a match came from and went, kept as it happens for the
+ * post-match report (BDPostMatch). Counts from the start of the match, or from the load
+ * when the match was restored from a save.
+ */
+struct FBDMatchLedger
+{
+	/** Public money in the mint when the ledger opened: the starting funds, or what a save carried. */
+	int32 StartingFunds = 0;
+	/** Bribe dropped by the scheduled candidates killed: the only income of a match. */
+	int32 BribeEarned = 0;
+	/** Paid back by sales and by the levels of what was sold. */
+	int32 Refunded = 0;
+	/** Paid in from the console. */
+	int32 Granted = 0;
+	int32 SpentBuild = 0;
+	int32 SpentMove = 0;
+	int32 SpentEvolve = 0;
+	int32 PiecesBuilt = 0;
+	int32 LevelsBought = 0;
+	/** Last wave on which a piece was built or a level bought: where the defense stopped growing. */
+	int32 LastGrowthWave = 0;
+	/** The counters as the match ended, read before the money is dropped. */
+	int32 PublicMoneyAtEnd = 0;
+	int32 BribeHeldAtEnd = 0;
+	/** The wave a save was loaded at, or -1 for a match played from its start. */
+	int32 LoadedAtWave = -1;
+	double RealStartSeconds = 0.0;
+	double GameStartSeconds = 0.0;
+	/** Why the match ended, in words, for the report. */
+	FString EndReason;
+	/** A row has been written for the end this ledger is at; set again to false when endless goes on. */
+	bool bReportWritten = false;
+};
+
 /**
  * Owns where a match stands: the phase, the wave, the countdown and what the player has
  * left to build with. Nothing else is allowed to decide those.
@@ -49,6 +93,7 @@ public:
 
 	//~ Begin AActor interface
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 #if WITH_EDITOR
 	virtual bool CanChangeIsSpatiallyLoadedFlag() const override { return false; }
@@ -288,13 +333,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	int32 ConvertBribe(int32 Amount);
 
-	/** Pays public money straight into the mint: a refund, or the console. */
+	/** Pays public money straight into the mint from outside the game: the console. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void AddPublicMoney(int32 Amount, const FString& Why);
 
-	/** Spends public money. @return false, nothing spent, when there is not enough. */
+	/** Pays public money back for something taken off the board: a sale, or the levels of what was sold. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
-	bool SpendPublicMoney(int32 Amount);
+	void PayRefund(int32 Amount, const FString& Why);
+
+	/** Spends public money on something. @return false, nothing spent, when there is not enough. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	bool SpendPublicMoney(int32 Amount, EBDFundsUse Use);
+
+	/** Hands back a charge the board then refused, as if it had never been made. */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
+	void ReturnPublicMoney(int32 Amount, EBDFundsUse Use, const FString& Why);
+
+	/** Where the money of this match came from and went. */
+	const FBDMatchLedger& GetLedger() const { return Ledger; }
+	FBDMatchLedger& GetLedgerMutable() { return Ledger; }
 
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool CanAffordPublicMoney(int32 Amount) const { return Amount <= PublicMoney; }
@@ -468,6 +525,17 @@ private:
 
 	/** The hand, the starting funds and the head start on the count, plus the chain bonus when the one below has been won. */
 	void ApplyStartingBudgets();
+
+	/** Opens a fresh ledger on the money in the mint right now. */
+	void OpenLedger(int32 LoadedAtWave);
+
+	/** Writes the abandoned row when the match is left unfinished. Once; the world tearing down and EndPlay both ask. */
+	void ReportAbandoned(const FString& Why);
+
+	void HandleWorldBeginTearDown(UWorld* World);
+	FDelegateHandle TearDownHandle;
+
+	FBDMatchLedger Ledger;
 
 	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Match")
 	TObjectPtr<UBDDayCycleComponent> DayCycle;
