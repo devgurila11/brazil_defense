@@ -153,7 +153,8 @@ void UBDPlacementComponent::BindInput(UInputComponent* InputComponent)
 	}
 
 	// The rotate action is not bound any more: the mapping context put it on the wheel,
-	// which the camera needs for its height. The controller turns the piece with R.
+	// which the camera needs for its height. The controller turns the piece with R and
+	// with a click of the middle button (a drag of it turns the view instead).
 
 	AddMappingContext();
 }

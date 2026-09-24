@@ -2,6 +2,7 @@
 
 #include "UI/BDHUDWidget.h"
 
+#include "BDBuildInfo.h"
 #include "Blueprint/WidgetTree.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Day/BDDayCycleComponent.h"
@@ -49,6 +50,8 @@ namespace BDHUDPrivate
 	static constexpr int32 ScoreFontSize = 28;
 	static constexpr int32 LineFontSize = 18;
 	static constexpr int32 SmallFontSize = 14;
+	/** The build label in the corner: there to be read when asked for, never to be noticed. */
+	static constexpr int32 BuildFontSize = 10;
 	/** The purse is the one number the player spends, so it reads first on its row. */
 	static constexpr int32 MintFontSize = 22;
 	static constexpr int32 NoticeFontSize = 26;
@@ -508,6 +511,16 @@ void UBDHUDWidget::BuildTree()
 	MenuSlot->SetAlignment(FVector2D(0.0f, 0.0f));
 	MenuSlot->SetAutoSize(true);
 	MenuSlot->SetPosition(FVector2D(Margin, Margin));
+
+	//~ Bottom left: which build this is, as small as it can be and still be read.
+	UTextBlock* Build = MakeText(BuildFontSize, ColorMuted);
+	Build->SetText(FText::FromString(BDBuildInfo::GetLabel()));
+	Build->SetVisibility(ESlateVisibility::HitTestInvisible);
+	UCanvasPanelSlot* BuildLabelSlot = Canvas->AddChildToCanvas(Build);
+	BuildLabelSlot->SetAnchors(FAnchors(0.0f, 1.0f));
+	BuildLabelSlot->SetAlignment(FVector2D(0.0f, 1.0f));
+	BuildLabelSlot->SetAutoSize(true);
+	BuildLabelSlot->SetPosition(FVector2D(Margin * 0.5f, -Margin * 0.5f));
 
 	WidgetTree->RootWidget = Canvas;
 

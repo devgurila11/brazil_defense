@@ -2,6 +2,7 @@
 
 #include "UI/BDFrontEndWidgets.h"
 
+#include "BDBuildInfo.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/Button.h"
@@ -27,6 +28,7 @@ namespace BDFrontEndPrivate
 	static constexpr int32 BrandFontSize = 48;
 	static constexpr int32 TitleFontSize = 40;
 	static constexpr int32 HintFontSize = 14;
+	static constexpr int32 BuildFontSize = 11;
 	static constexpr int32 ButtonFontSize = 22;
 	static constexpr float ButtonGap = 8.0f;
 	static constexpr float MenuColumnWidth = 320.0f;
@@ -193,7 +195,18 @@ void UBDMainMenuWidget::BuildTree()
 	ColumnBox->SetMinDesiredWidth(MenuColumnWidth);
 	ColumnBox->AddChild(Column);
 
-	WidgetTree->RootWidget = Centered(*WidgetTree, ColumnBox, MenuBackground);
+	// The build in the footer, small, so a tester always knows which one they are on.
+	UOverlay* Screen = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+	UOverlaySlot* MenuSlot = Screen->AddChildToOverlay(Centered(*WidgetTree, ColumnBox, MenuBackground));
+	MenuSlot->SetHorizontalAlignment(HAlign_Fill);
+	MenuSlot->SetVerticalAlignment(VAlign_Fill);
+	UTextBlock* Build = MakeText(BuildFontSize, ColorMuted);
+	Build->SetText(FText::FromString(BDBuildInfo::GetLabel()));
+	UOverlaySlot* BuildSlot = Screen->AddChildToOverlay(Build);
+	BuildSlot->SetHorizontalAlignment(HAlign_Right);
+	BuildSlot->SetVerticalAlignment(VAlign_Bottom);
+	BuildSlot->SetPadding(FMargin(12.0f));
+	WidgetTree->RootWidget = Screen;
 }
 
 void UBDMainMenuWidget::RefreshTexts()

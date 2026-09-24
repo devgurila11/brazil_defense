@@ -258,6 +258,43 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-23 (23h) — COMMIT** (desde d50c721):
+  - **Build visível.** Rodapé do menu e canto inferior esquerdo do HUD
+    mostram "build AAAA.MM.DD-HHMM Configuração", lido da data do
+    próprio binário (DLL do módulo no editor, executável no jogo) —
+    muda sozinho a cada compilação. Vai também no log de início de
+    partida e numa coluna `Build` no fim do `PostMatch.csv`; colunas
+    novas no fim agora só completam as linhas antigas (sem arquivar).
+  - **`BD.Test.Regression [quit]`** — o termômetro. Numa partida nova
+    monta urna, cercas, torre, palanque e onda de chefe, e dá PASS/FAIL
+    por linha: rotas de toda boca; cercar a urna recusado; separador
+    sem custo; personagem sem vaga recusado; construir/evoluir debita
+    fundos e não votos; bloco da plataforma (trava, anda junto, altura
+    = um andar por nível, atiradores sobem juntos); candidato sai
+    primeiro; construir recusado na onda e evoluir por clique aceito;
+    chefe paga a propina, desfile não paga; LedgerGap 0; azul só desce
+    pelo nivelamento; candidato na urna = derrota. 21/21 PASS. Rodar
+    antes de dar qualquer leva por pronta.
+  - **Regra confirmada (briefing 23:00):** nenhuma peça nova entra
+    durante a onda — torre e personagem também só se constroem na
+    montagem (antes podiam descer com a onda rodando); evoluir segue
+    livre na onda. Travado no `BD.Test.Regression`: toda peça da
+    paleta recusada pela barra e pelo gesto com a onda ativa, e a
+    evolução por clique aceita.
+  - **Mais separadores no início:** DividerBudget Easy 40→100,
+    Normal 28→80, Hard 18→60 (placeholder; pela rodada 3 da §13, ~100
+    cercas alongam a rota em ~40%). Gravado pelo commandlet novo
+    `-run=BDSetProperty -Asset=... -Property=... [-Value=...]`, que lê
+    e grava um campo de asset sem abrir o editor.
+  - **Rotação da peça no clique do meio.** O `IA_Rotate` nunca foi
+    remapeado (seguia na roda, `Axis1D`, e sem ligação no código desde
+    14/09). Agora o controller trata o botão do meio: clique parado
+    com peça na mão gira a peça; arrastar segue girando a câmera
+    (`MiddleClickMaxTravel`, 6 px). R / Shift+R continuam.
+  - **Pendente:** conferir no PIE a rotação no clique do meio e o
+    rótulo de build no menu e no HUD; `IA_Rotate`/`IMC_Gameplay` ficam
+    como estão (mapeamento morto) até o usuário decidir limpar.
+
 - **2026-09-23 (22h) — 681ee89** (desde 4e7d646):
   - **Separador com cota própria.** Divisória custa 0 de dinheiro
     público: desenhar o caminho não compete mais com defendê-lo. A

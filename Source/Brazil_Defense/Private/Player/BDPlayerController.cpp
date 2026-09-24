@@ -169,6 +169,7 @@ void ABDPlayerController::UpdateCamera(const float DeltaSeconds)
 		float DeltaY = 0.0f;
 		GetInputMouseDelta(DeltaX, DeltaY);
 		CameraYaw += DeltaX * Settings.YawDragDegreesPerPixel;
+		MiddleTravel += FMath::Abs(DeltaX) + FMath::Abs(DeltaY);
 	}
 
 	// The keys follow the view: forward is where the camera looks along the plane, right
@@ -272,6 +273,24 @@ void ABDPlayerController::HandleRotatePieceBack()
 	}
 }
 
+void ABDPlayerController::HandleMiddlePressed()
+{
+	MiddleTravel = 0.0f;
+}
+
+void ABDPlayerController::HandleMiddleReleased()
+{
+	// Dragged: that was the view turning, and it has already turned.
+	if (PlacementComponent == nullptr || MiddleTravel > UBDCameraSettings::Get().MiddleClickMaxTravel)
+	{
+		return;
+	}
+
+	// Clicked in place: the piece in hand turns a quarter, the way R does (Shift+R goes
+	// back). Nothing in hand, nothing happens.
+	PlacementComponent->RotateSelection(true);
+}
+
 void ABDPlayerController::HandleZoomIn()
 {
 	CameraHeight /= UBDCameraSettings::Get().ZoomStep;
@@ -353,6 +372,8 @@ void ABDPlayerController::SetupInputComponent()
 	InputComponent->BindKey(EKeys::MouseScrollDown, IE_Pressed, this, &ABDPlayerController::HandleZoomOut);
 	InputComponent->BindKey(EKeys::Home, IE_Pressed, this, &ABDPlayerController::HandleResetCamera);
 	InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ABDPlayerController::HandleRotatePiece);
+	InputComponent->BindKey(EKeys::MiddleMouseButton, IE_Pressed, this, &ABDPlayerController::HandleMiddlePressed);
+	InputComponent->BindKey(EKeys::MiddleMouseButton, IE_Released, this, &ABDPlayerController::HandleMiddleReleased);
 	InputComponent->BindKey(FInputChord(EKeys::R, /*bShift*/ true, false, false, false), IE_Pressed, this, &ABDPlayerController::HandleRotatePieceBack);
 	InputComponent->BindKey(EKeys::One, IE_Pressed, this, &ABDPlayerController::HandleSelectSlot1);
 	InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &ABDPlayerController::HandleSelectSlot2);

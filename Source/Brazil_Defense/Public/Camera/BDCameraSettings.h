@@ -79,6 +79,10 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Movement", meta = (ClampMin = "0.01", UIMin = "0.01"))
 	float YawDragDegreesPerPixel = 0.3f;
 
+	/** A middle button press that travels less than this, in pixels, is a click - it turns the piece in hand - not a drag of the view. */
+	UPROPERTY(config, EditAnywhere, Category = "Movement", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float MiddleClickMaxTravel = 6.0f;
+
 	/** Sideways speed of the point looked at, as a fraction of the current height per second: the same feel high and low. */
 	UPROPERTY(config, EditAnywhere, Category = "Movement", meta = (ClampMin = "0.05", UIMin = "0.05"))
 	float PanSpeedPerHeight = 0.8f;

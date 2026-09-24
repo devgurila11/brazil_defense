@@ -65,6 +65,9 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Brazil Defense|Candidate")
 	FText DisplayName;
 
+	/** Debug: reaches the urn now, wherever he is, as if he had walked there. For BD.Test.Regression. */
+	void DebugArrive() { Arrive(); }
+
 protected:
 	//~ Begin ABDEnemyBase interface
 	virtual void Arrive() override;

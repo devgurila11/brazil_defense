@@ -2,6 +2,7 @@
 
 #include "Report/BDPostMatch.h"
 
+#include "BDBuildInfo.h"
 #include "BDLog.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Debug/BDSimSubsystem.h"
@@ -207,6 +208,9 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	Add(TEXT("GameSeconds"), Decimal(GameSeconds));
 	AddInt(TEXT("LastGrowthWave"), Ledger.LastGrowthWave);
 
+	// Which binary played it: the answer to "was this on the adjusted build?".
+	Add(TEXT("Build"), BDBuildInfo::GetLabel());
+
 	//~ The summary, readable -----------------------------------------------------------
 	UE_LOG(LogBDMatch, Log, TEXT("POST-MATCH %s (%s) on %s, seed %d, wave %d of %d: %s."),
 		Outcome, Mode(*World), *StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Match.Difficulty)),
@@ -238,7 +242,9 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	}
 
 	// A file whose header is not this one describes other columns: it is kept aside
-	// under a dated name rather than written under.
+	// under a dated name rather than written under. Columns added at the end are the one
+	// change that needs no new file: the old rows are padded with empty cells, so the
+	// matches already played stay in the same sheet.
 	const FString Path = GetCsvPath();
 	IFileManager& Files = IFileManager::Get();
 	bool bNeedsHeader = !Files.FileExists(*Path);
@@ -246,6 +252,25 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	{
 		TArray<FString> Lines;
 		FFileHelper::LoadFileToStringArray(Lines, *Path);
+		if (Lines.Num() > 0 && Lines[0] != Header && Header.StartsWith(Lines[0] + TEXT(",")))
+		{
+			int32 Added = 0;
+			for (const TCHAR Character : Header.RightChop(Lines[0].Len()))
+			{
+				Added += Character == TEXT(',') ? 1 : 0;
+			}
+			FString Padded = Header + LINE_TERMINATOR;
+			for (int32 Index = 1; Index < Lines.Num(); ++Index)
+			{
+				if (!Lines[Index].IsEmpty())
+				{
+					Padded += Lines[Index] + FString::ChrN(Added, TEXT(',')) + LINE_TERMINATOR;
+				}
+			}
+			FFileHelper::SaveStringToFile(Padded, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+			UE_LOG(LogBDMatch, Log, TEXT("  %d column(s) added at the end: the %d row(s) already there were padded."), Added, Lines.Num() - 1);
+			Lines[0] = Header;
+		}
 		if (Lines.Num() == 0 || Lines[0] != Header)
 		{
 			const FString Aside = FPaths::Combine(FPaths::ProjectLogDir(), FString::Printf(TEXT("PostMatch-%s.csv"), *FDateTime::Now().ToString(TEXT("%Y%m%d-%H%M%S"))));

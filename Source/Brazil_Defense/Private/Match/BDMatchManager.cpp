@@ -2,6 +2,7 @@
 
 #include "Match/BDMatchManager.h"
 
+#include "BDBuildInfo.h"
 #include "BDLog.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Components/SceneComponent.h"
@@ -101,9 +102,9 @@ void ABDMatchManager::BeginPlay()
 	ResolveDifficulty();
 	ApplyStartingBudgets();
 
-	UE_LOG(LogBDMatch, Log, TEXT("Match on %s%s: %d waves to win, %d dividers, %d platforms, %d saves. Defenders are limited by public money alone."),
+	UE_LOG(LogBDMatch, Log, TEXT("Match on %s%s (%s): %d waves to win, %d dividers, %d platforms, %d saves. Defenders are limited by public money alone."),
 		*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Difficulty)),
-		Chosen.IsSet() ? TEXT(" (chosen in the menu)") : TEXT(""),
+		Chosen.IsSet() ? TEXT(" (chosen in the menu)") : TEXT(""), *BDBuildInfo::GetLabel(),
 		GetWavesToWin(), DividersRemaining, PlatformsRemaining, SavesRemaining);
 
 	// The vote part of the bonus is the one thing a budget reset must not hand out
@@ -519,6 +520,7 @@ void ABDMatchManager::EqualizeVotesDown(const FString& Why)
 	UE_LOG(LogBDMatch, Log, TEXT("Count levelled downwards (%s): %d blue / %d red -> %d / %d."), *Why, VotesBlue, VotesRed, Lower, Lower);
 	VotesBlue = Lower;
 	VotesRed = Lower;
+	++LevelDownCount;
 	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
 }
 
@@ -1129,8 +1131,9 @@ bool ABDMatchManager::CanPlace(const EBDPieceKind Kind) const
 
 	if (Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character)
 	{
-		// Defenders are the one thing that stays placeable once the maze is locked in.
-		if (Phase != EBDMatchPhase::Building && Phase != EBDMatchPhase::WaveActive)
+		// New pieces go down between waves only, defenders like the rest: under a wave the
+		// player reacts by evolving what stands, not by dropping more on the board.
+		if (Phase != EBDMatchPhase::Building)
 		{
 			return false;
 		}

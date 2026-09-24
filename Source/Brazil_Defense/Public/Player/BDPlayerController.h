@@ -64,6 +64,14 @@ private:
 	void HandleZoomOut();
 	void HandleRotatePiece();
 	void HandleRotatePieceBack();
+
+	/**
+	 * The middle button does two things and the drag tells them apart: held and dragged
+	 * it turns the view, clicked in place it turns the piece in hand a quarter turn,
+	 * like R. The wheel is the camera's height and nothing else.
+	 */
+	void HandleMiddlePressed();
+	void HandleMiddleReleased();
 	void HandleSelectSlot1();
 	void HandleSelectSlot2();
 	void HandleSelectSlot3();
@@ -86,6 +94,9 @@ private:
 	FVector CameraTarget = FVector::ZeroVector;
 	float CameraHeight = 0.0f;
 	float CameraYaw = 0.0f;
+
+	/** How far the mouse has travelled since the middle button went down: a click, or a drag of the view. */
+	float MiddleTravel = 0.0f;
 
 	/** Where the match started them, for a reset. */
 	FVector HomeTarget = FVector::ZeroVector;

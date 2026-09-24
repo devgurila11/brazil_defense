@@ -246,6 +246,9 @@ public:
 	/** Settles the match by the count: blue ahead or level wins, red ahead loses. */
 	void ResolveEnd();
 
+	/** How many times the count has been levelled down: the one way blue votes are ever taken away. */
+	int32 GetLevelDownCount() const { return LevelDownCount; }
+
 	/** Brings blue down to red (or red down to blue) so nobody is ahead: what killing the returning candidates buys. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void EqualizeVotesDown(const FString& Why);
@@ -573,4 +576,5 @@ private:
 	bool bEndless = false;
 	int32 SavesRemaining = 0;
 	bool bChainBonusApplied = false;
+	int32 LevelDownCount = 0;
 };
