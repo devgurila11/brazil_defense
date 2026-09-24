@@ -176,6 +176,8 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	AddInt(TEXT("Characters"), Characters);
 	AddInt(TEXT("Platforms"), Platforms);
 	AddInt(TEXT("Dividers"), Dividers);
+	AddInt(TEXT("DividersGranted"), Ledger.DividersGranted);
+	AddInt(TEXT("DividersInHand"), Match.GetDividersRemaining());
 	for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
 	{
 		const FSoftObjectPath Path = Entry.ToSoftObjectPath();
@@ -212,8 +214,8 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	UE_LOG(LogBDMatch, Log, TEXT("  count: %d blue, %d red, %d null."), Blue, Red, Match.GetVotesNull());
 	UE_LOG(LogBDMatch, Log, TEXT("  money: %d to start + %d from bosses + %d refunded + %d granted; spent %d building, %d evolving, %d moving; %d left."),
 		Ledger.StartingFunds, Ledger.BribeEarned, Ledger.Refunded, Ledger.Granted, Ledger.SpentBuild, Ledger.SpentEvolve, Ledger.SpentMove, Left);
-	UE_LOG(LogBDMatch, Log, TEXT("  board: %d tower(s), %d character(s), %d platform(s), %d divider(s); average level %.2f, top %d, %d level(s) bought; last grew on wave %d."),
-		Towers, Characters, Platforms, Dividers, Defenders > 0 ? static_cast<float>(LevelSum) / Defenders : 0.0f, TopLevel, Ledger.LevelsBought, Ledger.LastGrowthWave);
+	UE_LOG(LogBDMatch, Log, TEXT("  board: %d tower(s), %d character(s), %d platform(s), %d divider(s) (+%d granted, %d in hand); average level %.2f, top %d, %d level(s) bought; last grew on wave %d."),
+		Towers, Characters, Platforms, Dividers, Ledger.DividersGranted, Match.GetDividersRemaining(), Defenders > 0 ? static_cast<float>(LevelSum) / Defenders : 0.0f, TopLevel, Ledger.LevelsBought, Ledger.LastGrowthWave);
 	UE_LOG(LogBDMatch, Log, TEXT("  fight: %d creep(s) killed, %d at the urn, peak %d alive; candidates %d sent, %d killed%s; %.0f damage, %.1f%% wasted; %.0fs real, %.0fs of game."),
 		Combat.CreepsKilled, Combat.CreepsArrived, Combat.PeakAlive,
 		Candidates != nullptr ? Candidates->GetCandidatesSent() : 0, Candidates != nullptr ? Candidates->GetFallenCount() : 0,

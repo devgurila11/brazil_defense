@@ -186,6 +186,14 @@ arquibancada 180°) — só entra com indicador visual claro.
   eficiência) e diz o growth que empata na onda de vitória. A vida dos
   creeps segue `HealthScaleGrowth` exponencial (1.035) enquanto a curva
   fica estacionada; recalibrar quando houver conteúdo real.
+- **Questão aberta (2026-09-23): duração da partida.** Jogada natural,
+  tudo no nível 1, chegou à onda 115; da 83 em diante não aparece
+  decisão nova e a recompensa fica irrelevante. Talvez 100 ondas seja
+  muito para o conteúdo atual — mas NÃO mexer no número de ondas
+  agora: quem dá sentido às ondas altas é o elenco (variedade de
+  inimigos, torres e políticos). Decidir quando o elenco existir.
+  O placar, por outro lado, está confirmado: 62/38 na onda 115, morto
+  cedo e disputado tarde, como previsto — não reformar o vermelho.
 
 ---
 
@@ -249,6 +257,30 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
+
+- **2026-09-23 (22h) — COMMIT** (desde 4e7d646):
+  - **Separador com cota própria.** Divisória custa 0 de dinheiro
+    público: desenhar o caminho não compete mais com defendê-lo. A
+    cota começa em `DividerBudget` e cresce: +`DividersPerWave` (1) a
+    cada onda limpa e +`DividersPerCandidate` + `Step` × (n − 1) pelo
+    n-ésimo chefe morto (4, 5, 6…). Tudo no DA_Difficulty. Projeção:
+    83 na onda 25, 163 na 50, 398 na 100. HUD mostra "N na cota".
+  - **Barra do candidato só após o primeiro dano** (flutuante e no
+    painel), como a dos creeps; o nome aparece desde a saída.
+  - **Evolução livre durante a onda.** O clique no defensor passava
+    pelo "levantar para mover", que só vale na montagem; na onda o
+    clique agora seleciona e o segundo compra o nível.
+  - **Personagem sem vaga não é oferecido.** Barra e teclas 1–6 usam a
+    mesma regra (`GetHandRefusal`/`TakeIntoHand`); texto "Nenhuma
+    plataforma com vaga livre".
+  - Relatório de fim de partida: colunas `DividersGranted` e
+    `DividersInHand`; separador conta como crescimento da defesa.
+    As 2 partidas reais do dia foram migradas para o cabeçalho novo.
+  - Robô: `FenceShare` virou fatia da cota de separadores (0,75),
+    `GrowMaze` põe os ganhos entre ondas. Comandos `BD.Place.Take` e
+    `BD.Place.Click`. Seção 8 ganhou a questão aberta da duração.
+  - **Pendente:** conferir no PIE a barra do candidato e a evolução
+    por clique durante a onda.
 
 - **2026-09-23 (noite) — 2cdeaa6** (desde b1b73c0):
   - **Relatório de fim de partida.** Toda partida que lançou ao menos

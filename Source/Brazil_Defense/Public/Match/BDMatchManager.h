@@ -57,6 +57,8 @@ struct FBDMatchLedger
 	int32 SpentEvolve = 0;
 	int32 PiecesBuilt = 0;
 	int32 LevelsBought = 0;
+	/** Dividers added to the hand after the start: waves cleared and candidates killed. */
+	int32 DividersGranted = 0;
 	/** Last wave on which a piece was built or a level bought: where the defense stopped growing. */
 	int32 LastGrowthWave = 0;
 	/** The counters as the match ended, read before the money is dropped. */
@@ -419,7 +421,8 @@ public:
 
 	//~ Budget, asked by the placement gesture ---------------------------------
 	// Only the maze is counted out. Dividers and platforms are a hand the player walks in
-	// with, and the urn is placed once; defenders are held back by the public money they
+	// with - the dividers one that grows with the waves and the candidates, and costs no
+	// money - and the urn is placed once; defenders are held back by the public money they
 	// cost and by the board itself, never by a number. The maze can grow between waves as
 	// well as before the first one: what a piece costs is the brake, not a lock.
 
@@ -454,6 +457,15 @@ public:
 	/** Puts a piece of this kind back in the hand. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void RefundRemoval(EBDPieceKind Kind);
+
+	/**
+	 * Adds dividers to the hand. The dividers are a budget of their own, apart from the
+	 * public money: a cleared wave and a scheduled candidate killed both add to it.
+	 */
+	void GrantDividers(int32 Count, const FString& Why);
+
+	/** What a scheduled candidate killed adds to the divider hand, on the difficulty. Called by the candidate subsystem. */
+	void RewardCandidateKill(int32 Ordinal);
 
 	/** Debug and measurement only: moves the divider ceiling, to ask what a different DividerBudget would buy. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")

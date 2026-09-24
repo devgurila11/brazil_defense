@@ -108,7 +108,7 @@ enum class EBDPlacementRefusal : uint8
 	CannotAffordMove,
 	/** The piece costs more public money than the player holds. */
 	NoFunds,
-	/** Every platform slot on the board is taken: a character has nowhere left to stand. */
+	/** No platform on the board has a free slot: a character has nowhere to stand. */
 	NoFreeSlot,
 	/** The piece has not come into the hand yet: it unlocks on a later wave. */
 	NotUnlocked
@@ -163,6 +163,22 @@ public:
 	/** Enters placement mode with a piece. Passing null is the same as CancelSelection. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	void SelectPlaceable(UBDPlaceableData* Placeable);
+
+	/**
+	 * Why a piece could not be taken into the hand right now, whatever spot it would go
+	 * to: locked, none left, no slot to stand on, not in this phase, not enough money.
+	 * None when it can. The build bar greys its buttons on this, and the hand refuses on
+	 * it, so the two never disagree.
+	 */
+	EBDPlacementRefusal GetHandRefusal(const UBDPlaceableData* Piece) const;
+
+	/**
+	 * Takes a piece into the hand the way the player does - the build bar or a palette
+	 * key - which SelectPlaceable does not ask about: a piece that has nowhere to go is
+	 * not offered. @return false, with the reason logged, when it is refused.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
+	bool TakeIntoHand(UBDPlaceableData* Piece);
 
 	/**
 	 * Leaves placement mode and destroys the ghost. Also done on its own when the building
@@ -229,6 +245,16 @@ public:
 	/** Buys the next level of the selected defender. @return false when there is none or it cannot. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	bool UpgradeSelectedDefender();
+
+	/**
+	 * The click on a placed piece while nothing may move - a wave is out: a defender is
+	 * selected, and a second click on it buys the level. Between waves the same click
+	 * goes through the lift, which selects on release. Nothing else happens here.
+	 */
+	void ClickDefenderAtHovered();
+
+	/** Debug: a press and a release of the place button on the current hover, as the mouse does it. */
+	void DebugClick();
 
 	/** Public money dropping the lifted piece would charge. 0 when nothing is lifted. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")

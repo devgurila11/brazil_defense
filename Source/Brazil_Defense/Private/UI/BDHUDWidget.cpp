@@ -1182,7 +1182,10 @@ void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 		CandidateBars[Row]->SetFillColorAndOpacity(Walker->GetDebugTint());
 		CandidateBars[Row]->SetPercent(FMath::Clamp(Walker->GetCurrentHealth() / Walker->GetMaxHealth(), 0.0f, 1.0f));
 		CandidateLines[Row]->SetVisibility(ESlateVisibility::HitTestInvisible);
-		CandidateBarBoxes[Row]->SetVisibility(ESlateVisibility::HitTestInvisible);
+		// The bar waits for the first hit, like the ones over the creeps; the line with the
+		// name is there from the moment he walks out, so he is never missed.
+		CandidateBarBoxes[Row]->SetVisibility(Walker->GetCurrentHealth() < Walker->GetMaxHealth()
+			? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 		++Row;
 	}
 	for (int32 Index = Row; Index < MaxCandidateRows; ++Index)
@@ -1393,7 +1396,11 @@ void UBDHUDWidget::UpdatePlacementPanel()
 		FFormatNamedArguments CostArgs;
 		CostArgs.Add(TEXT("Cost"), Cost);
 		CostArgs.Add(TEXT("Result"), ResultText(-Cost, bShort));
-		CostResult->SetText(BDLoc::Format(bMoving ? TEXT("HUD.Placement.MoveCost") : TEXT("HUD.Placement.BuildCost"), CostArgs));
+		CostArgs.Add(TEXT("Left"), Match->GetDividersRemaining());
+		// A divider comes out of its own hand, not the purse: say that instead of a price of 0.
+		const bool bFromHand = !bMoving && Selection->GetPieceKind() == EBDPieceKind::Divider;
+		CostResult->SetText(BDLoc::Format(bFromHand ? TEXT("HUD.Placement.FromHand")
+			: bMoving ? TEXT("HUD.Placement.MoveCost") : TEXT("HUD.Placement.BuildCost"), CostArgs));
 		CostResult->SetColorAndOpacity(FSlateColor(bShort ? ColorRed : ColorMuted));
 		CostResult->SetVisibility(ESlateVisibility::Visible);
 	}
@@ -1528,37 +1535,12 @@ FText UBDHUDWidget::BuildCountText(const EBDPieceKind Kind) const
 
 EBDPlacementRefusal UBDHUDWidget::BuildRefusal(const UBDPlaceableData* Data) const
 {
-	const ABDMatchManager* Match = GetMatch();
-	if (Data == nullptr || Match == nullptr)
-	{
-		return EBDPlacementRefusal::MatchRefused;
-	}
-
-	// Asked in the order the player would hit them, and the money last: running out of
-	// public money is the ordinary answer, so the unusual ones have to be able to speak
-	// first. A piece still locked says so before anything else: nothing else matters yet.
-	const EBDPieceKind Kind = Data->GetPieceKind();
-	if (!Match->IsUnlocked(Data))
-	{
-		return EBDPlacementRefusal::NotUnlocked;
-	}
-	if (ABDMatchManager::HasBudgetCeiling(Kind) && Match->GetBudgetRemaining(Kind) <= 0)
-	{
-		return EBDPlacementRefusal::NoBudgetLeft;
-	}
-	if (Kind == EBDPieceKind::Character && Match->GetFreeCharacterSlots() <= 0)
-	{
-		return EBDPlacementRefusal::NoFreeSlot;
-	}
-	if (!Match->CanPlace(Kind))
-	{
-		return EBDPlacementRefusal::MatchRefused;
-	}
-	if (!Match->CanAffordPublicMoney(Match->GetBuildPrice(Data)))
-	{
-		return EBDPlacementRefusal::NoFunds;
-	}
-	return EBDPlacementRefusal::None;
+	// The hand asks the same question before it takes a piece, so a grey button and a
+	// palette key never disagree about what can be picked up.
+	const UBDPlacementComponent* Placement = GetPlacement();
+	return Data == nullptr || Placement == nullptr || GetMatch() == nullptr
+		? EBDPlacementRefusal::MatchRefused
+		: Placement->GetHandRefusal(Data);
 }
 
 FText UBDHUDWidget::BuildInfoText(const UBDPlaceableData* Data, const EBDPlacementRefusal Refusal) const
@@ -1595,6 +1577,11 @@ FText UBDHUDWidget::BuildInfoText(const UBDPlaceableData* Data, const EBDPlaceme
 		return BDLoc::Format(TEXT("HUD.Build.Cost"), Args);
 	}
 	Args.Add(TEXT("Left"), Left);
+	// The dividers are a hand of their own and cost no money: the count is the whole story.
+	if (Data->GetPieceKind() == EBDPieceKind::Divider)
+	{
+		return BDLoc::Format(TEXT("HUD.Build.Hand"), Args);
+	}
 	return BDLoc::Format(TEXT("HUD.Build.Info"), Args);
 }
 
@@ -1666,7 +1653,7 @@ void UBDHUDWidget::SelectBuild(const int32 Index)
 		Placement->CancelSelection();
 		return;
 	}
-	Placement->SelectPlaceable(PaletteData[Index]);
+	Placement->TakeIntoHand(PaletteData[Index]);
 }
 
 void UBDHUDWidget::HandleBuildUrn()
@@ -1675,7 +1662,7 @@ void UBDHUDWidget::HandleBuildUrn()
 	UBDPlaceableData* Urn = UBDObjectiveSettings::Get().ObjectivePlaceable.LoadSynchronous();
 	if (Placement != nullptr && Urn != nullptr)
 	{
-		Placement->SelectPlaceable(Urn);
+		Placement->TakeIntoHand(Urn);
 	}
 }
 

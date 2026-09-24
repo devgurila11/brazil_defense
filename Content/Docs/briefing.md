@@ -1,79 +1,107 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-23 19:00**
+**Versão: 2026-09-23 21:45**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Relatório de fim de partida (post-match report)
+# Consolidação dos testes de hoje — ajustes por prioridade
 
-Ao terminar QUALQUER partida jogada na tela (vitória, derrota ou sair),
-gravar um relatório com os parâmetros gerais da partida — para
-acumular dados reais de teste e calibrar o balanceamento com número,
-não só com o olho.
+Contexto: jogado como player natural, tudo no nível 1, sem evoluir.
+Chegou à onda 115 com placar 62/38 (a eleição VIRA disputa nas ondas
+altas — funciona). A base está sólida. Estes são os atritos que
+apareceram jogando, em ordem de impacto.
 
-## Onde e como
+NÃO é calibração fina de número (essa segue pausada até o elenco). São
+ajustes de estrutura e de coerência que melhoram a experiência já.
 
-- Gravar num arquivo próprio, acrescentando (append) a cada partida:
-  Saved/Logs/PostMatch.csv (uma linha por partida) OU um .log legível.
-  CSV é melhor — dá para abrir em planilha e comparar dezenas de
-  partidas.
-- Também logar um resumo legível no fim (LogBDMatch) para leitura
-  rápida.
-- Vale tanto para partida na tela quanto para as simuladas
-  (BD.Sim.Run), com uma coluna dizendo qual foi.
+---
 
-## Dados por partida (as colunas)
+## 1. [PRIORIDADE] Separador de fila com orçamento próprio
 
-Identificação:
+O maior atrito. Hoje separador e defesa saem do MESMO bolso (fundos
+públicos). Cada torre abate do que sobraria para separadores, então o
+jogador nunca faz o labirinto denso ("queijo ralado") que é a alma do
+maze TD — sob pressão sempre escolhe defesa, e o labirinto morre.
 
-- Data/hora, seed, dificuldade, se foi simulação ou jogada na tela.
-- Resultado: vitória / derrota / abandonada.
-- Onda alcançada. Motivo do fim (candidato na urna / apuração onda
-  100 / abandono).
+Solução: DESACOPLAR o separador dos fundos.
 
-Placar:
+- Separador passa a ter orçamento PRÓPRIO, independente dos fundos
+  públicos gastos em defesa/evolução. (Como o muro no Clash of Clans:
+  economia separada das defesas.)
+- O jogador ganha uma quantidade de separadores por partida, e MAIS
+  ao longo do jogo (recompensa por onda/chefe), para o labirinto poder
+  crescer e ficar denso.
+- Assim "desenhar o caminho" (separadores, recurso próprio) e
+  "defender o caminho" (fundos, escasso) viram duas decisões que NÃO
+  competem.
+- Expor o orçamento inicial e o ganho por onda em settings/DA.
 
-- Votos azul e vermelho no fim, e a razão entre eles.
-- Nulos no fim.
+Motivo: hoje o item 6 da fila (separador ganho na onda 67 = 1 só)
+mostra que a quantidade não escala e é irrelevante no meio-fim.
+Orçamento próprio + ganho crescente resolve os dois.
 
-Economia:
+---
 
-- Fundos públicos ganhos no total (soma dos candidatos).
-- Fundos gastos em construção vs. em evolução (separado).
-- Fundos que sobraram no fim.
-- Capital inicial usado.
+## 2. Barra de vida do candidato só após o primeiro dano
 
-Defesa:
+O candidato nasce com a barra de HP já exposta, mesmo sem levar hit.
+Os creeps comuns já seguem a regra: barra só aparece após o primeiro
+dano. Alinhar o candidato ao mesmo padrão (barra flutuante e, se
+aplicável, a linha dele no painel). Só consistência visual.
 
-- Nº de cada tipo no fim: torres, personagens, plataformas
-  (por tipo), divisórias.
-- Nível médio dos defensores e nível máximo atingido.
-- Quantas evoluções foram compradas.
+---
 
-Combate:
+## 3. Evolução deve ser livre durante a onda
 
-- Creeps mortos, creeps que chegaram na urna.
-- Candidatos mortos (dos 20) e qual chegou na urna, se algum.
-- Dano total aplicado, overkill total (nulo), % de desperdício.
-- Pico de creeps vivos simultâneos.
+Evoluir uma defesa em campo parece travado durante a onda ativa,
+liberando só na pausa. Construir peça nova continua só na montagem
+(correto), mas EVOLUIR o que já existe deve ser livre durante a
+batalha — é reação tática ("essa torre não aguenta, subo ela agora").
+Confirmar e liberar a evolução durante a onda.
 
-Ritmo:
+---
 
-- Duração da partida (tempo real e nº de ondas).
-- Onda em que a defesa "estabilizou" (parou de crescer) se der para
-  medir.
+## 4. Opção de personagem indisponível sem slot livre
 
-## Objetivo
+O jogo oferece colocar personagem mesmo quando não há plataforma
+posicionada com slot livre para recebê-lo. Deve ficar indisponível
+com o motivo escrito ("nenhuma plataforma com vaga"), como as outras
+peças recusadas — não oferecer o que não tem onde ir.
 
-Depois de várias partidas, esse CSV mostra padrões: em que onda se
-perde mais, se os fundos sobram ou faltam, se a evolução acompanha, se
-o placar fica disputado ou é atropelo. É a base de dados para a
-calibração final (que continua pausada até o elenco, mas os dados vão
-se acumulando desde já).
+---
+
+## Registrado, NÃO agir agora (para o elenco / balanceamento futuro)
+
+- Partida longa demais / satura cedo: onda 83+ com tudo nível 1, sem
+  decisão nova, recompensa irrelevante. Possível que 100 ondas seja
+  muito para o conteúdo atual. NÃO mexer no número de ondas agora —
+  depende do elenco (variedade de inimigos/torres/políticos é o que
+  dá sentido às ondas altas). Anotar no PLANO como questão aberta.
+- Placar: CONFIRMADO que funciona (62/38 na onda 115). Morto cedo,
+  disputa tarde, como previsto. NÃO reformar o vermelho — o design
+  atual entrega a disputa quando a defesa cede. Remover da lista de
+  problemas.
+
+---
+
+## O que está certo e NÃO deve quebrar
+
+Ao mexer no que está acima, preservar:
+
+- Candidato que "rouba e carrega" (ameaça + sustento) e escuda a
+  horda naturalmente (vira alvo, creeps passam).
+- Economia unida à recompensa (mata chefe → fundo → escolhe).
+- Interação natural defesa/ataque/grid já no nível 1.
+- A disputa de placar que emerge nas ondas altas.
+
+---
 
 ## Entregável
 
-- PostMatch.csv sendo escrito ao fim de cada partida (tela e sim).
-- Resumo legível no log.
-- Confirmar com uma partida simulada que a linha sai completa e os
-  números batem com o BD.Economy.Report.
+- Separador com orçamento próprio, desacoplado dos fundos, com ganho
+  crescente ao longo do jogo.
+- Barra do candidato só após dano.
+- Evolução livre durante a onda.
+- Personagem indisponível (com motivo) sem slot livre.
+- Compilar os dois alvos, verificar headless, relatório no fim.
+- NÃO tocar em número de ondas nem no sistema de placar.

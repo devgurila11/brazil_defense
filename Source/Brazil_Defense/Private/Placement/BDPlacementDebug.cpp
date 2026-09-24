@@ -8,6 +8,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementComponent.h"
+#include "Tower/BDTowerBase.h"
 #include "Platform/BDPlatformComponent.h"
 
 namespace BDPlacementDebug
@@ -220,6 +221,47 @@ namespace BDPlacementDebug
 			bValidBefore ? TEXT("valid") : TEXT("refused"), *Reason,
 			bPlaced ? TEXT("succeeded") : TEXT("rejected"));
 	}
+
+	static void ExecTake(const TArray<FString>& Args, UWorld* World)
+	{
+		UBDPlacementComponent* Placement = FindPlacementComponent(World);
+		UBDPlaceableData* Placeable = Args.Num() == 1 ? BDDebugAssetLookup::FindByPathOrName<UBDPlaceableData>(Args[0]) : nullptr;
+		if (Placement == nullptr || Placeable == nullptr)
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.Take <asset path or name>"));
+			return;
+		}
+
+		const bool bTaken = Placement->TakeIntoHand(Placeable);
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.Take %s: %s."), *Placeable->GetName(),
+			bTaken ? TEXT("in hand") : *FString::Printf(TEXT("refused (%s)"),
+				*StaticEnum<EBDPlacementRefusal>()->GetNameStringByValue(static_cast<int64>(Placement->GetHandRefusal(Placeable)))));
+	}
+
+	static void ExecClick(const TArray<FString>& Args, UWorld* World)
+	{
+		UBDPlacementComponent* Placement = FindPlacementComponent(World);
+		if (Placement == nullptr || Args.Num() != ArgCountAt)
+		{
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Place.Click <x> <y>"));
+			return;
+		}
+
+		const FBDCellCoord Coord(FCString::Atoi(*Args[0]), FCString::Atoi(*Args[1]));
+		Placement->SetHoveredCellDirect(Coord);
+		Placement->DebugClick();
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.Click %s: selected %s."), *Coord.ToString(), *GetNameSafe(Placement->GetSelectedDefender()));
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdTake(
+		TEXT("BD.Place.Take"),
+		TEXT("BD.Place.Take <asset path or name>: takes a piece into the hand the way the build bar and the palette keys do, refused when the bar would grey it."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecTake));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdClick(
+		TEXT("BD.Place.Click"),
+		TEXT("BD.Place.Click <x> <y>: a press and release of the place button on a cell, as the mouse does it."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecClick));
 
 	static void ExecPlaceAtSlot(const TArray<FString>& Args, UWorld* World)
 	{

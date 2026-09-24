@@ -56,9 +56,33 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Difficulty")
 	EBDDifficulty Difficulty = EBDDifficulty::Normal;
 
-	/** Divider pieces the player may place during the building phase. One piece is one segment, whatever its length. */
+	/**
+	 * Dividers the player walks in with. One piece is one segment, whatever its length.
+	 *
+	 * The dividers are a budget of their own, like the walls of Clash of Clans: they cost
+	 * no public money, so drawing the path never competes with defending it, and the
+	 * hand grows as the match goes on (below) so the maze can get denser late.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
 	int32 DividerBudget = 28;
+
+	/** Dividers added to the hand every time a wave is cleared. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
+	int32 DividersPerWave = 1;
+
+	/** Dividers the first scheduled candidate killed adds to the hand. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
+	int32 DividersPerCandidate = 4;
+
+	/** How many more each later candidate adds than the one before: the N-th pays PerCandidate + Step x (N - 1). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
+	int32 DividersPerCandidateStep = 1;
+
+	/** Dividers the N-th scheduled candidate killed adds to the hand. */
+	int32 GetDividersForCandidate(const int32 Ordinal) const
+	{
+		return FMath::Max(0, DividersPerCandidate + DividersPerCandidateStep * FMath::Max(0, Ordinal - 1));
+	}
 
 	/** Platforms the player may place during the building phase. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))

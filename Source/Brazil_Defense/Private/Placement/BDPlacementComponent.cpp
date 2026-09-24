@@ -355,6 +355,65 @@ UClass* UBDPlacementComponent::ResolveActorClass() const
 
 //~ Selection ------------------------------------------------------------------
 
+EBDPlacementRefusal UBDPlacementComponent::GetHandRefusal(const UBDPlaceableData* Piece) const
+{
+	if (Piece == nullptr)
+	{
+		return EBDPlacementRefusal::NoSelection;
+	}
+
+	// Without a match every placement is free, as everywhere else in this component.
+	const ABDMatchManager* Match = GetMatch();
+	if (Match == nullptr)
+	{
+		return EBDPlacementRefusal::None;
+	}
+
+	// Asked in the order the player would hit them, and the money last: running out of
+	// public money is the ordinary answer, so the unusual ones have to be able to speak
+	// first. A piece still locked says so before anything else: nothing else matters yet.
+	const EBDPieceKind Kind = Piece->GetPieceKind();
+	if (Match->IsMatchOver())
+	{
+		return EBDPlacementRefusal::MatchRefused;
+	}
+	if (!Match->IsUnlocked(Piece))
+	{
+		return EBDPlacementRefusal::NotUnlocked;
+	}
+	if (ABDMatchManager::HasBudgetCeiling(Kind) && Match->GetBudgetRemaining(Kind) <= 0)
+	{
+		return EBDPlacementRefusal::NoBudgetLeft;
+	}
+	if (Kind == EBDPieceKind::Character && Match->GetFreeCharacterSlots() <= 0)
+	{
+		return EBDPlacementRefusal::NoFreeSlot;
+	}
+	if (!Match->CanPlace(Kind))
+	{
+		return EBDPlacementRefusal::MatchRefused;
+	}
+	if (!Match->CanAffordPublicMoney(Match->GetBuildPrice(Piece)))
+	{
+		return EBDPlacementRefusal::NoFunds;
+	}
+	return EBDPlacementRefusal::None;
+}
+
+bool UBDPlacementComponent::TakeIntoHand(UBDPlaceableData* Piece)
+{
+	const EBDPlacementRefusal Refusal = GetHandRefusal(Piece);
+	if (Refusal != EBDPlacementRefusal::None)
+	{
+		UE_LOG(LogBDGrid, Log, TEXT("'%s' not taken into the hand: %s."), *GetNameSafe(Piece),
+			*StaticEnum<EBDPlacementRefusal>()->GetNameStringByValue(static_cast<int64>(Refusal)));
+		return false;
+	}
+
+	SelectPlaceable(Piece);
+	return CurrentSelection == Piece;
+}
+
 void UBDPlacementComponent::SelectPlaceable(UBDPlaceableData* Placeable)
 {
 	FString SetupError;
@@ -1676,7 +1735,8 @@ bool UBDPlacementComponent::TryPlaceAtHovered()
 			return false;
 		}
 
-		if (!bRestoring && !Match->SpendPublicMoney(BuildCost, EBDFundsUse::Build))
+		// The urn is free and is not a piece of the defense: it is not paid for at all.
+		if (!bRestoring && !IsObjectiveSelection() && !Match->SpendPublicMoney(BuildCost, EBDFundsUse::Build))
 		{
 			// The hand was already charged, so it goes back before leaving.
 			Match->RefundRemoval(CurrentSelection->GetPieceKind());
@@ -1950,7 +2010,7 @@ void UBDPlacementComponent::RefundRefusedPlacement(const int32 BuildCost)
 	// a payment for one that was never charged, which is what a restore is.
 	if (ABDMatchManager* Match = GetMatch())
 	{
-		if (!bRestoring)
+		if (!bRestoring && !IsObjectiveSelection())
 		{
 			Match->ReturnPublicMoney(BuildCost, EBDFundsUse::Build, TEXT("a placement the board refused"));
 		}
@@ -2386,8 +2446,16 @@ void UBDPlacementComponent::CancelMove()
 void UBDPlacementComponent::HandlePlaceInput()
 {
 	// With nothing in hand a press on a placed piece picks it up; otherwise it places.
+	// While a wave is out nothing moves, but a defender can still be picked and evolved:
+	// that is the reaction the battle asks for, and the lift is not the way to it then.
 	if (CurrentSelection == nullptr && !bMoving)
 	{
+		const ABDMatchManager* Match = GetMatch();
+		if (Match != nullptr && Match->GetPhase() == EBDMatchPhase::WaveActive)
+		{
+			ClickDefenderAtHovered();
+			return;
+		}
 		TryBeginMoveAtHovered();
 		return;
 	}
@@ -2438,6 +2506,31 @@ void UBDPlacementComponent::SelectDefender(ABDTowerBase* Tower)
 
 	// The deal is stated at selection, so the second click is made knowing.
 	UE_LOG(LogBDGrid, Log, TEXT("Selected %s. Click it again to buy. %s"), *Tower->GetName(), *Tower->DescribeUpgrade());
+}
+
+void UBDPlacementComponent::ClickDefenderAtHovered()
+{
+	if (!bHoveringGrid)
+	{
+		return;
+	}
+
+	// Only the defender itself: a click on the truck under a shooter, or on a fence,
+	// ends the selection like a click on empty ground does.
+	const FBDPlacedPiece* Found = FindPieceUnderHover();
+	ABDTowerBase* Clicked = Found != nullptr && Found->Actors.Num() > 0 ? Cast<ABDTowerBase>(Found->Actors[0]) : nullptr;
+	if (Clicked != nullptr && Clicked == SelectedDefender.Get())
+	{
+		UpgradeSelectedDefender();
+		return;
+	}
+	SelectDefender(Clicked);
+}
+
+void UBDPlacementComponent::DebugClick()
+{
+	HandlePlaceInput();
+	HandlePlaceReleased();
 }
 
 bool UBDPlacementComponent::UpgradeSelectedDefender()

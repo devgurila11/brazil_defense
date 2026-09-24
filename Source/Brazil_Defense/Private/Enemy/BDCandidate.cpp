@@ -100,6 +100,12 @@ void ABDCandidate::DrawHealthBar() const
 
 	// Not gated by the grid debug switch: the bar is the one reading of the candidate the
 	// player has until the HUD draws it, the way the urn zone paints itself.
+	// Untouched, no bar: the same rule as the creeps, whose bars only show once they are hit.
+	if (GetCurrentHealth() >= GetMaxHealth())
+	{
+		return;
+	}
+
 	const FBoxSphereBounds Bounds = Body->Bounds;
 	const FVector Center(Bounds.Origin.X, Bounds.Origin.Y, Bounds.Origin.Z + Bounds.BoxExtent.Z + BarClearance);
 	const FVector Left = Center - FVector(0.0f, BarWidth * 0.5f, 0.0f);

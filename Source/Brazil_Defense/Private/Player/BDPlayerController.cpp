@@ -299,9 +299,11 @@ void ABDPlayerController::SelectPaletteSlot(const int32 Index)
 		return;
 	}
 
+	// Through the same door as the build bar: a key must not hand over a piece the bar
+	// shows greyed out, like a character with no platform slot to stand on.
 	if (UBDPlaceableData* Data = Settings.Palette[Index].LoadSynchronous())
 	{
-		PlacementComponent->SelectPlaceable(Data);
+		PlacementComponent->TakeIntoHand(Data);
 	}
 }
 
@@ -314,7 +316,7 @@ void ABDPlayerController::HandleSelectUrn()
 
 	if (UBDPlaceableData* Urn = UBDObjectiveSettings::Get().ObjectivePlaceable.LoadSynchronous())
 	{
-		PlacementComponent->SelectPlaceable(Urn);
+		PlacementComponent->TakeIntoHand(Urn);
 	}
 }
 

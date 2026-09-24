@@ -464,6 +464,12 @@ void ABDMatchManager::OnWaveCleared()
 	// The one line a match is audited by afterwards: the scoreboard at the end of every wave.
 	UE_LOG(LogBDMatch, Log, TEXT("Wave %d cleared. Votes: blue %d, red %d, null %d."), CurrentWave, VotesBlue, VotesRed, VotesNull);
 
+	// The maze grows with the match: every wave held is a few more dividers to draw with.
+	if (DifficultyData != nullptr)
+	{
+		GrantDividers(DifficultyData->DividersPerWave, FString::Printf(TEXT("wave %d cleared"), CurrentWave));
+	}
+
 	if (IsEndDue())
 	{
 		ResolveEnd();
@@ -869,11 +875,8 @@ bool ABDMatchManager::SpendPublicMoney(const int32 Amount, const EBDFundsUse Use
 		return false;
 	}
 
-	if (Amount == 0)
-	{
-		return true;
-	}
-
+	// Counted even when free: a divider comes out of its own hand, not the purse, and is
+	// still a piece built.
 	PublicMoney -= Amount;
 	switch (Use)
 	{
@@ -898,7 +901,7 @@ bool ABDMatchManager::SpendPublicMoney(const int32 Amount, const EBDFundsUse Use
 
 void ABDMatchManager::ReturnPublicMoney(const int32 Amount, const EBDFundsUse Use, const FString& Why)
 {
-	if (Amount <= 0)
+	if (Amount < 0)
 	{
 		return;
 	}
@@ -943,6 +946,26 @@ int32 ABDMatchManager::GetFreeCharacterSlots() const
 	return Placement != nullptr ? Placement->CountFreeSlots() : 0;
 }
 
+void ABDMatchManager::GrantDividers(const int32 Count, const FString& Why)
+{
+	if (Count <= 0)
+	{
+		return;
+	}
+
+	DividersRemaining += Count;
+	Ledger.DividersGranted += Count;
+	UE_LOG(LogBDMatch, Log, TEXT("Dividers +%d (%s): %d in hand."), Count, *Why, DividersRemaining);
+}
+
+void ABDMatchManager::RewardCandidateKill(const int32 Ordinal)
+{
+	if (DifficultyData != nullptr)
+	{
+		GrantDividers(DifficultyData->GetDividersForCandidate(Ordinal), FString::Printf(TEXT("candidate %d killed"), Ordinal));
+	}
+}
+
 void ABDMatchManager::AdjustDividerBudget(const int32 Delta, const FString& Why)
 {
 	if (Delta == 0)
@@ -972,6 +995,13 @@ int32 ABDMatchManager::GetCandidateFunds(const int32 Wave) const
 int32 ABDMatchManager::GetBuildPriceOnWave(const UBDPlaceableData* Piece, const int32 Wave) const
 {
 	if (Piece == nullptr)
+	{
+		return 0;
+	}
+
+	// The dividers are a hand of their own and cost no public money: drawing the path
+	// never competes with defending it.
+	if (Piece->GetPieceKind() == EBDPieceKind::Divider)
 	{
 		return 0;
 	}

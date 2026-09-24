@@ -457,6 +457,11 @@ void UBDCandidateSubsystem::NotifyCandidateKilled(ABDCandidate* Killed)
 		{
 			Bribes->Collect(Balance.BribeForHealth(Killed->GetMaxHealth()), Killed->GetActorLocation(), Killed->Ordinal);
 		}
+		// And a handful of dividers, more for every later one: the maze grows with the bosses.
+		if (Match != nullptr)
+		{
+			Match->RewardCandidateKill(Killed->Ordinal);
+		}
 		return;
 	}
 	if (!bReturnActive)

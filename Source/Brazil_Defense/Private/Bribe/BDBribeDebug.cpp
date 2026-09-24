@@ -305,6 +305,23 @@ namespace BDBribeDebug
 
 		UE_LOG(LogBDBribe, Log, TEXT("  the match pays %lld in all (start + %d bosses). At wave %d prices: a full board (%d defenders, the platform and divider hands) %lld, evolving those %d defenders to level %d %lld."),
 			Income, WavesToWin / Interval, Mid, Defenders, BoardCost, Defenders, UBDTowerData::MaxLevels, EvolutionCost);
+		// The divider hand, which is not money: what it holds by a few waves along the match
+		// if every wave is cleared and every candidate killed.
+		const UBDDifficultyData* DifficultyData = Match->GetDifficultyData();
+		FString Hand;
+		for (const int32 Wave : { 10, 25, 50, 75, 100 })
+		{
+			const int32 Bosses = Wave / Interval;
+			int32 Dividers = DifficultyData->DividerBudget + DifficultyData->DividersPerWave * Wave;
+			for (int32 Ordinal = 1; Ordinal <= Bosses; ++Ordinal)
+			{
+				Dividers += DifficultyData->GetDividersForCandidate(Ordinal);
+			}
+			Hand += FString::Printf(TEXT(" wave %d: %d;"), Wave, Dividers);
+		}
+		UE_LOG(LogBDBribe, Log, TEXT("  dividers are their own hand, no money: %d to start, +%d per wave, +%d for the first boss and %d more for each later one. Held by then, all placed:%s"),
+			DifficultyData->DividerBudget, DifficultyData->DividersPerWave, DifficultyData->DividersPerCandidate, DifficultyData->DividersPerCandidateStep, *Hand);
+
 		UE_LOG(LogBDBribe, Log, TEXT("  board AND evolution = %lld, %.0f%% of what the match pays: %s."),
 			BoardCost + EvolutionCost, Income > 0 ? 100.0 * (BoardCost + EvolutionCost) / Income : 0.0,
 			BoardCost + EvolutionCost > Income ? TEXT("the player has to choose") : TEXT("BOTH are affordable, the choice is gone"));

@@ -58,8 +58,13 @@ namespace BDAutoSetupPrivate
 	//~ Strategy, exposed so one setup can play like a good player and another like a
 	// careless one, and the gap between them is what the difficulty range really is.
 
-	/** Share of the opening capital, in public money, the maze may spend before a single defender is bought. */
-	static float GFenceShare = 0.4f;
+	/**
+	 * Share of the divider hand the maze uses each time it is built: the opening one, and
+	 * every pass as the hand grows. Not all of it by default: on seed 101 the whole opening
+	 * hand bent the candidate's route away from the defense and lost wave 6, where three
+	 * quarters held to wave 30 - a player keeps some back to answer the board they see.
+	 */
+	static float GFenceShare = 0.75f;
 
 	/** Cells between two fences of the serpentine. Small is a tighter maze and a longer walk. */
 	static int32 GMazeStride = 3;
@@ -84,6 +89,9 @@ namespace BDAutoSetupPrivate
 	 */
 	static float GPlatformShare = 0.25f;
 
+	/** Whether the passes between waves lay the dividers the waves and the bosses grant. */
+	static int32 GGrowMaze = 1;
+
 	/** 0 spreads the defense along the whole corridor, 1 piles it at the urn; between is a mix. */
 	static float GFocusUrn = 0.35f;
 
@@ -93,7 +101,7 @@ namespace BDAutoSetupPrivate
 	static FAutoConsoleVariableRef CVarFenceShare(
 		TEXT("BD.Debug.AutoSetup.FenceShare"),
 		GFenceShare,
-		TEXT("Share of the opening public money the automatic defense spends on the maze before buying any defender. 0 builds no maze."),
+		TEXT("Share of the divider hand the automatic defense lays each time it builds the maze. 0.75 (default) keeps a quarter back; 0 builds no maze."),
 		ECVF_Cheat);
 
 	static FAutoConsoleVariableRef CVarMazeStride(
@@ -118,6 +126,12 @@ namespace BDAutoSetupPrivate
 		TEXT("BD.Debug.AutoSetup.TowerShare"),
 		GTowerShare,
 		TEXT("Share of the capital left after the maze and the characters that the automatic defense spends on ground towers. 1 (default) spends all of it."),
+		ECVF_Cheat);
+
+	static FAutoConsoleVariableRef CVarGrowMaze(
+		TEXT("BD.Debug.AutoSetup.GrowMaze"),
+		GGrowMaze,
+		TEXT("1 (default) lays the granted dividers between waves; 0 keeps the opening maze as it was built."),
 		ECVF_Cheat);
 
 	static FAutoConsoleVariableRef CVarPlatformShare(
@@ -410,7 +424,8 @@ int32 UBDDebugAutoSetup::BuildGrantedBudget()
 	// What there is left to build with: platforms still in hand, slots standing empty, and
 	// whatever the public money earned since the last pass buys. The last one is the new one - the
 	// defense now grows on the income of the waves, not on a ceiling somebody raised.
-	const int32 Waiting = (Match->GetFreeCharacterSlots() > 0 ? 0 : FMath::Min(Match->GetPlatformsRemaining(), AffordableCount(PlatformPieces, BDAutoSetupPrivate::GPlatformShare)))
+	const int32 Waiting = (BDAutoSetupPrivate::GGrowMaze != 0 ? Match->GetDividersRemaining() : 0)
+		+ (Match->GetFreeCharacterSlots() > 0 ? 0 : FMath::Min(Match->GetPlatformsRemaining(), AffordableCount(PlatformPieces, BDAutoSetupPrivate::GPlatformShare)))
 		+ FMath::Min(Match->GetFreeCharacterSlots(), AffordableCount(CharacterPieces, BDAutoSetupPrivate::GCharacterShare))
 		+ AffordableCount(TowerPieces, BDAutoSetupPrivate::GTowerShare);
 	if (Waiting <= 0)
@@ -424,7 +439,9 @@ int32 UBDDebugAutoSetup::BuildGrantedBudget()
 
 	Placement->SetRefusalLogging(false);
 
-	// Platforms first: they are what makes slots for the characters to stand on.
+	// The maze first, out of its own hand: the dividers the waves and the bosses granted.
+	// Then platforms: they are what makes slots for the characters to stand on.
+	const int32 Fences = BDAutoSetupPrivate::GGrowMaze != 0 ? BuildMaze(*Placement, Stream) : 0;
 	const int32 Platforms = PlacePlatforms(*Placement, Stream);
 	const int32 Characters = FillSlots(*Placement, Stream);
 	const int32 Towers = PlaceTowers(*Placement, Stream);
@@ -432,9 +449,9 @@ int32 UBDDebugAutoSetup::BuildGrantedBudget()
 	Placement->CancelSelection();
 	Placement->SetRefusalLogging(true);
 
-	const int32 Placed = Platforms + Characters + Towers;
-	UE_CLOG(Placed > 0, LogBDDebug, Log, TEXT("Income built (pass %d): %d platform(s), %d character(s), %d tower(s). Left: %d platforms, %d free slot(s), %d public money."),
-		GrantedPasses, Platforms, Characters, Towers,
+	const int32 Placed = Fences + Platforms + Characters + Towers;
+	UE_CLOG(Placed > 0, LogBDDebug, Log, TEXT("Income built (pass %d): %d fence(s), %d platform(s), %d character(s), %d tower(s). Left: %d platforms, %d free slot(s), %d public money."),
+		GrantedPasses, Fences, Platforms, Characters, Towers,
 		Match->GetPlatformsRemaining(), Match->GetFreeCharacterSlots(), Match->GetPublicMoney());
 	return Placed;
 }
@@ -662,12 +679,9 @@ int32 UBDDebugAutoSetup::BuildMaze(UBDPlacementComponent& Placement, FRandomStre
 		return 0;
 	}
 
-	// What the maze may spend, and it is spent before anything else asks for money: a
-	// share of the opening capital, and never more fences than the hand holds.
-	const int32 Capital = Match->GetPublicMoney();
-	const int32 Cost = FMath::Max(1, Match->GetBuildPrice(Piece));
-	const int32 ByMoney = FMath::FloorToInt(Capital * FMath::Clamp(BDAutoSetupPrivate::GFenceShare, 0.0f, 1.0f)) / Cost;
-	const int32 Wanted = FMath::Min(ByMoney, Match->GetBudgetRemaining(EBDPieceKind::Divider));
+	// The dividers are a hand of their own, not money: the maze takes its share of the
+	// hand and leaves the public money whole for the defense.
+	const int32 Wanted = FMath::FloorToInt(Match->GetBudgetRemaining(EBDPieceKind::Divider) * FMath::Clamp(BDAutoSetupPrivate::GFenceShare, 0.0f, 1.0f));
 	if (Wanted <= 0)
 	{
 		return 0;
