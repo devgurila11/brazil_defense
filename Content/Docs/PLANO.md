@@ -250,7 +250,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-23 (noite) — COMMIT** (desde b1b73c0):
+- **2026-09-23 (noite) — 2cdeaa6** (desde b1b73c0):
   - **Relatório de fim de partida.** Toda partida que lançou ao menos
     uma onda grava uma linha em `Saved/Logs/PostMatch.csv` e um resumo
     `POST-MATCH` no LogBDMatch: vitória, derrota, abandono (sair ou
