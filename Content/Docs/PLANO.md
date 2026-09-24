@@ -258,7 +258,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-23 (23h) — COMMIT** (desde d50c721):
+- **2026-09-23 (23h) — 9387753** (desde d50c721):
   - **Build visível.** Rodapé do menu e canto inferior esquerdo do HUD
     mostram "build AAAA.MM.DD-HHMM Configuração", lido da data do
     próprio binário (DLL do módulo no editor, executável no jogo) —
