@@ -258,7 +258,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-23 (22h) — COMMIT** (desde 4e7d646):
+- **2026-09-23 (22h) — 681ee89** (desde 4e7d646):
   - **Separador com cota própria.** Divisória custa 0 de dinheiro
     público: desenhar o caminho não compete mais com defendê-lo. A
     cota começa em `DividerBudget` e cresce: +`DividersPerWave` (1) a
