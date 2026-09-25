@@ -11,6 +11,7 @@ class UAnimSequenceBase;
 class UMaterialInterface;
 class USkeletalMesh;
 class UStaticMesh;
+class UTexture2D;
 
 /**
  * One kind of creep: how tough it is, how fast it walks and what it is worth.
@@ -95,4 +96,19 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr || SkeletalMesh != nullptr"))
 	TSoftObjectPtr<UMaterialInterface> MeshMaterial;
+
+	/**
+	 * What the kill board counts this creep as: its kind of gameplay, never its skin. The
+	 * skins of one enemy all name the same kind and add up on one icon; an enemy with other
+	 * stats names its own. Empty counts the asset as a kind of its own.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Kill Board")
+	FName KillType;
+
+	/** Face of that kind on the kill board. The first creep of a kind killed brings its icon. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Kill Board", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> KillIcon;
+
+	/** KillType, or the asset's own name when it names none. */
+	FName GetKillType() const { return KillType.IsNone() ? GetFName() : KillType; }
 };

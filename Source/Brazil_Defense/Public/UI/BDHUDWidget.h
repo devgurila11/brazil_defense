@@ -103,6 +103,43 @@ private:
 	FBDPulse BluePulse;
 	FBDPulse RedPulse;
 	FBDPulse UrnPulse;
+
+	//~ Kill boards --------------------------------------------------------------
+	// Down the sides of the screen: the kinds of creep killed on the left, the candidates
+	// brought down on the right. A kind gets its row with its first kill, so the boards
+	// grow down as new kinds turn up and never show one not met yet. A kill makes only its
+	// own icon pulse, the way a vote does, and a burst of kills is one or two pulses.
+
+	/** One row of a board: an icon and its count. The widgets belong to the tree. */
+	struct FBDKillEntry
+	{
+		FName Type;
+		TObjectPtr<USizeBox> IconBox;
+		TObjectPtr<UTextBlock> Count;
+		int32 Shown = 0;
+		FBDPulse Pulse;
+	};
+
+	/** Adds a row to a board, icon towards the edge of the screen it stands on. */
+	FBDKillEntry MakeKillEntry(UVerticalBox* Column, FName Type, UTexture2D* Icon, bool bIconFirst);
+
+	/** Reads the tallies, adds the rows of kinds just met, and pulses the rows that went up. */
+	void UpdateKillBoards(float RealDeltaSeconds);
+
+	/** Sizes one row's icon by the viewport. */
+	void SizeKillEntry(const FBDKillEntry& Entry) const;
+
+	TArray<FBDKillEntry> HordeKills;
+	TArray<FBDKillEntry> CandidateKills;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UVerticalBox> HordeKillColumn;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UVerticalBox> CandidateKillColumn;
+
+	/** Icon height the kill rows are sized to, from the last viewport size. */
+	float KillIconSize = 0.0f;
 	/** The two money counters shiver as they climb, the same way the ballots do. */
 	FBDPulse BribePulse;
 	FBDPulse MintPulse;

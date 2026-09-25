@@ -1253,6 +1253,19 @@ void UBDWaveSubsystem::NotifyEnemyDied(ABDEnemyBase* Enemy)
 	++SpawnLoopKilled;
 	++WaveKilled;
 	MatchTotals.CreepsKilled += Enemy->IsCandidate() ? 0 : 1;
+	if (!Enemy->IsCandidate() && Data != nullptr)
+	{
+		// By kind, not by skin: every skin of one enemy adds to the same count.
+		const FName Type = Data->GetKillType();
+		FBDKillTally* Tally = MatchTotals.KillsByType.FindByPredicate([Type](const FBDKillTally& Each) { return Each.Type == Type; });
+		if (Tally == nullptr)
+		{
+			Tally = &MatchTotals.KillsByType.AddDefaulted_GetRef();
+			Tally->Type = Type;
+			Tally->Data = Data;
+		}
+		++Tally->Kills;
+	}
 	UE_CLOG(!bSpawnLoopRunning, LogBDWave, Log, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
 	UE_CLOG(bSpawnLoopRunning, LogBDWave, Verbose, TEXT("%s killed: blue +%d."), *Enemy->GetName(), Votes);
 	ForgetEnemy(Enemy);

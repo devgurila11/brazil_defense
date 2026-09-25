@@ -16,9 +16,23 @@ class UBDEnemyData;
 class UBDGridSubsystem;
 class UBDPathfinder;
 
+/** Kills of one kind of creep, as the kill board shows them. */
+struct FBDKillTally
+{
+	/** UBDEnemyData::GetKillType: the gameplay kind, every skin of it together. */
+	FName Type;
+	int32 Kills = 0;
+
+	/** The data of the first one killed, for the icon. */
+	TWeakObjectPtr<const UBDEnemyData> Data;
+};
+
 /** What the creeps of a whole match did, for the post-match report. Reset when the match is rewound. */
 struct FBDMatchCombatTotals
 {
+	/** Kills per kind of creep, in the order each kind was first killed. Candidates are not in it. */
+	TArray<FBDKillTally> KillsByType;
+
 	/** Ordinary creeps only: the candidates are counted by their own subsystem. */
 	int32 CreepsKilled = 0;
 	int32 CreepsArrived = 0;

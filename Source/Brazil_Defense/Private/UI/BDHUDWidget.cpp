@@ -3,6 +3,7 @@
 #include "UI/BDHUDWidget.h"
 
 #include "BDBuildInfo.h"
+#include "BDLog.h"
 #include "Blueprint/WidgetTree.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Day/BDDayCycleComponent.h"
@@ -27,6 +28,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Enemy/BDCandidate.h"
+#include "Enemy/BDEnemyData.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
@@ -506,6 +508,24 @@ void UBDHUDWidget::BuildTree()
 	MenuSlot->SetAutoSize(true);
 	MenuSlot->SetPosition(FVector2D(Margin, Margin));
 
+	//~ The kill boards, down the sides: the horde's kinds on the left, under the menu, and
+	// the candidates on the right, under the panels. Both start empty and grow down.
+	HordeKillColumn = MakeColumn();
+	HordeKillColumn->SetVisibility(ESlateVisibility::HitTestInvisible);
+	UCanvasPanelSlot* HordeKillSlot = Canvas->AddChildToCanvas(HordeKillColumn);
+	HordeKillSlot->SetAnchors(FAnchors(0.0f, 0.2f));
+	HordeKillSlot->SetAlignment(FVector2D(0.0f, 0.0f));
+	HordeKillSlot->SetAutoSize(true);
+	HordeKillSlot->SetPosition(FVector2D(Margin, 0.0f));
+
+	CandidateKillColumn = MakeColumn();
+	CandidateKillColumn->SetVisibility(ESlateVisibility::HitTestInvisible);
+	UCanvasPanelSlot* CandidateKillSlot = Canvas->AddChildToCanvas(CandidateKillColumn);
+	CandidateKillSlot->SetAnchors(FAnchors(1.0f, 0.55f));
+	CandidateKillSlot->SetAlignment(FVector2D(1.0f, 0.0f));
+	CandidateKillSlot->SetAutoSize(true);
+	CandidateKillSlot->SetPosition(FVector2D(-Margin, 0.0f));
+
 	//~ Bottom left: which build this is, as small as it can be and still be read.
 	UTextBlock* Build = MakeText(BuildFontSize, ColorMuted);
 	Build->SetText(FText::FromString(BDBuildInfo::GetLabel()));
@@ -631,6 +651,9 @@ void UBDHUDWidget::ApplyResponsiveSizes()
 	{
 		CandidateBarBoxes[Index]->SetWidthOverride(FMath::Max(160.0f, Size.X * Settings.CandidateBarWidthFraction));
 	}
+	KillIconSize = FMath::Max(20.0f, Size.Y * Settings.KillIconHeightFraction);
+	for (const FBDKillEntry& Entry : HordeKills) { SizeKillEntry(Entry); }
+	for (const FBDKillEntry& Entry : CandidateKills) { SizeKillEntry(Entry); }
 }
 
 void UBDHUDWidget::RefreshTexts()
@@ -964,7 +987,127 @@ void UBDHUDWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTi
 	UpdateClock();
 	ApplyResponsiveSizes();
 	UpdateVotePulses(static_cast<float>(FApp::GetDeltaTime()));
+	UpdateKillBoards(static_cast<float>(FApp::GetDeltaTime()));
 	UpdateFloaters(static_cast<float>(FApp::GetDeltaTime()));
+}
+
+//~ Kill boards ----------------------------------------------------------------------
+
+UBDHUDWidget::FBDKillEntry UBDHUDWidget::MakeKillEntry(UVerticalBox* Column, const FName Type, UTexture2D* Icon, const bool bIconFirst)
+{
+	using namespace BDHUDPrivate;
+
+	FBDKillEntry Entry;
+	Entry.Type = Type;
+	TObjectPtr<UImage> Image;
+	Entry.IconBox = MakePicture(Image, Icon, ScoreIconSize);
+	Entry.Count = MakeText(MintFontSize, ColorText);
+
+	UHorizontalBox* Row = MakeRow();
+	const auto AddPart = [Row](UWidget* Widget, const float LeftPad)
+	{
+		UHorizontalBoxSlot* PartSlot = Row->AddChildToHorizontalBox(Widget);
+		PartSlot->SetVerticalAlignment(VAlign_Center);
+		PartSlot->SetPadding(FMargin(LeftPad, 0.0f, 0.0f, 0.0f));
+	};
+	// The icon stands on the edge of the screen and the number looks inwards.
+	if (bIconFirst)
+	{
+		AddPart(Entry.IconBox, 0.0f);
+		AddPart(Entry.Count, 8.0f);
+	}
+	else
+	{
+		AddPart(Entry.Count, 0.0f);
+		AddPart(Entry.IconBox, 8.0f);
+	}
+	UVerticalBoxSlot* RowSlot = Column->AddChildToVerticalBox(Row);
+	RowSlot->SetHorizontalAlignment(bIconFirst ? HAlign_Left : HAlign_Right);
+	RowSlot->SetPadding(FMargin(0.0f, 4.0f));
+
+	SizeKillEntry(Entry);
+	UE_LOG(LogBDUI, Log, TEXT("Kill board: %s gets its row (%s)."), *Type.ToString(), Icon != nullptr ? *Icon->GetName() : TEXT("no icon"));
+	return Entry;
+}
+
+void UBDHUDWidget::SizeKillEntry(const FBDKillEntry& Entry) const
+{
+	if (Entry.IconBox != nullptr && KillIconSize > 0.0f)
+	{
+		Entry.IconBox->SetWidthOverride(KillIconSize);
+		Entry.IconBox->SetHeightOverride(KillIconSize);
+	}
+}
+
+void UBDHUDWidget::UpdateKillBoards(const float RealDeltaSeconds)
+{
+	using namespace BDHUDPrivate;
+
+	// A count that went up pulses its own icon and ticks its number. Advanced then applied,
+	// so the last frame of a pulse lands back at rest, as on the ballots.
+	const auto Refresh = [this, RealDeltaSeconds](FBDKillEntry& Entry, const int32 Kills, const FText& Text)
+	{
+		if (Kills > Entry.Shown)
+		{
+			Entry.Pulse.Trigger();
+		}
+		if (Kills != Entry.Shown || Entry.Count->GetText().IsEmpty())
+		{
+			Entry.Count->SetText(Text);
+			Entry.Shown = Kills;
+		}
+		const bool bWas = Entry.Pulse.bRunning;
+		Entry.Pulse.Advance(RealDeltaSeconds, VotePulseSeconds);
+		if (bWas || Entry.Pulse.bRunning)
+		{
+			ApplyPulse(Entry.IconBox, Entry.Count, Entry.Pulse);
+		}
+	};
+
+	// The horde: one row per kind, in the order the kinds were first killed. A rewound
+	// match empties the tallies, and the board with them.
+	const UBDWaveSubsystem* Waves = GetWaves();
+	const TArray<FBDKillTally>* Tallies = Waves != nullptr ? &Waves->GetMatchTotals().KillsByType : nullptr;
+	if (Tallies == nullptr || Tallies->Num() < HordeKills.Num())
+	{
+		HordeKillColumn->ClearChildren();
+		HordeKills.Reset();
+	}
+	for (int32 Index = 0; Tallies != nullptr && Index < Tallies->Num(); ++Index)
+	{
+		const FBDKillTally& Tally = (*Tallies)[Index];
+		if (!HordeKills.IsValidIndex(Index))
+		{
+			const UBDEnemyData* Data = Tally.Data.Get();
+			UTexture2D* Icon = Data != nullptr ? Data->KillIcon.LoadSynchronous() : nullptr;
+			HordeKills.Add(MakeKillEntry(HordeKillColumn, Tally.Type, Icon, /*bIconFirst*/ true));
+		}
+		FBDKillEntry& Entry = HordeKills[Index];
+		// With no icon the kind is named, so the count still says what it counts.
+		const bool bNamed = Entry.IconBox->GetVisibility() == ESlateVisibility::Collapsed;
+		Refresh(Entry, Tally.Kills, bNamed
+			? FText::FromString(FString::Printf(TEXT("%s %d"), *Tally.Type.ToString(), Tally.Kills))
+			: FText::AsNumber(Tally.Kills));
+	}
+
+	// The candidates: one row for all of them for now, how many of the scheduled ones have
+	// been brought down. Each will get his own face; the counter stays one until then.
+	const UBDCandidateSubsystem* Candidates = GetCandidates();
+	const int32 Fallen = Candidates != nullptr ? Candidates->GetFallenCount() : 0;
+	if (Fallen <= 0 && CandidateKills.Num() > 0)
+	{
+		CandidateKillColumn->ClearChildren();
+		CandidateKills.Reset();
+	}
+	if (Fallen > 0)
+	{
+		if (CandidateKills.Num() == 0)
+		{
+			CandidateKills.Add(MakeKillEntry(CandidateKillColumn, TEXT("Candidates"),
+				UBDUISettings::Get().CandidateKillIcon.LoadSynchronous(), /*bIconFirst*/ false));
+		}
+		Refresh(CandidateKills[0], Fallen, FText::AsNumber(Fallen));
+	}
 }
 
 void UBDHUDWidget::UpdateClock()

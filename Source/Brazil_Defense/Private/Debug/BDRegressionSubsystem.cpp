@@ -651,7 +651,23 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Check(TEXT("INIMIGO"), TEXT("the walk loop plays at the creep's speed over the reference speed"),
 				Creep->GetCurrentSpeed() > 0.0f && FMath::IsNearlyEqual(Rate, Expected, 0.01f),
 				FString::Printf(TEXT("speed %.0f cm/s, rate %.2f, expected %.2f"), Creep->GetCurrentSpeed(), Rate, Expected));
-			Creep->Destroy();
+
+			// Killed, not just removed: the kill board counts it under its kind, whatever
+			// its skin, and nothing else.
+			const UBDEnemyData* CreepData = Creep->GetData();
+			const FName Type = CreepData != nullptr ? CreepData->GetKillType() : NAME_None;
+			const auto KillsOf = [Waves](const FName Kind)
+			{
+				const FBDKillTally* Tally = Waves->GetMatchTotals().KillsByType.FindByPredicate([Kind](const FBDKillTally& Each) { return Each.Type == Kind; });
+				return Tally != nullptr ? Tally->Kills : 0;
+			};
+			const int32 KindsBefore = Waves->GetMatchTotals().KillsByType.Num();
+			const int32 KillsBefore = KillsOf(Type);
+			Creep->Kill();
+			const int32 KindsAfter = Waves->GetMatchTotals().KillsByType.Num();
+			Check(TEXT("PLACAR"), TEXT("a kill counts once under its kind on the kill board"),
+				KillsOf(Type) == KillsBefore + 1 && KindsAfter - KindsBefore == (KillsBefore == 0 ? 1 : 0),
+				FString::Printf(TEXT("%s %d -> %d, %d kind(s) on the board"), *Type.ToString(), KillsBefore, KillsOf(Type), KindsAfter));
 		}
 		AnimatedCreep.Reset();
 
@@ -664,11 +680,15 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		}
 		const int32 Expected = Match->GetCandidateFunds(Match->GetCurrentWave());
 		const int32 EarnedBefore = Match->GetLedger().BribeEarned;
+		const int32 FallenBefore = Candidates->GetFallenCount();
 		Candidate->ApplyDamage(Candidate->GetMaxHealth() * 10.0f, nullptr);
 		Bribes->FlushNow(TEXT("BD.Test.Regression"));
 		const int32 Earned = Match->GetLedger().BribeEarned - EarnedBefore;
 		Check(TEXT("CANDIDATO"), TEXT("killing a scheduled candidate pays his bribe"), Earned == Expected && Expected > 0,
 			FString::Printf(TEXT("%d paid, %d expected"), Earned, Expected));
+		Check(TEXT("PLACAR"), TEXT("a candidate brought down counts once on the candidates' board"),
+			Candidates->GetFallenCount() == FallenBefore + 1,
+			FString::Printf(TEXT("%d -> %d brought down"), FallenBefore, Candidates->GetFallenCount()));
 
 		// The fallen brought back: they parade in one at a time, on the subsystem's tick.
 		Candidates->BeginReturn(TEXT("BD.Test.Regression"));

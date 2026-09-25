@@ -1,87 +1,78 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-25 15:45**
+**Versão: 2026-09-25 16:30**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Ônibus (SM_Bus) acompanha a boca de spawn
+# Placar visual de abates por tipo (HUD flex, laterais)
 
-Estado atual (confirmado): a âncora e o wander das bocas funcionam
-(cada boca desliza até 5 células/35m por onda, sem acumular). Mas os
-6 SM_Bus são StaticMeshActor parados sobre as âncoras — o código não
-os conhece. Resultado: a boca desliza e o ônibus fica parado, então a
-horda sai a até 35m do ônibus, quebrando a leitura de "vêm da
-caravana".
+Placar informativo mostrando quantos de cada tipo foram abatidos, com
+o rosto de cada um. Só visual, não afeta gameplay.
 
-Decisão: o ônibus SEGUE a boca. Manter o wander (a variação de saída
-é desejada — dá imprevisibilidade). Só fazer o ônibus acompanhar.
+## Layout
 
-## Ligar cada ônibus à sua boca
+- LATERAL ESQUERDA: tipos de INIMIGO (horda). Um ícone por tipo, com o
+  número de abates daquele tipo ao lado.
+- LATERAL DIREITA: CANDIDATOS. Um ícone com quantos dos 20 candidatos
+  já foram derrubados.
+- Layout FLEX/dinâmico: o ícone de um tipo só APARECE depois que o
+  primeiro daquele tipo morre. A lista cresce para baixo conforme
+  novos tipos entram em cena. Nada de mostrar tipo que ainda não
+  apareceu.
 
-Os 6 ônibus já estão exatamente sobre as âncoras (confirmado):
+## O ícone do jumento
 
-- SM_Bus6 → âncora (6,0)
-- SM_Bus5 → âncora (22,0)
-- SM_Bus → âncora (0,5)
-- SM_Bus2 → âncora (0,17)
-- SM_Bus3 → âncora (10,21)
-- SM_Bus4 → âncora (26,21)
+- T_UI_Jumento já está na engine.
+- Conta o TOTAL de jumentos mortos — as 4 skins (amarelo, arco-íris,
+  tie-dye, e a 4a) somadas num contador ÚNICO. Skin diferente = mesmo
+  inimigo = um ícone só.
+- Regra geral: o ícone é por TIPO DE GAMEPLAY, não por textura. Quando
+  entrarem inimigos com stats diferentes, cada um ganha ícone próprio;
+  variações de skin do mesmo inimigo compartilham o ícone.
 
-Ligar cada ônibus à sua boca por referência (não por proximidade em
-runtime — resolver a associação uma vez, pela âncora, e guardar).
-Pode ser: converter os StaticMeshActor num ator do jogo (ABDBus) com
-a boca que ele serve, OU um registro no código que mapeia âncora →
-ônibus. O que for mais limpo.
+## O ícone dos candidatos
 
-## Movimento
+- Fazer um ícone PADRÃO/placeholder de candidato por enquanto (os
+  candidatos ainda são cubos; o rosto real vem depois). Pode ser um
+  ícone genérico simples — será substituído em breve.
+- Mostra quantos dos 20 candidatos agendados foram derrubados
+  (ex: "7").
+- Deixar o caminho pronto para, no futuro, cada candidato ter rosto
+  próprio (20 ícones), mas por ora um contador único com o placeholder.
 
-- Quando a boca desliza (WanderSpawnPoints, entre ondas), o ônibus
-  correspondente se move JUNTO, para a nova posição da boca.
-- Movimento SUAVE entre ondas (interpolar em alguns segundos), não
-  teleporte. O jogador vê o ônibus se reposicionando antes da onda —
-  vira aviso visual de onde a horda vem desta vez.
-- O ônibus translada no PRÓPRIO EIXO da borda (frente/ré), NUNCA gira.
-  Aponta sempre para dentro da arena (como já está colocado).
-- Respeita a mesma âncora e limite de 5 células que a boca já respeita
-  — ônibus e boca nunca se separam.
-- A boca continua sendo o ponto lógico de spawn; o ônibus só
-  acompanha visualmente, ficando com a saída da horda sempre nele.
+## Animação (igual ao placar de pontuação)
 
-## Anti-colisão entre ônibus da mesma borda
+- Quando um abate soma no contador, o ícone daquele tipo faz a mesma
+  micro-animação do placar de votos: pulso de escala (1.0 → 1.15 →
+  1.0) e o número dá um tick. Só o ícone que somou.
+- Mesmo cuidado com rajada: em onda densa, muitos abates por segundo —
+  não reiniciar a animação a cada morte, acumular num pulso só, senão
+  vira tremor contínuo.
+- Reusar a lógica de pulso que o placar de votos já tem (FBDPulse ou
+  equivalente).
 
-Cada lado do terreno retangular tem DOIS ônibus (3 lados usados, 6
-ônibus no total). Dois ônibus da mesma borda não podem se sobrepor.
+## Fonte dos dados
 
-Pela geometria atual não colidem (âncoras a 16, 16 e 12 células;
-movimento máx 5 de cada lado = 10 células de alcance somado). Mas a
-borda esquerda (âncoras 0,5 e 0,17, distância 12) tem só 2 células de
-folga — apertado.
+- Já existe contagem de creeps mortos e candidatos mortos no
+  MatchManager / PostMatch. Ligar o HUD a essas contagens, agora
+  quebradas POR TIPO (o jumento precisa somar as mortes de qualquer
+  uma das 4 skins no mesmo contador).
+- Se hoje a contagem de mortes não distingue tipo, adicionar um
+  contador por tipo de inimigo (chave = tipo, não skin).
 
-Adicionar trava de segurança: um ônibus não desliza a ponto de chegar
-a menos de MinBusGap células (ex: 2) do ônibus vizinho da mesma borda.
-Se o wander da boca fosse levar além disso, o ônibus (e a boca) param
-antes desse limite. Assim nunca há sobreposição, mesmo que as âncoras
-sejam reposicionadas no futuro.
+## Responsivo
 
-Expor MinBusGap em settings.
-
-## Manter
-
-- O wander das bocas (MouthWanderChance 0.75, MaxCells 5) fica como
-  está — a variação é a mecânica desejada.
-- Tudo mais: spawn, rota, candidato, etc.
-
-## Sons — NÃO nesta leva
-
-Motor, buzina e som de saída da horda ficam para depois. Só deixar
-claro no código onde esses eventos entrariam (ônibus começa a mover /
-onda começa a sair), para facilitar plugar os sons na próxima leva.
+- Segue a mesma regra do resto do HUD: ancorado nas laterais,
+  escala por DPI, ícones dimensionados por fração da tela, não pixel
+  fixo. Não pode quebrar em 1080p/1440p/4K.
 
 ## Entregável
 
-- Cada SM_Bus ligado à sua boca; ao deslizar a boca, o ônibus vai
-  junto, suave, sem girar.
-- A horda sempre sai de dentro/ao lado do ônibus, nunca a 35m dele.
-- Wander mantido (variação preservada).
-- Dois ônibus da mesma borda nunca se sobrepõem (trava MinBusGap).
+- Lateral esquerda com ícone de jumento + total de abates (4 skins
+  somadas), aparecendo quando o primeiro jumento morre.
+- Lateral direita com ícone placeholder de candidato + quantos dos 20
+  derrubados.
+- Layout flex: cresce conforme novos tipos morrem.
+- Pulso animado ao somar, como o placar de votos, com trava de rajada.
+- Responsivo nas três resoluções.
 - BD.Test.Regression passa; compilar os dois alvos.

@@ -121,6 +121,25 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.1", ClampMax = "0.8", UIMin = "0.1", UIMax = "0.8"))
 	float CandidateBarWidthFraction = 0.28f;
 
+	//~ Kill boards ---------------------------------------------------------------
+	// Down the sides: the kinds of creep killed on the left, the candidates brought down on
+	// the right. Each icon turns up with the first kill of its kind. Only a read-out.
+
+	/** Height of a kill board icon, as a fraction of the viewport height. */
+	UPROPERTY(config, EditAnywhere, Category = "Kill Boards", meta = (ClampMin = "0.02", ClampMax = "0.2", UIMin = "0.02", UIMax = "0.2"))
+	float KillIconHeightFraction = 0.055f;
+
+	/** The candidates' icon on the right board, until each has a face of his own. */
+	UPROPERTY(config, EditAnywhere, Category = "Kill Boards", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> CandidateKillIcon = TSoftObjectPtr<UTexture2D>(FSoftObjectPath(TEXT("/Game/BD/UI/T_UI_Candidate_Placeholder.T_UI_Candidate_Placeholder")));
+
+	/**
+	 * One face per scheduled candidate, by his number (first is index 0), for when they get
+	 * faces. Not read yet: the board shows one counter with CandidateKillIcon for all of them.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Kill Boards", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TArray<TSoftObjectPtr<UTexture2D>> CandidateFaces;
+
 	/** Height the logo is drawn at, in Slate units; the width follows the texture. */
 	UPROPERTY(config, EditAnywhere, Category = "Flow", meta = (ClampMin = "16.0", UIMin = "16.0"))
 	float SplashLogoHeight = 240.0f;

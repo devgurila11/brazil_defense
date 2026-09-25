@@ -263,6 +263,28 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-25 (tarde) — COMMIT_ID** (desde 48b50a2):
+  - **Placar de abates por tipo, nas laterais do HUD.** Esquerda: um
+    ícone por tipo de inimigo com o total de abates; direita: o
+    candidato placeholder com quantos dos 20 agendados já caíram
+    (`GetFallenCount`, só o número). Cada linha só aparece no primeiro
+    abate do tipo e a lista cresce para baixo. Pulso por linha com o
+    mesmo `FBDPulse` dos votos, com a trava de rajada. Ícone por fração
+    da altura da tela (`KillIconHeightFraction`).
+  - A chave é o tipo de gameplay, não a skin: `UBDEnemyData` ganhou
+    `KillType` e `KillIcon` (`DA_Enemy_Test` = "Jumento" +
+    `T_UI_Jumento`); as skins do jumento devem repetir o mesmo
+    `KillType`. A contagem vive em `FBDMatchCombatTotals::KillsByType`
+    e zera com a partida.
+  - Novo `T_UI_Candidate_Placeholder` (busto genérico, UI/UserInterface2D)
+    em `CandidateKillIcon`; `CandidateFaces` já existe nos settings para
+    os 20 rostos, ainda não lido.
+  - `BD.Test.Regression`: 29/29 PASS. Capturas renderizadas em 1080p,
+    1440p e 4K (limitado a 3840x1592 pelo monitor). Os dois alvos
+    compilados.
+  - Fora do commit: `img_references/`, `Content/imgs/`,
+    `Content/Docs/Brazil_Defense.log` e o `DefaultEditor.ini`.
+
 - **2026-09-25 — 3fb5007** (desde 26e5d8b):
   - **O creep virou o jumento animado.** SK `Run_Forward__1_` (Mixamo,
     reimportado com escala 100, In Place, normais importadas) com o
