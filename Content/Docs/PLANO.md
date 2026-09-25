@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-25 — COMMIT_ID** (desde 26e5d8b):
+- **2026-09-25 — 3fb5007** (desde 26e5d8b):
   - **O creep virou o jumento animado.** SK `Run_Forward__1_` (Mixamo,
     reimportado com escala 100, In Place, normais importadas) com o
     `MI_Jumento_PT`, e `MeshScale` 2 no `DA_Enemy_Test` (~400 cm, pelo
