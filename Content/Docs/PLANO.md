@@ -304,6 +304,16 @@ mudou desde o push anterior.
     alvos compilados.
   - Continuam fora: `Content/imgs/`, `Content/Docs/Brazil_Defense.log`
     e o `DefaultEditor.ini`.
+  - **Onde paramos (fim do dia 25):**
+    - Ver na tela, no `.exe`: botão de pausa e tecla P, nomes no placar,
+      giro da urna, e se a pausa deve permitir construir ou só olhar
+      (hoje permite; decisão ainda não confirmada).
+    - Confirmar a memória com renderização: numa partida longa na tela,
+      olhar `MemUsedMB` no WaveLog e ver se estabiliza como na Rodada 5.
+    - O `BD.Sim.Run` para em 1 hora real (`STALLED`): 100 ondas não
+      cabem nesse teto. Aumentar o teto se precisar medir até o fim.
+    - Candidatos em grupo no endless: ver na tela a "parede" de 2 ou
+      mais juntos, junto com o retorno dos caídos.
 
 - **2026-09-25 (fim de tarde) — e470d84** (desde 89d375e):
   - **Referências do jumento versionadas.** `img_references/` ganhou
