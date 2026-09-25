@@ -263,6 +263,19 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-24 (23h45) — COMMIT_ID** (desde 383be2a):
+  - **Votos iniciais por dificuldade.** `StartingVotes` (a vantagem de
+    largada no placar, não é moeda) valia 3.000 nas três e agora cai
+    com a dificuldade: Easy 3.000, Normal 1.500, Hard 0. Gravado nos
+    `DA_Difficulty` pelo commandlet `BDSetProperty` e conferido numa
+    sessão nova. `ChainBonus.Votes` (+100 por ter vencido a
+    dificuldade abaixo) continua separado: no Hard, quem venceu o
+    Normal começa com 100, quem entra direto começa em 0. O vermelho
+    continua em 0. `StartingFunds` (2.000) não mudou.
+  - A regressão mostra o Normal abrindo com 1.600 (1.500 + 100 do
+    bônus): 22/22 PASS. Os dois alvos compilados (sem mudança de
+    código).
+
 - **2026-09-24 (23h) — 12c40da** (desde d7d5ff4):
   - O briefing das 23:20 pediu de novo a remoção do "blue count". O
     código já estava certo desde 316f027, mas o `Brazil_Defense.exe`

@@ -1,40 +1,44 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-24 23:20**
+**Versão: 2026-09-24 23:45**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Limpar contador de votos duplicado no HUD
+# Votos iniciais (handicap de placar) por dificuldade
 
-O HUD mostra o placar azul DUAS vezes, com o mesmo valor:
-- No topo: "BLUE 5.707.053" com a barra de apuração (azul/vermelho).
-- No meio: "blue count 5.707.053" ao lado de um ícone de urna.
+Hoje o StartingVotes é 3.000 nas TRÊS dificuldades — o azul começa
+liderando por igual em Easy, Normal e Hard. Isso contradiz a ideia de
+dificuldade: o handicap de largada deveria diminuir conforme sobe.
 
-São idênticos. O "blue count" é resquício de quando votos eram moeda
-gastável; depois da reforma (votos = placar puro, fundos = moeda) ele
-perdeu a função. A barra de apuração no topo já mostra o azul com o
-contexto do vermelho.
+Efeito real desses votos (confirmado): atrasam a derrota por placar,
+atrasam o gatilho do retorno dos caídos (vermelho passar o azul), e
+somem no nivelamento pós-desfile. É um fôlego de começo.
 
 ## Fazer
 
-- REMOVER a linha "blue count" e o ícone de urna que a acompanha (o do
-  meio, NÃO o da barra do topo).
-- Manter no topo: a barra de apuração (BLUE / barra / RED), o NULL, e
-  logo abaixo o PUBLIC FUNDS (a moeda real, fica em destaque).
-- Conferir que não sobra ícone de urna solto depois de remover.
+Escalar o StartingVotes por dificuldade nos DA_Difficulty:
 
-## Nota (não agir agora, só registrar)
+- Easy: 3.000 (perdoa bastante — para quem está aprendendo)
+- Normal: 1.500 (metade — fôlego menor)
+- Hard: 0 (sem fôlego — eleição começa 0 a 0, sem perdão)
 
-Warning de Lumen visto na tela: "Cached lighting in Lumen and
-real-time sky capture lighting is going to be clipped... adjust
-r.EyeAdaptation... Exposure -8.5, safe range [-8.0, 12.0]". É ajuste
-de exposição/iluminação, não do HUD. Anotar no PLANO para olhar quando
-mexer em iluminação/cena. NÃO agora.
+O ChainBonus.Votes (+100 por ter vencido a dificuldade abaixo) fica
+como está — é vantagem merecida por progressão, separada do handicap.
+Então no Hard, quem venceu o Normal ainda começa com +100; quem entra
+direto no Hard começa em 0.
+
+O vermelho continua começando em 0 sempre (sem valor inicial).
+
+## Nota
+
+StartingFunds (a moeda, 2.000) NÃO muda — é o capital de montagem,
+necessário nas três dificuldades. Só o StartingVotes (placar) escala.
 
 ## Entregável
 
-- "blue count" e seu ícone removidos do HUD; placar azul aparece só
-  uma vez (barra do topo).
-- PUBLIC FUNDS mantido em destaque.
-- BD.Test.Regression passa (22/22).
-- Commit + push com o hash no PLANO §12.
+- StartingVotes: Easy 3000, Normal 1500, Hard 0 nos três DA_Difficulty
+  (gravar pelo commandlet, como das outras vezes).
+- Confirmar lendo os três valores numa sessão nova.
+- BD.Test.Regression passa.
+- Compilar os DOIS alvos (editor e jogo), como combinado.
+- Commit + push, hash no PLANO §12.
