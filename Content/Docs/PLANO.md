@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-25 (fim de tarde) — COMMIT_ID** (desde 89d375e):
+- **2026-09-25 (fim de tarde) — e470d84** (desde 89d375e):
   - **Referências do jumento versionadas.** `img_references/` ganhou
     `Jumento_PT`, `Jumento_Gay`, `Jumento_Hemp` e `Jumento_Socialista`
     (as imagens-fonte das skins), para poder regerar os assets. Entram
