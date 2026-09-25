@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-24 (23h45) — COMMIT_ID** (desde 383be2a):
+- **2026-09-24 (23h45) — bffb831** (desde 383be2a):
   - **Votos iniciais por dificuldade.** `StartingVotes` (a vantagem de
     largada no placar, não é moeda) valia 3.000 nas três e agora cai
     com a dificuldade: Easy 3.000, Normal 1.500, Hard 0. Gravado nos
