@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "Grid/BDGridTypes.h"
 #include "Match/BDMatchTypes.h"
+#include "Report/BDWaveLog.h"
 #include "BDMatchManager.generated.h"
 
 class ABDTowerBase;
@@ -70,6 +71,10 @@ struct FBDMatchLedger
 	double GameStartSeconds = 0.0;
 	/** Why the match ended, in words, for the report. */
 	FString EndReason;
+	/** When the ledger opened, as a date: what ties the rows of one match together in the wave log. */
+	FString StartedAt;
+	/** The running totals as the last wave row left them; the next row is the difference. */
+	FBDWaveLogMark WaveMark;
 	/** A row has been written for the end this ledger is at; set again to false when endless goes on. */
 	bool bReportWritten = false;
 };

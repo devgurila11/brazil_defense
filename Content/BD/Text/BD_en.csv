@@ -45,7 +45,6 @@
 "HUD.Score.Blue","BLUE {Votes}"
 "HUD.Score.Red","RED {Votes}"
 "HUD.Score.Null","NULL {Votes}"
-"HUD.Money.Votes","blue count {Amount}"
 "HUD.Money.Bribe","BRIBE {Amount}"
 "HUD.Money.Public","PUBLIC FUNDS {Amount}"
 "HUD.Wave.NoMatch","No match"

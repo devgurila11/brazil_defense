@@ -119,8 +119,10 @@ void UBDRegressionSubsystem::Start(const bool bQuitWhenDone)
 	// sheet, so a test match never reads as a played one.
 	SavedFreezeTimer = BDRegressionPrivate::GetCVarInt(TEXT("BD.Match.FreezeTimer"));
 	SavedPostMatch = BDRegressionPrivate::GetCVarInt(TEXT("BD.PostMatch.Enabled"));
+	SavedWaveLog = BDRegressionPrivate::GetCVarInt(TEXT("BD.WaveLog.Enabled"));
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.Match.FreezeTimer"), 1);
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.PostMatch.Enabled"), 0);
+	BDRegressionPrivate::SetCVarInt(TEXT("BD.WaveLog.Enabled"), 0);
 
 	WatchedMatch = Match;
 	LastBlue = Match->GetVotesBlue();
@@ -182,6 +184,7 @@ void UBDRegressionSubsystem::Finish(const FString& Why)
 	}
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.Match.FreezeTimer"), SavedFreezeTimer);
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.PostMatch.Enabled"), SavedPostMatch);
+	BDRegressionPrivate::SetCVarInt(TEXT("BD.WaveLog.Enabled"), SavedWaveLog);
 
 	const FString Total = FString::Printf(TEXT("REGRESSION %s: %d PASS, %d FAIL%s"),
 		Failed == 0 ? TEXT("ALL GREEN") : TEXT("BROKEN"), Passed, Failed, Why.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Why));
@@ -636,6 +639,12 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		Walker->DebugArrive();
 		Check(TEXT("CANDIDATO"), TEXT("a candidate at the urn is the defeat"), Match->GetPhase() == EBDMatchPhase::Defeat,
 			StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())));
+
+		// The wave the match ended on has its row, and the money of that stretch closes.
+		const FBDWaveLogMark& WaveMark = Match->GetLedger().WaveMark;
+		Check(TEXT("RELATORIO"), TEXT("the wave log writes the wave the match ended on, and its money closes"),
+			WaveMark.Wave == Match->GetCurrentWave() && WaveMark.LastFundsGap == 0,
+			FString::Printf(TEXT("last row on wave %d of %d, gap %lld"), WaveMark.Wave, Match->GetCurrentWave(), WaveMark.LastFundsGap));
 
 		Finish(FString());
 		return true;

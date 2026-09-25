@@ -201,8 +201,19 @@ BD.Votes.Status
 BD.Votes.AddBlue <n>
 BD.Votes.AddRed <n>
 ```
-No fim de cada onda o log traz `Wave N cleared. Votes: blue B, red R.`
-em `LogBDMatch` — é por essa linha que uma partida se audita depois.
+No fim de cada onda o log traz uma linha em `LogBDMatch` que começa por
+`Wave N cleared. Votes: blue B (+d), red R (+d), null N (+d)` e segue com
+fundos, defensores, creeps, candidato e rota. Uma onda perdida em andamento
+sai como `Wave N lost.` É por essa linha que uma partida se audita depois.
+
+A mesma onda vira uma linha de `Saved/Logs/WaveLog.csv` (placar e deltas,
+fundos ganhos/gastos, tabuleiro, nível médio, combate da onda, pico de vivos,
+rota mais curta/mais longa). As linhas de uma partida têm o mesmo
+`MatchStart`, e o `Mode` separa Screen, Headless e Sim. `FundsGap` diferente
+de 0 é dinheiro que não fecha, e também sai como warning no log.
+```
+BD.WaveLog.Enabled 0    // para de escrever o CSV (a linha no log continua)
+```
 
 ---
 

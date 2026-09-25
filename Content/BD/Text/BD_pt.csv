@@ -45,7 +45,6 @@
 "HUD.Score.Blue","AZUL {Votes}"
 "HUD.Score.Red","VERMELHO {Votes}"
 "HUD.Score.Null","NULOS {Votes}"
-"HUD.Money.Votes","placar azul {Amount}"
 "HUD.Money.Bribe","PROPINA {Amount}"
 "HUD.Money.Public","DINHEIRO PÚBLICO {Amount}"
 "HUD.Wave.NoMatch","Sem partida"

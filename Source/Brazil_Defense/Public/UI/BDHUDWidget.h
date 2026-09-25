@@ -256,19 +256,9 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UImage> NullIcon;
 
-	//~ The two resources, on one row and always up: the votes that build on the left with
-	// the urn, the public money that evolves on the right with the mint. Between them, and
-	// only while something is crossing, the thief with the bribe he has just been relieved
-	// of - the animation of the gain, never a balance anybody can spend.
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> VoteMeter;
-
-	UPROPERTY(Transient)
-	TObjectPtr<USizeBox> VoteMeterIconBox;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UImage> VoteMeterIcon;
-
+	//~ The money row, always up: the public money with the mint. Ahead of it, and only
+	// while something is crossing, the thief with the bribe he has just been relieved of -
+	// the animation of the gain, never a balance anybody can spend.
 	/** The thief's part of the row: icon, amount and arrow, shown as one or not at all. */
 	UPROPERTY(Transient)
 	TObjectPtr<UHorizontalBox> BribeGroup;

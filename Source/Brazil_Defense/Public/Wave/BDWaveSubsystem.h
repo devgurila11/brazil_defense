@@ -224,6 +224,9 @@ public:
 	/** What the creeps of this match did so far. */
 	const FBDMatchCombatTotals& GetMatchTotals() const { return MatchTotals; }
 
+	/** The most creeps out at once during the wave out, or the last one. */
+	int32 GetWavePeakAlive() const { return WavePeakAlive; }
+
 	/** Starts the match totals over: a rewind, or a save loaded. */
 	void ResetMatchTotals() { MatchTotals = FBDMatchCombatTotals(); }
 

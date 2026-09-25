@@ -81,6 +81,7 @@ private:
 	/** The switches the script turns, and what they were, to put them back. */
 	int32 SavedFreezeTimer = 0;
 	int32 SavedPostMatch = 1;
+	int32 SavedWaveLog = 1;
 
 	//~ What the script built and measured, carried from one step to the next.
 	FBDCellCoord UrnCell;

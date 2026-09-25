@@ -203,17 +203,14 @@ void UBDHUDWidget::BuildTree()
 
 	// What is in hand, on one row under the count and never mixed with it. The mint's
 	// public money is the one thing the player spends - every piece, level and move - so
-	// it leads the row, bigger than the rest. The blue votes come after it, small and
-	// muted, labelled as the score they are: they are never spent, and the count bar above
-	// is where the election is read.
+	// it is the row. The blue votes are not repeated here: they are never spent, and the
+	// count bar above is where the election is read.
 	//
 	// Ahead of the mint, and only while something is crossing, the thief with the bribe he
 	// has just been relieved of and an arrow into the mint. That group is the animation of
 	// the gain, not another resource - nothing held by the thief can be spent, which is why
 	// it leaves the row entirely the moment the bag is empty.
 	UHorizontalBox* MoneyRow = MakeRow();
-	VoteMeterIconBox = MakePicture(VoteMeterIcon, UISettings.ScoreUrnIcon.LoadSynchronous(), ScoreIconSize * 0.8f);
-	VoteMeter = MakeText(SmallFontSize, ColorMuted);
 	BribeIconBox = MakePicture(BribeIcon, UISettings.BribeIcon.LoadSynchronous(), ScoreIconSize * 0.8f);
 	BribeScore = MakeText(LineFontSize, ColorMuted);
 	MoneyArrow = MakeText(LineFontSize, ColorMuted);
@@ -237,9 +234,6 @@ void UBDHUDWidget::BuildTree()
 
 	AddPart(MoneyRow, MintIconBox, 8.0f);
 	AddPart(MoneyRow, MintScore, 6.0f);
-
-	AddPart(MoneyRow, VoteMeterIconBox, 28.0f);
-	AddPart(MoneyRow, VoteMeter, 6.0f);
 	UVerticalBoxSlot* MoneyRowSlot = Top->AddChildToVerticalBox(MoneyRow);
 	MoneyRowSlot->SetHorizontalAlignment(HAlign_Center);
 	MoneyRowSlot->SetPadding(FMargin(0.0f, 2.0f, 0.0f, 0.0f));
@@ -627,8 +621,6 @@ void UBDHUDWidget::ApplyResponsiveSizes()
 	NullIconBox->SetWidthOverride(ScoreIcon * 0.6f);
 	NullIconBox->SetHeightOverride(ScoreIcon * 0.6f);
 	const float MoneyIcon = FMath::Max(16.0f, Size.Y * Settings.MoneyIconHeightFraction);
-	VoteMeterIconBox->SetWidthOverride(MoneyIcon);
-	VoteMeterIconBox->SetHeightOverride(MoneyIcon);
 	BribeIconBox->SetWidthOverride(MoneyIcon);
 	BribeIconBox->SetHeightOverride(MoneyIcon);
 	MintIconBox->SetWidthOverride(MoneyIcon);
@@ -933,11 +925,7 @@ void UBDHUDWidget::UpdateVotePulses(const float RealDeltaSeconds)
 	BribePulse.Advance(RealDeltaSeconds, VotePulseSeconds);
 	MintPulse.Advance(RealDeltaSeconds, VotePulseSeconds);
 
-	if (bBlueWas || BluePulse.bRunning)
-	{
-		ApplyPulse(BlueIconBox, BlueScore, BluePulse);
-		ApplyPulse(VoteMeterIconBox, VoteMeter, BluePulse);
-	}
+	if (bBlueWas || BluePulse.bRunning) { ApplyPulse(BlueIconBox, BlueScore, BluePulse); }
 	if (bRedWas || RedPulse.bRunning) { ApplyPulse(RedIconBox, RedScore, RedPulse); }
 	if (bBribeWas || BribePulse.bRunning) { ApplyPulse(BribeIconBox, BribeScore, BribePulse); }
 	if (bMintWas || MintPulse.bRunning) { ApplyPulse(MintIconBox, MintScore, MintPulse); }
@@ -1012,9 +1000,6 @@ void UBDHUDWidget::UpdateScoreboard()
 	Args[TEXT("Votes")] = FFormatArgumentValue(Match != nullptr ? Match->GetVotesNull() : 0);
 	NullScore->SetText(BDLoc::Format(TEXT("HUD.Score.Null"), Args));
 	UpdateScoreBar();
-
-	// The vote meter is the blue count read as a balance, so it moves with it.
-	UpdateMoneyCounters();
 }
 
 void UBDHUDWidget::UpdateMoneyCounters()
@@ -1022,16 +1007,11 @@ void UBDHUDWidget::UpdateMoneyCounters()
 	using namespace BDHUDPrivate;
 
 	const ABDMatchManager* Match = GetMatch();
-	const int32 Votes = Match != nullptr ? Match->GetVotesBlue() : 0;
 	const int32 Bribe = Match != nullptr ? Match->GetBribeHeld() : 0;
 	const int32 Money = Match != nullptr ? Match->GetPublicMoney() : 0;
 
-	// The blue count said again beside the purse, as the score it is: nothing spends it,
-	// and saying so on the row is what stops the player reading it as money.
 	FFormatNamedArguments Args;
-	Args.Add(TEXT("Amount"), Votes);
-	VoteMeter->SetText(BDLoc::Format(TEXT("HUD.Money.Votes"), Args));
-	Args[TEXT("Amount")] = FFormatArgumentValue(Bribe);
+	Args.Add(TEXT("Amount"), Bribe);
 	BribeScore->SetText(BDLoc::Format(TEXT("HUD.Money.Bribe"), Args));
 	Args[TEXT("Amount")] = FFormatArgumentValue(Money);
 	MintScore->SetText(BDLoc::Format(TEXT("HUD.Money.Public"), Args));

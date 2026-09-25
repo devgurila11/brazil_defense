@@ -156,6 +156,8 @@ void ABDMatchManager::OpenLedger(const int32 LoadedAtWave)
 	Ledger.LastGrowthWave = CurrentWave;
 	Ledger.RealStartSeconds = FPlatformTime::Seconds();
 	Ledger.GameStartSeconds = GetWorld() != nullptr ? GetWorld()->GetTimeSeconds() : 0.0;
+	Ledger.StartedAt = FDateTime::Now().ToString(TEXT("%Y-%m-%d %H:%M:%S"));
+	Ledger.WaveMark = BDWaveLog::Mark(*this);
 }
 
 void ABDMatchManager::ReportAbandoned(const FString& Why)
@@ -414,6 +416,8 @@ void ABDMatchManager::DebugSetWave(const int32 Wave)
 	{
 		DayCycle->SetWave(CurrentWave);
 	}
+	// The wave log goes on from the wave set, not from the one it was at.
+	Ledger.WaveMark = BDWaveLog::Mark(*this);
 
 	UE_LOG(LogBDMatch, Warning, TEXT("Wave counter set to %d: creeps spawn at x%.2f health, %d per spawn point, move tax %.0f%%."),
 		CurrentWave, GetHealthScale(), UBDGameBalanceSettings::Get().GetCreepsPerSpawnPoint(CurrentWave), GetMoveTaxRate() * 100.0f);
@@ -434,6 +438,8 @@ void ABDMatchManager::DebugForcePhase(const EBDMatchPhase NewPhase)
 		{
 			DayCycle->SetWave(CurrentWave);
 		}
+		// Taken after the phase change, which is what starts the combat and candidate totals over.
+		Ledger.WaveMark = BDWaveLog::Mark(*this);
 		UE_LOG(LogBDMatch, Warning, TEXT("Phase forced to Building; wave count rewound to 0."));
 		break;
 
@@ -462,14 +468,15 @@ void ABDMatchManager::OnWaveCleared()
 		return;
 	}
 
-	// The one line a match is audited by afterwards: the scoreboard at the end of every wave.
-	UE_LOG(LogBDMatch, Log, TEXT("Wave %d cleared. Votes: blue %d, red %d, null %d."), CurrentWave, VotesBlue, VotesRed, VotesNull);
-
 	// The maze grows with the match: every wave held is a few more dividers to draw with.
 	if (DifficultyData != nullptr)
 	{
 		GrantDividers(DifficultyData->DividersPerWave, FString::Printf(TEXT("wave %d cleared"), CurrentWave));
 	}
+
+	// The one line a match is audited by afterwards, and its row in the wave log: written
+	// before the end is resolved, so the last wave has its row before the money goes.
+	BDWaveLog::Write(*this, TEXT("Cleared"));
 
 	if (IsEndDue())
 	{
@@ -759,6 +766,8 @@ void ABDMatchManager::DeclareDefeat(const FString& Reason)
 	Ledger.EndReason = Reason;
 	Ledger.PublicMoneyAtEnd = PublicMoney;
 	Ledger.BribeHeldAtEnd = BribeHeld;
+	// A wave lost while out still gets its row; one lost on the count after it cleared has it already.
+	BDWaveLog::Write(*this, TEXT("Defeat"));
 	DropMoney(TEXT("the match was lost"));
 	SetPhase(EBDMatchPhase::Defeat);
 	BDPostMatch::Write(*this, TEXT("Defeat"));

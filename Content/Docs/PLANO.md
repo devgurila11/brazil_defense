@@ -258,6 +258,31 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-24 — COMMIT_ID** (desde f5bb309):
+  - **HUD sem placar repetido.** Saiu a linha "blue count" com o ícone
+    de urna do meio: repetia o azul da barra do topo e sobrou da época
+    em que voto era moeda. A linha do meio agora é só o PUBLIC FUNDS
+    (com o ladrão enquanto há propina chegando). A chave
+    `HUD.Money.Votes` saiu dos CSVs de texto.
+  - **Log por onda.** `Saved/Logs/WaveLog.csv`, uma linha por onda
+    vencida ou perdida em andamento: placar e deltas, fundos
+    ganhos/gastos/devolvidos/concedidos, `FundsGap`, separadores na mão,
+    tabuleiro, nível médio, creeps da onda, candidato (saiu/morreu/
+    chegou), dano desperdiçado, pico de vivos, rota mais curta e mais
+    longa. Cada linha cobre a montagem antes da onda mais a onda;
+    `MatchStart` agrupa as linhas de uma partida e `Mode` separa
+    Screen, Headless e Sim. A linha `Wave N cleared. Votes:` do log
+    virou o resumo de uma linha da onda, com o mesmo começo.
+    `BD.WaveLog.Enabled` (padrão 1).
+  - PostMatch e WaveLog passam a dividir a escrita do CSV e a contagem
+    do tabuleiro (`BDReportCsv`); o PostMatch continua escrevendo igual.
+  - `BD.Test.Regression` ganhou o check RELATORIO (a onda final tem
+    linha e o dinheiro dela fecha): 22/22 PASS.
+  - Rodada 4 na §13: primeira corrida com WaveLog (seed 101, 30 ondas).
+  - **Pendente:** ver o HUD novo na tela; o warning de exposição do
+    Lumen (Exposure -8,5, fora da faixa segura) fica para quando for
+    mexer em iluminação.
+
 - **2026-09-23 (23h) — 9387753** (desde d50c721):
   - **Build visível.** Rodapé do menu e canto inferior esquerdo do HUD
     mostram "build AAAA.MM.DD-HHMM Configuração", lido da data do
@@ -889,3 +914,62 @@ azul. (c) Construir so pesa na abertura. (d) Quatro seeds e pouco:
 atribuir quebra a curva pede ~15 por configuracao. (e) Decidir se o
 DividerBudget sobe, com a tabela acima como base. NAO recalibrar
 curvas antes de (a).
+
+### Rodada 4 — 2026-09-24 (primeiro WaveLog)
+
+**O que é.** Primeira corrida com o log por onda: `Saved/Logs/WaveLog.csv`,
+uma linha por onda (placar e deltas, fundos ganhos/gastos, tabuleiro, nível
+médio, combate da onda, pico de vivos, rota mais curta e mais longa), mais
+uma linha curta em `LogBDMatch`. Cada linha cobre a montagem antes da onda
+mais a própria onda. `FundsGap` diferente de 0 é dinheiro que não fecha.
+Liga e desliga com `BD.WaveLog.Enabled`. Esta rodada serviu para validar o
+log, não para calibrar: é uma seed só.
+
+**Como reproduzir.** `BD.Sim.Run 101 30 1 4 1` headless
+(`-game -nullrhi -BDSkipFrontEnd`), build 2026.09.24-2257, Normal, economia
+pós-reforma (fundos públicos como moeda, votos só placar).
+
+**Validação.** 30 ondas, 30 linhas. O azul inicial (3.100) mais a soma dos
+deltas dá o azul final (44.554). Null, creeps (2.790 gerados = 2.790
+mortos, 0 na urna), candidatos (6 saíram, 6 morreram), fundos ganhos
+(3.493) e gastos (5.138) batem com o PostMatch. A propina de cada chefe
+(436, 486, 542, 604, 674, 751) é igual ao `BD.Economy.Report`. `FundsGap`
+foi 0 em todas as ondas.
+
+**A curva** (a cada 5 ondas):
+
+| onda | azul | Δ azul | null | Δ null | fundos | defensores | nível médio | pico vivos | rota curta–longa |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 3.160 | +60 | 18 | +18 | 52 | 8 | 1,25 | 6 | 30–58 |
+| 5 | 4.000 | +300 | 565 | +172 | 52 | 8 | 1,25 | 31 | 25–66 |
+| 10 | 6.700 | +720 | 2.948 | +737 | 39 | 9 | 1,56 | 58 | 30–70 |
+| 15 | 11.554 | +1.170 | 8.154 | +1.246 | 39 | 10 | 1,70 | 79 | 30–90 |
+| 20 | 19.138 | +1.800 | 16.263 | +1.967 | 175 | 11 | 1,73 | 100 | 29–96 |
+| 25 | 29.920 | +2.400 | 27.297 | +2.409 | 761 | 12 | 2,08 | 113 | 33–119 |
+| 30 | 44.554 | +3.240 | 39.730 | +2.631 | 755 | 13 | 2,38 | 128 | 28–131 |
+
+O vermelho ficou em 0 nas 30 ondas.
+
+**O que a curva mostra.**
+
+1. **Os fundos zeram depois de cada chefe.** A abertura gasta 2.348 dos
+   2.400. Depois disso só entra dinheiro nas ondas de chefe (a cada 5), e
+   ele sai inteiro na montagem seguinte. Em 4 de cada 5 montagens o
+   jogador não tem nada para comprar (fundos entre 4 e 175).
+2. **O null alcançou o azul.** O Δ null ficou perto do Δ azul a partir da
+   onda 10, e no fim o null soma 89% do azul (39.730 contra 44.554); 46%
+   do dano foi desperdiçado. Na rodada 3 era 26,9%, mas o cenário mudou
+   (defesa bem menor, economia reformada). Não dá para comparar direto.
+3. **O pico de vivos colado no total da onda.** Na onda 29 foram 174
+   gerados e 174 vivos ao mesmo tempo: a onda inteira entra antes do
+   primeiro morrer. A defesa só mata quando os creeps já se amontoaram.
+4. **O labirinto cresce pela rota longa, não pela curta.** De 78 para 142
+   separadores no tabuleiro, a rota mais longa foi de 58 para 131 e a
+   mais curta ficou entre 25 e 33. A boca mais próxima continua curta.
+5. **A defesa cresce devagar.** De 8 para 13 defensores e nível médio de
+   1,25 para 2,38 em 30 ondas, uma compra por chefe.
+
+**Limites.** Uma seed, 30 ondas, e a política de compra é a do driver da
+simulação, não a de um jogador. Para achar padrões ("o vermelho sempre
+encosta na onda X") falta rodar várias seeds até a onda 100 e cruzar os
+WaveLogs pelo `MatchStart`.

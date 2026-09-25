@@ -1,56 +1,77 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-23 23:00**
+**Versão: 2026-09-24 22:30**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Fechamento do dia: confirmar regra e commitar
+# Log por onda (wave-by-wave) para estudo de balanceamento
 
-A leva de infraestrutura (build visível, BD.Test.Regression, separador
-inicial, rotação no botão do meio) está feita e passou 21/21 no
-regression. Faltam duas coisas para fechar o dia.
+Já existe o PostMatch.csv (uma linha por PARTIDA, o resultado final).
+Falta o passo a passo: uma linha por ONDA, para ver a evolução dentro
+da partida — em que onda o vermelho encosta, quando a defesa satura,
+quando os fundos apertam.
 
----
+## Onde
 
-## 1. Construção durante a onda: manter BLOQUEADO (decisão confirmada)
+- Arquivo próprio: Saved/Logs/WaveLog.csv, uma linha por onda
+  concluída (append). CSV, para abrir em planilha e plotar.
+- Também um resumo curto no log a cada onda (LogBDMatch), legível.
+- Vale para partida na tela, headless e simulação, com a coluna Mode
+  distinguindo (como no PostMatch).
+- Ligável/desligável por cvar (BD.WaveLog.Enabled), default ligado
+  durante o desenvolvimento.
 
-Você alinhou para nenhuma peça nova entrar durante a onda (torre e
-personagem também bloqueados, não só divisória e plataforma). Está
-CONFIRMADO como a regra certa:
+## Colunas por onda
 
-- Construir qualquer peça = só na fase de montagem / entre ondas.
-- Evoluir = livre durante a onda (reação tática).
-- Não voltar atrás. É coerente: construir é decisão de montagem,
-  evoluir é reação.
+Identificação:
 
-Garantir que o BD.Test.Regression tenha uma invariante que trave isso
-("nenhuma construção aceita durante onda ativa; evolução aceita"),
-para não regredir no futuro.
+- Build, seed, dificuldade, Mode, número da onda, se é onda de chefe.
 
----
+Placar naquela onda:
 
-## 2. Commit e push
+- Azul, vermelho, null (acumulados até o fim da onda).
+- Delta de azul e de vermelho na onda (quanto cada um subiu SÓ nesta
+  onda) — é o que mostra o ritmo, mais útil que o acumulado.
 
-Fechar tudo que está pendente desde o último commit (06078e4):
+Economia:
 
-- Separador com cota própria
-- Barra do candidato só após dano
-- Evolução livre durante a onda
-- Personagem recusado sem slot livre
-- PostMatch.csv (relatório de fim de partida)
-- Build visível (menu/HUD/log/CSV)
-- BD.Test.Regression
-- Separador inicial dobrado (DA_Difficulty)
-- Rotação no botão do meio
+- Fundos públicos no fim da onda, fundos ganhos na onda (chefe),
+  fundos gastos na onda.
+- Cota de separador restante.
 
-Mensagem de commit que resuma. Atualizar PLANO §12 com a entrada
-desta leva (data, o que mudou, o que afeta) e trocar o "COMMIT" pelo
-hash, como nos pushes anteriores. Confirmar o hash no fim.
+Defesa (estado no fim da onda):
 
----
+- Nº de torres, personagens, plataformas, separadores.
+- Nível médio dos defensores.
+
+Combate na onda:
+
+- Creeps gerados, mortos, que chegaram na urna NESTA onda.
+- Candidato: se saiu, se morreu, se chegou.
+- Overkill (null) da onda.
+- Pico de creeps vivos na onda.
+
+Comprimento da rota atual (para ver o efeito do labirinto ao longo
+do jogo).
+
+## Objetivo
+
+Depois de uma partida, o WaveLog.csv vira um gráfico: as curvas de
+azul e vermelho por onda, a de fundos, a de nível médio. Aí dá para
+ver PADRÕES ("o vermelho sempre encosta na onda X", "os fundos sempre
+apertam entre Y e Z") que uma linha só de resultado não mostra.
+
+## Cuidado
+
+Não poluir o log de texto — o resumo por onda em LogBDMatch deve ser
+UMA linha curta. O detalhe fica no CSV. E o CSV segue a mesma regra do
+PostMatch: se as colunas mudarem, versiona o antigo com data.
 
 ## Entregável
 
-- Invariante de "sem construção durante a onda" no regression.
-- Commit + push com tudo pendente; PLANO §12 atualizado com o hash.
-- Confirmar: regression ainda passa tudo depois do commit.
+- WaveLog.csv escrito a cada onda, com as colunas acima.
+- Resumo de uma linha por onda no log.
+- Ligável por cvar.
+- Testar numa simulação de ~30 ondas e confirmar que sai uma linha por
+  onda com os números batendo com o BD.Economy.Report e o placar.
+- Rodar BD.Test.Regression e confirmar que passa.

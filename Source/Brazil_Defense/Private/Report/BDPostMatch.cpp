@@ -5,22 +5,13 @@
 #include "BDBuildInfo.h"
 #include "BDLog.h"
 #include "Candidate/BDCandidateSubsystem.h"
-#include "Debug/BDSimSubsystem.h"
 #include "Engine/World.h"
-#include "EngineUtils.h"
-#include "GameFramework/PlayerController.h"
-#include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
 #include "Match/BDMatchManager.h"
-#include "Misc/App.h"
-#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Placement/BDPlaceableData.h"
-#include "Placement/BDPlacementComponent.h"
 #include "Placement/BDPlacementSettings.h"
-#include "Save/BDMatchSave.h"
-#include "Tower/BDTowerBase.h"
+#include "Report/BDReportCsv.h"
 #include "Wave/BDWaveSubsystem.h"
 
 namespace BDPostMatchPrivate
@@ -33,36 +24,6 @@ namespace BDPostMatchPrivate
 		GEnabled,
 		TEXT("1 (default) appends a row to Saved/Logs/PostMatch.csv at the end of every match; 0 writes nothing."),
 		ECVF_Default);
-
-	/** One column: its header and the value of this match. */
-	struct FColumn
-	{
-		FString Name;
-		FString Value;
-	};
-
-	/** A text value, quoted, with its own quotes doubled: reasons have commas in them. */
-	static FString Quote(const FString& Text)
-	{
-		return TEXT("\"") + Text.Replace(TEXT("\""), TEXT("\"\"")) + TEXT("\"");
-	}
-
-	/** Two decimals with a point, whatever the machine's locale: the sheet has to read them. */
-	static FString Decimal(const double Value)
-	{
-		return FString::Printf(TEXT("%.2f"), Value);
-	}
-
-	/** Played on the screen, played headless (a console run with no window), or played by BD.Sim.Run. */
-	static const TCHAR* Mode(const UWorld& World)
-	{
-		const UBDSimSubsystem* Sim = World.GetSubsystem<UBDSimSubsystem>();
-		if (Sim != nullptr && Sim->IsRunning())
-		{
-			return TEXT("Sim");
-		}
-		return FApp::CanEverRender() ? TEXT("Screen") : TEXT("Headless");
-	}
 }
 
 FString BDPostMatch::GetCsvPath()
@@ -73,6 +34,7 @@ FString BDPostMatch::GetCsvPath()
 void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 {
 	using namespace BDPostMatchPrivate;
+	using namespace BDReportCsv;
 
 	FBDMatchLedger& Ledger = Match.GetLedgerMutable();
 	UWorld* World = Match.GetWorld();
@@ -83,44 +45,12 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	Ledger.bReportWritten = true;
 
 	//~ What stands on the board ----------------------------------------------------
-	// Read off the saved form of the board, which already counts a wide piece once and
-	// leaves the urn apart; per palette entry, so every kind of platform has its column.
-	TMap<FSoftObjectPath, int32> PerPiece;
-	int32 Towers = 0;
-	int32 Characters = 0;
-	int32 Platforms = 0;
-	int32 Dividers = 0;
-	const APlayerController* Controller = World->GetFirstPlayerController();
-	const UBDPlacementComponent* Placement = Controller != nullptr ? Controller->FindComponentByClass<UBDPlacementComponent>() : nullptr;
-	if (Placement != nullptr)
-	{
-		TArray<FBDSavedPiece> Pieces;
-		Placement->CaptureBoard(Pieces);
-		for (const FBDSavedPiece& Piece : Pieces)
-		{
-			const UBDPlaceableData* Data = Cast<UBDPlaceableData>(Piece.Data.ResolveObject());
-			const EBDPieceKind Kind = Data != nullptr ? Data->GetPieceKind() : EBDPieceKind::Objective;
-			if (Kind == EBDPieceKind::Objective)
-			{
-				continue;
-			}
-			++PerPiece.FindOrAdd(Piece.Data);
-			Towers += Kind == EBDPieceKind::Tower ? 1 : 0;
-			Characters += Kind == EBDPieceKind::Character ? 1 : 0;
-			Platforms += Kind == EBDPieceKind::Platform ? 1 : 0;
-			Dividers += Kind == EBDPieceKind::Divider ? 1 : 0;
-		}
-	}
-
-	int32 Defenders = 0;
-	int32 LevelSum = 0;
-	int32 TopLevel = 0;
-	for (TActorIterator<ABDTowerBase> It(World); It; ++It)
-	{
-		++Defenders;
-		LevelSum += It->GetTowerLevel();
-		TopLevel = FMath::Max(TopLevel, It->GetTowerLevel());
-	}
+	const FBDBoardTally Board = TallyBoard(*World);
+	const int32 Towers = Board.Towers;
+	const int32 Characters = Board.Characters;
+	const int32 Platforms = Board.Platforms;
+	const int32 Dividers = Board.Dividers;
+	const int32 TopLevel = Board.TopLevel;
 
 	//~ The rest of the match ---------------------------------------------------------
 	const UBDCandidateSubsystem* Candidates = World->GetSubsystem<UBDCandidateSubsystem>();
@@ -182,10 +112,10 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
 	{
 		const FSoftObjectPath Path = Entry.ToSoftObjectPath();
-		Add(*FString::Printf(TEXT("Count_%s"), *Path.GetAssetName()), FString::FromInt(PerPiece.FindRef(Path)));
+		Add(*FString::Printf(TEXT("Count_%s"), *Path.GetAssetName()), FString::FromInt(Board.PerPiece.FindRef(Path)));
 	}
 	AddInt(TEXT("PiecesBuilt"), Ledger.PiecesBuilt);
-	Add(TEXT("AvgLevel"), Decimal(Defenders > 0 ? static_cast<double>(LevelSum) / Defenders : 0.0));
+	Add(TEXT("AvgLevel"), Decimal(Board.GetAverageLevel()));
 	AddInt(TEXT("MaxLevel"), TopLevel);
 	AddInt(TEXT("LevelsBought"), Ledger.LevelsBought);
 
@@ -219,7 +149,7 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	UE_LOG(LogBDMatch, Log, TEXT("  money: %d to start + %d from bosses + %d refunded + %d granted; spent %d building, %d evolving, %d moving; %d left."),
 		Ledger.StartingFunds, Ledger.BribeEarned, Ledger.Refunded, Ledger.Granted, Ledger.SpentBuild, Ledger.SpentEvolve, Ledger.SpentMove, Left);
 	UE_LOG(LogBDMatch, Log, TEXT("  board: %d tower(s), %d character(s), %d platform(s), %d divider(s) (+%d granted, %d in hand); average level %.2f, top %d, %d level(s) bought; last grew on wave %d."),
-		Towers, Characters, Platforms, Dividers, Ledger.DividersGranted, Match.GetDividersRemaining(), Defenders > 0 ? static_cast<float>(LevelSum) / Defenders : 0.0f, TopLevel, Ledger.LevelsBought, Ledger.LastGrowthWave);
+		Towers, Characters, Platforms, Dividers, Ledger.DividersGranted, Match.GetDividersRemaining(), Board.GetAverageLevel(), TopLevel, Ledger.LevelsBought, Ledger.LastGrowthWave);
 	UE_LOG(LogBDMatch, Log, TEXT("  fight: %d creep(s) killed, %d at the urn, peak %d alive; candidates %d sent, %d killed%s; %.0f damage, %.1f%% wasted; %.0fs real, %.0fs of game."),
 		Combat.CreepsKilled, Combat.CreepsArrived, Combat.PeakAlive,
 		Candidates != nullptr ? Candidates->GetCandidatesSent() : 0, Candidates != nullptr ? Candidates->GetFallenCount() : 0,
@@ -232,61 +162,9 @@ void BDPostMatch::Write(ABDMatchManager& Match, const TCHAR* Outcome)
 	}
 
 	//~ The row -------------------------------------------------------------------------
-	FString Header;
-	FString Row;
-	for (int32 Index = 0; Index < Columns.Num(); ++Index)
-	{
-		const TCHAR* Separator = Index > 0 ? TEXT(",") : TEXT("");
-		Header += Separator + Columns[Index].Name;
-		Row += Separator + Columns[Index].Value;
-	}
-
-	// A file whose header is not this one describes other columns: it is kept aside
-	// under a dated name rather than written under. Columns added at the end are the one
-	// change that needs no new file: the old rows are padded with empty cells, so the
-	// matches already played stay in the same sheet.
 	const FString Path = GetCsvPath();
-	IFileManager& Files = IFileManager::Get();
-	bool bNeedsHeader = !Files.FileExists(*Path);
-	if (!bNeedsHeader)
-	{
-		TArray<FString> Lines;
-		FFileHelper::LoadFileToStringArray(Lines, *Path);
-		if (Lines.Num() > 0 && Lines[0] != Header && Header.StartsWith(Lines[0] + TEXT(",")))
-		{
-			int32 Added = 0;
-			for (const TCHAR Character : Header.RightChop(Lines[0].Len()))
-			{
-				Added += Character == TEXT(',') ? 1 : 0;
-			}
-			FString Padded = Header + LINE_TERMINATOR;
-			for (int32 Index = 1; Index < Lines.Num(); ++Index)
-			{
-				if (!Lines[Index].IsEmpty())
-				{
-					Padded += Lines[Index] + FString::ChrN(Added, TEXT(',')) + LINE_TERMINATOR;
-				}
-			}
-			FFileHelper::SaveStringToFile(Padded, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-			UE_LOG(LogBDMatch, Log, TEXT("  %d column(s) added at the end: the %d row(s) already there were padded."), Added, Lines.Num() - 1);
-			Lines[0] = Header;
-		}
-		if (Lines.Num() == 0 || Lines[0] != Header)
-		{
-			const FString Aside = FPaths::Combine(FPaths::ProjectLogDir(), FString::Printf(TEXT("PostMatch-%s.csv"), *FDateTime::Now().ToString(TEXT("%Y%m%d-%H%M%S"))));
-			Files.Move(*Aside, *Path);
-			UE_LOG(LogBDMatch, Log, TEXT("  the columns changed: the old report was kept as %s."), *Aside);
-			bNeedsHeader = true;
-		}
-	}
-
-	const FString Text = (bNeedsHeader ? Header + LINE_TERMINATOR : FString()) + Row + LINE_TERMINATOR;
-	if (FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &Files, FILEWRITE_Append))
+	if (AppendRow(Path, Columns))
 	{
 		UE_LOG(LogBDMatch, Log, TEXT("  row appended to %s."), *FPaths::ConvertRelativePathToFull(Path));
-	}
-	else
-	{
-		UE_LOG(LogBDMatch, Error, TEXT("  the post-match row could not be written to %s."), *Path);
 	}
 }
