@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-24 (23h) — COMMIT_ID** (desde d7d5ff4):
+- **2026-09-24 (23h) — 12c40da** (desde d7d5ff4):
   - O briefing das 23:20 pediu de novo a remoção do "blue count". O
     código já estava certo desde 316f027, mas o `Brazil_Defense.exe`
     era de 23/09 22:54: só o alvo do editor tinha sido compilado. A
