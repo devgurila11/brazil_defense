@@ -258,7 +258,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-24 — COMMIT_ID** (desde f5bb309):
+- **2026-09-24 — 316f027** (desde f5bb309):
   - **HUD sem placar repetido.** Saiu a linha "blue count" com o ícone
     de urna do meio: repetia o azul da barra do topo e sobrou da época
     em que voto era moeda. A linha do meio agora é só o PUBLIC FUNDS
