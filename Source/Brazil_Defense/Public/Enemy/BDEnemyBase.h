@@ -11,6 +11,8 @@
 class UBDEnemyData;
 class UBDGridSubsystem;
 class UBDWaveSubsystem;
+class UPrimitiveComponent;
+class USkeletalMeshComponentBudgeted;
 class UStaticMeshComponent;
 
 /**
@@ -145,6 +147,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	UStaticMeshComponent* GetMesh() const { return Mesh; }
 
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	USkeletalMeshComponentBudgeted* GetSkeletalBody() const { return SkeletalBody; }
+
+	/** Whichever of the two bodies is showing, the animated one first. Null when neither has an asset. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	UPrimitiveComponent* GetBody() const;
+
 	/** Index of the spawn point this creep came out of, set by the wave subsystem. Debug and logging only. */
 	int32 SpawnPointIndex = INDEX_NONE;
 
@@ -217,8 +226,22 @@ private:
 	/** Sets the mesh from the data and rests it on the root, whatever its pivot. */
 	void ApplyMesh();
 
+	/** ApplyMesh for a data with a SkeletalMesh: the animated body, its loop and its material. */
+	bool ApplySkeletalMesh();
+
+	/** Keeps the feet of the loop in step with CurrentSpeed, so the creep neither skates nor pedals. */
+	void UpdateAnimationRate();
+
 	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Enemy")
 	TObjectPtr<UStaticMeshComponent> Mesh;
+
+	/**
+	 * The animated body, used when the data has a SkeletalMesh; Mesh is left empty then.
+	 * Budgeted: with hundreds of creeps on the board the animation budget allocator decides
+	 * which ones tick at full rate, the nearest to the camera first.
+	 */
+	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Enemy")
+	TObjectPtr<USkeletalMeshComponentBudgeted> SkeletalBody;
 
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
 	TObjectPtr<const UBDEnemyData> Data;

@@ -3,10 +3,13 @@
 #include "Enemy/BDEnemyBase.h"
 
 #include "BDLog.h"
+#include "Animation/AnimSequenceBase.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Enemy/BDEnemyData.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
+#include "SkeletalMeshComponentBudgeted.h"
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
 #include "Grid/BDGridSubsystem.h"
@@ -68,6 +71,20 @@ ABDEnemyBase::ABDEnemyBase()
 	Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	Mesh->SetGenerateOverlapEvents(false);
 	Mesh->SetCanEverAffectNavigation(false);
+
+	// No collision at all: towers find creeps through the wave subsystem, and nothing
+	// traces for them. Physics bodies on hundreds of skinned creeps would be pure cost.
+	SkeletalBody = CreateDefaultSubobject<USkeletalMeshComponentBudgeted>(TEXT("SkeletalBody"));
+	SkeletalBody->SetupAttachment(RootComponent);
+	SkeletalBody->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	SkeletalBody->SetGenerateOverlapEvents(false);
+	SkeletalBody->SetCanEverAffectNavigation(false);
+	// One loop in single node mode, no anim graph to evaluate: the lightest way to animate
+	// a crowd. Off screen the pose is not ticked; the budget allocator weighs the rest by
+	// their distance to the camera.
+	SkeletalBody->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	SkeletalBody->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+	SkeletalBody->SetAutoCalculateSignificance(true);
 
 	// A creep is nobody's pawn.
 	AutoPossessAI = EAutoPossessAI::Disabled;
@@ -165,8 +182,88 @@ FBDCellCoord ABDEnemyBase::GetHeadingCell() const
 	return Grid != nullptr ? Grid->WorldToCellUnclamped(GetActorLocation()) : FBDCellCoord();
 }
 
+UPrimitiveComponent* ABDEnemyBase::GetBody() const
+{
+	if (SkeletalBody != nullptr && SkeletalBody->GetSkeletalMeshAsset() != nullptr)
+	{
+		return SkeletalBody;
+	}
+	return Mesh != nullptr && Mesh->GetStaticMesh() != nullptr ? Mesh : nullptr;
+}
+
+bool ABDEnemyBase::ApplySkeletalMesh()
+{
+	USkeletalMesh* LoadedMesh = Data->SkeletalMesh.LoadSynchronous();
+	if (LoadedMesh == nullptr)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("%s: skeletal mesh %s of %s failed to load."),
+			*GetName(), *Data->SkeletalMesh.ToString(), *Data->GetName());
+		return false;
+	}
+
+	// The static body stays empty: one creep, one body.
+	Mesh->SetStaticMesh(nullptr);
+	Mesh->SetVisibility(false);
+
+	SkeletalBody->SetSkeletalMesh(LoadedMesh);
+	SkeletalBody->SetRelativeScale3D(Data->MeshScale);
+	SkeletalBody->SetRelativeRotation(FRotator(0.0f, Data->MeshYaw, 0.0f));
+
+	if (UMaterialInterface* Material = Data->MeshMaterial.LoadSynchronous())
+	{
+		for (int32 Slot = 0; Slot < SkeletalBody->GetNumMaterials(); ++Slot)
+		{
+			SkeletalBody->SetMaterial(Slot, Material);
+		}
+	}
+
+	if (UAnimSequenceBase* Animation = Data->MoveAnimation.LoadSynchronous())
+	{
+		// Starts frozen: the creep spawns at rest and the rate follows it up to speed.
+		// Each creep starts at its own point of the loop, or a wave would march in step.
+		SkeletalBody->PlayAnimation(Animation, /*bLooping*/ true);
+		SkeletalBody->SetPosition(FMath::FRandRange(0.0f, Animation->GetPlayLength()), /*bFireNotifies*/ false);
+		SkeletalBody->SetPlayRate(0.0f);
+	}
+	else if (!Data->MoveAnimation.IsNull())
+	{
+		UE_LOG(LogBDWave, Error, TEXT("%s: animation %s of %s failed to load."),
+			*GetName(), *Data->MoveAnimation.ToString(), *Data->GetName());
+	}
+
+	// Same resting as the static body. The imported bounds are of the reference pose,
+	// which is what the creep stands in.
+	const FBox Bounds = LoadedMesh->GetImportedBounds().GetBox();
+	SkeletalBody->SetRelativeLocation(FVector(0.0f, 0.0f, -Bounds.Min.Z * Data->MeshScale.Z));
+	const FVector Extent = Bounds.GetExtent() * Data->MeshScale;
+	BodyRadius = FMath::Max(Extent.X, Extent.Y);
+	return true;
+}
+
+void ABDEnemyBase::UpdateAnimationRate()
+{
+	if (SkeletalBody == nullptr || SkeletalBody->GetSkeletalMeshAsset() == nullptr)
+	{
+		return;
+	}
+
+	// The route moves the creep; the loop only has to keep the feet honest. CurrentSpeed
+	// already carries the ramp up, the per creep pace and its breath, and DeltaSeconds
+	// carries the game speed, so the feet follow all of it.
+	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
+	const float Rate = CurrentSpeed / FMath::Max(1.0f, Settings.AnimReferenceSpeed);
+	SkeletalBody->SetPlayRate(CurrentSpeed <= 0.0f
+		? 0.0f
+		: FMath::Clamp(Rate, Settings.AnimMinPlayRate, FMath::Max(Settings.AnimMinPlayRate, Settings.AnimMaxPlayRate)));
+}
+
 void ABDEnemyBase::ApplyMesh()
 {
+	if (Data != nullptr && !Data->SkeletalMesh.IsNull() && ApplySkeletalMesh())
+	{
+		return;
+	}
+
 	if (Data == nullptr || Data->Mesh.IsNull())
 	{
 		// A Blueprint child brings its own mesh; leave it where the designer put it.
@@ -181,8 +278,17 @@ void ABDEnemyBase::ApplyMesh()
 		return;
 	}
 
+	// A static creep has no use for the animated body, and left in place it would still
+	// be registered with the animation budget and ticked. The candidate walks this way.
+	if (SkeletalBody != nullptr)
+	{
+		SkeletalBody->DestroyComponent();
+		SkeletalBody = nullptr;
+	}
+
 	Mesh->SetStaticMesh(LoadedMesh);
 	Mesh->SetRelativeScale3D(Data->MeshScale);
+	Mesh->SetRelativeRotation(FRotator(0.0f, Data->MeshYaw, 0.0f));
 
 	if (UMaterialInterface* Material = Data->MeshMaterial.LoadSynchronous())
 	{
@@ -491,6 +597,7 @@ void ABDEnemyBase::Tick(const float DeltaSeconds)
 	}
 
 	SetActorLocation(Location);
+	UpdateAnimationRate();
 
 	const FRotator WantedRotation = Direction.GetSafeNormal2D().ToOrientationRotator();
 	SetActorRotation(Settings.TurnRate > 0.0f

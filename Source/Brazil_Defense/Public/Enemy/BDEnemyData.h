@@ -7,7 +7,9 @@
 #include "BDEnemyData.generated.h"
 
 class ABDEnemyBase;
+class UAnimSequenceBase;
 class UMaterialInterface;
+class USkeletalMesh;
 class UStaticMesh;
 
 /**
@@ -64,11 +66,33 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
 	TSoftObjectPtr<UStaticMesh> Mesh;
 
-	/** Scale applied to Mesh. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr"))
+	/**
+	 * Animated body handed to the pawn at spawn. When set it is used instead of Mesh.
+	 * Variants of one creep point at the same skeletal mesh and differ by MeshMaterial.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TSoftObjectPtr<USkeletalMesh> SkeletalMesh;
+
+	/**
+	 * Loop played on SkeletalMesh while the creep walks. Expected in place: the route moves
+	 * the creep, and any root motion in it is ignored. Its rate follows the creep's speed,
+	 * against the reference speed in the wave settings.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "SkeletalMesh != nullptr"))
+	TSoftObjectPtr<UAnimSequenceBase> MoveAnimation;
+
+	/** Yaw added to the body so its front faces along the route. A Mixamo import faces +Y and wants -90. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (ForceUnits = "deg"))
+	float MeshYaw = 0.0f;
+
+	/** Scale applied to Mesh or SkeletalMesh. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr || SkeletalMesh != nullptr"))
 	FVector MeshScale = FVector::OneVector;
 
-	/** Material put on every slot of Mesh, so a placeholder shape can still be told apart by color. Optional. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr"))
+	/**
+	 * Material put on every slot of the body, Mesh or SkeletalMesh: a placeholder shape
+	 * told apart by color, or the variant of an animated creep. Optional.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr || SkeletalMesh != nullptr"))
 	TSoftObjectPtr<UMaterialInterface> MeshMaterial;
 };

@@ -18,6 +18,7 @@
 #include "Objective/BDObjective.h"
 #include "Path/BDPathfinder.h"
 #include "Stats/Stats.h"
+#include "Wave/BDBusSubsystem.h"
 #include "Wave/BDWaveSettings.h"
 
 namespace BDWavePrivate
@@ -262,6 +263,15 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 		UBDGameBalanceSettings::Get().GetHealthScale(Wave), WaveSpawnInterval,
 		ActiveSpawnPoints.Num(), *Mouths);
 
+	// The buses follow their mouths along the edge, and the creeps wait for them to park:
+	// the player sees where the horde comes from this time, and it comes out of the bus.
+	UWorld* World = GetWorld();
+	UBDBusSubsystem* Buses = World != nullptr ? World->GetSubsystem<UBDBusSubsystem>() : nullptr;
+	if (Buses != nullptr && Buses->FollowMouths(GetSpawnPoints()) && WaveSpawnsRemaining > 0)
+	{
+		HoldWaveSpawns(UBDWaveSettings::Get().BusMoveSeconds, TEXT("the buses pull up to their mouths"));
+	}
+
 	// Told after the mouths have moved and been drawn, and before anything is sent: the
 	// candidate of the wave walks out here, ahead of the horde.
 	OnWaveDealt.Broadcast(Wave);
@@ -332,6 +342,36 @@ bool UBDWaveSubsystem::TryShiftSpawnPoint(const TArray<FBDSpawnPoint>& Points, c
 			}
 		}
 		NewCells.Add(Moved);
+	}
+
+	// Two buses never come closer than MinBusGap, footprint to footprint: not two of one
+	// edge, and not two of edges meeting at a corner. A slide that would close the gap
+	// below that is refused; moving away always is allowed, so anchors authored too close
+	// cannot lock a mouth in place.
+	if (const UBDBusSubsystem* Buses = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDBusSubsystem>() : nullptr)
+	{
+		const FBDCellCoord NewExit = NewCells[NewCells.Num() / 2];
+		const float MinGap = UBDWaveSettings::Get().MinBusGap;
+		for (int32 Other = 0; Other < Points.Num(); ++Other)
+		{
+			if (Other == PointIndex)
+			{
+				continue;
+			}
+			const FBDSpawnPoint& Neighbour = Points[Other];
+			const float After = Buses->GetGapCells(Point.AnchorExit, NewExit, Neighbour.AnchorExit, Neighbour.ExitCell);
+			if (After >= MinGap)
+			{
+				continue;
+			}
+			const float Before = Buses->GetGapCells(Point.AnchorExit, Point.ExitCell, Neighbour.AnchorExit, Neighbour.ExitCell);
+			if (After < Before)
+			{
+				UE_LOG(LogBDWave, Verbose, TEXT("Mouth %d kept off %s: its bus would stand %.1f cell(s) from the bus at %s, %.1f needed."),
+					PointIndex, *NewExit.ToString(), After, *Neighbour.ExitCell.ToString(), MinGap);
+				return false;
+			}
+		}
 	}
 
 	// Applied, then checked: the exit must open onto the board and reach the urn, or it
@@ -588,6 +628,7 @@ void UBDWaveSubsystem::Tick(const float DeltaTime)
 	if (SpawnHoldRemaining > 0.0f)
 	{
 		SpawnHoldRemaining = FMath::Max(0.0f, SpawnHoldRemaining - DeltaTime);
+		// SOUND: the horde starts leaving the buses here, once the hold runs out.
 		UE_CLOG(SpawnHoldRemaining <= 0.0f && WaveSpawnsRemaining > 0, LogBDWave, Log,
 			TEXT("Wave %d: the lead is over, its %d creep(s) go out."), WaveNumber, WaveSpawnsRemaining);
 	}

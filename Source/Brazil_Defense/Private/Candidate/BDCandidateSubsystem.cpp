@@ -12,6 +12,7 @@
 #include "Match/BDMatchManager.h"
 #include "Stats/Stats.h"
 #include "Wave/BDWaveSettings.h"
+#include "Wave/BDBusSubsystem.h"
 #include "Wave/BDWaveSubsystem.h"
 
 namespace BDCandidatePrivate
@@ -146,6 +147,18 @@ void UBDCandidateSubsystem::Tick(const float DeltaTime)
 	// Drop the dead weak pointers so the counts stay honest.
 	Living.RemoveAll([](const TWeakObjectPtr<ABDCandidate>& Weak) { return !Weak.IsValid(); });
 
+	// The scheduled candidate steps out once the buses have parked. The creeps were held
+	// for the wait and his lead together when the wave was dealt.
+	if (AwaitingBusRemaining > 0.0f)
+	{
+		AwaitingBusRemaining = FMath::Max(0.0f, AwaitingBusRemaining - DeltaTime);
+		const ABDMatchManager* Match = GetMatch();
+		if (AwaitingBusRemaining <= 0.0f && Match != nullptr && !Match->IsMatchOver())
+		{
+			SpawnCandidate(*AwaitingBusWhy);
+		}
+	}
+
 	if (!bReturnActive || ReturnQueue.Num() == 0)
 	{
 		return;
@@ -198,17 +211,30 @@ void UBDCandidateSubsystem::HandleWaveDealt(const int32 Wave)
 	}
 
 	bSchedulePending = false;
-	if (SpawnCandidate(bDue ? TEXT("the schedule") : TEXT("the schedule, owed from an earlier wave")) == nullptr)
+	const TCHAR* Why = bDue ? TEXT("the schedule") : TEXT("the schedule, owed from an earlier wave");
+
+	// He comes out of a bus too, so he waits for them to park, like the horde does.
+	const UWorld* World = GetWorld();
+	const UBDBusSubsystem* Buses = World != nullptr ? World->GetSubsystem<UBDBusSubsystem>() : nullptr;
+	const float BusWait = Buses != nullptr ? Buses->GetParkRemaining() : 0.0f;
+	if (BusWait > 0.0f)
+	{
+		AwaitingBusRemaining = BusWait;
+		AwaitingBusWhy = Why;
+		UE_LOG(LogBDCandidate, Log, TEXT("Wave %d's candidate waits %.1fs for the buses to park."), Wave, BusWait);
+	}
+	else if (SpawnCandidate(Why) == nullptr)
 	{
 		return;
 	}
 
 	// He is the first thing out of the buses on his wave: the creeps wait until he has
 	// had a head start, so the player sees him walk out alone and can make him the
-	// priority. In the middle of the horde he went by unnoticed.
+	// priority. In the middle of the horde he went by unnoticed. The head start counts
+	// from when he steps out, after the buses.
 	if (UBDWaveSubsystem* Waves = GetWaves())
 	{
-		Waves->HoldWaveSpawns(UBDGameBalanceSettings::Get().CandidateLeadSeconds, TEXT("the candidate walks out first"));
+		Waves->HoldWaveSpawns(BusWait + UBDGameBalanceSettings::Get().CandidateLeadSeconds, TEXT("the candidate walks out first"));
 	}
 }
 

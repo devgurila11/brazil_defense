@@ -79,6 +79,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
 	bool HasCandidateOnBoard() const { return GetCandidate() != nullptr; }
 
+	/** Whether the scheduled candidate of the wave is waiting for the buses to park before he walks out. */
+	bool IsAwaitingBus() const { return AwaitingBusRemaining > 0.0f; }
+
 	/** The candidate who reached the urn, 0 while none has. For the post-match report. */
 	int32 GetArrivedOrdinal() const { return ArrivedOrdinal; }
 
@@ -148,6 +151,10 @@ private:
 
 	/** A scheduled candidate whose wave came while another was still walking: sent with the next wave. */
 	bool bSchedulePending = false;
+
+	/** Seconds the scheduled candidate still waits for the buses, and why he is sent, for the log. */
+	float AwaitingBusRemaining = 0.0f;
+	FString AwaitingBusWhy;
 
 	//~ The return
 	bool bReturnActive = false;

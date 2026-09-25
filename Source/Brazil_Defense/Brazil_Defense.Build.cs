@@ -13,7 +13,8 @@ public class Brazil_Defense : ModuleRules
 		// RenderCore and RHI are pulled in by SceneView.h, used by the grid debug canvas pass.
 		// AssetRegistry lets the placement console command find a data asset by bare name.
 		// Slate and SlateCore back the UMG widgets the interface layer builds in code.
-		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI", "AssetRegistry", "Slate", "SlateCore" });
+		// AnimationBudgetAllocator throttles the animation of a horde of skinned creeps.
+		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI", "AssetRegistry", "Slate", "SlateCore", "AnimationBudgetAllocator" });
 		
 		// Uncomment if you are using online features
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");

@@ -263,6 +263,41 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-25 — COMMIT_ID** (desde 26e5d8b):
+  - **O creep virou o jumento animado.** SK `Run_Forward__1_` (Mixamo,
+    reimportado com escala 100, In Place, normais importadas) com o
+    `MI_Jumento_PT`, e `MeshScale` 2 no `DA_Enemy_Test` (~400 cm, pelo
+    cenário). `UBDEnemyData` ganhou `SkeletalMesh`, `MoveAnimation` e
+    `MeshYaw` (-90: o Mixamo olha para +Y); `MeshMaterial` vale para o
+    skeletal, e as três variantes serão três DataAssets com o mesmo SK.
+    O `ABDEnemyBase` toca o loop em single node, sem Anim BP, com
+    PlayRate = velocidade / `AnimReferenceSpeed` (554 cm/s na escala 2,
+    Project Settings > Waves), sem root motion. O corpo não tem
+    colisão; o projétil mira o centro de qualquer um dos dois corpos.
+    `CreepBarWorldHeight` foi para 450. `M_Master_Environment` ganhou
+    `Used with Skeletal Mesh`.
+  - **Performance da horda.** Plugin `AnimationBudgetAllocator` ligado,
+    `a.Budget.Enabled=1`, significância pela distância da câmera até
+    40.000 cm; fora da tela não calcula pose. Significance Manager e
+    skeletal instanciado ficaram de fora.
+  - **Os ônibus seguem as bocas.** `UBDBusSubsystem` liga cada
+    `StaticMeshActor` com `SM_Bus` à boca cuja âncora está debaixo
+    dele, uma vez, e o desliza junto com ela ao longo da borda, sem
+    girar, em `BusMoveSeconds` (2 s). A horda e o candidato esperam os
+    ônibus estacionarem; o candidato mantém os 5 s de vantagem sobre a
+    horda. `MinBusGap` (2 células, carroceria a carroceria) trava
+    qualquer par de ônibus, mesma borda ou canto. O vaguear das bocas
+    não mudou. Ganchos de som marcados com `// SOUND:`.
+  - Consequência para o balanço: onda com ônibus em movimento solta a
+    horda 2 s depois; a do candidato, 7 s em vez de 5.
+  - `BD.Test.Regression`: 27/27 PASS (jumento, ritmo, ônibus, folga,
+    candidato esperando). Estresse de 40 ondas: pior folga entre
+    ônibus 2,05 células. Os dois alvos compilados.
+  - Ficou de fora do commit, como antes: `Content/imgs/`,
+    `Content/Docs/Brazil_Defense.log` e os perfis de preview do
+    `DefaultEditor.ini`. O `Mesh/Jumento` estático (Meshy) foi junto
+    mas não é usado.
+
 - **2026-09-24 (23h45) — bffb831** (desde 383be2a):
   - **Votos iniciais por dificuldade.** `StartingVotes` (a vantagem de
     largada no placar, não é moeda) valia 3.000 nas três e agora cai

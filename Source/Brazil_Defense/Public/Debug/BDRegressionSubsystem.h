@@ -8,6 +8,7 @@
 #include "BDRegressionSubsystem.generated.h"
 
 class ABDMatchManager;
+class ABDEnemyBase;
 class ABDTowerBase;
 class UBDPlaceableData;
 class UBDPlacementComponent;
@@ -88,6 +89,14 @@ private:
 	FBDCellCoord TowerCell;
 	TWeakObjectPtr<ABDTowerBase> GroundTower;
 	TWeakObjectPtr<UBDPlatformComponent> Stand;
+
+	/** The candidate's wave has been dealt; what was spawned and how long the buses had to go then. */
+	bool bCandidateWaveDealt = false;
+	int32 SpawnedBeforeCandidate = 0;
+	float BusWaitAtDeal = 0.0f;
+
+	/** A creep of the wave sent out to check its animated body, removed once measured. */
+	TWeakObjectPtr<ABDEnemyBase> AnimatedCreep;
 	TArray<TWeakObjectPtr<ABDTowerBase>> Crew;
 	float SlotZAtLevelOne = 0.0f;
 

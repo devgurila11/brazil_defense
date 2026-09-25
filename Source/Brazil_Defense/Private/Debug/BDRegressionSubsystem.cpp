@@ -7,7 +7,10 @@
 #include "Bribe/BDBribeSubsystem.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Enemy/BDCandidate.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Enemy/BDEnemyData.h"
 #include "Engine/Engine.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -18,12 +21,15 @@
 #include "Match/BDMatchManager.h"
 #include "Objective/BDObjectiveSettings.h"
 #include "Placement/BDPlaceableData.h"
+#include "SkeletalMeshComponentBudgeted.h"
 #include "Placement/BDPlacementComponent.h"
 #include "Placement/BDPlacementSettings.h"
 #include "Platform/BDPlatformComponent.h"
 #include "Stats/Stats.h"
 #include "Tower/BDTowerBase.h"
 #include "UObject/UObjectIterator.h"
+#include "Wave/BDBusSubsystem.h"
+#include "Wave/BDWaveSettings.h"
 #include "Wave/BDWaveSubsystem.h"
 
 namespace BDRegressionPrivate
@@ -109,6 +115,7 @@ void UBDRegressionSubsystem::Start(const bool bQuitWhenDone)
 	bRunning = true;
 	bQuit = bQuitWhenDone;
 	Step = 0;
+	bCandidateWaveDealt = false;
 	WaitTicks = 0;
 	StepTicks = 0;
 	Passed = 0;
@@ -520,13 +527,56 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 	case 5:
 	{
 		// The wave of the first candidate: he is out before any creep, the creeps held back.
-		const int32 SpawnedBefore = Waves->GetMatchTotals().CreepsSpawned;
-		Match->DebugSetWave(FMath::Max(0, UBDGameBalanceSettings::Get().CandidateInterval - 1));
-		Match->CallWaveEarly();
+		// He steps out of a bus once the buses have parked, so the step waits for him.
+		const UBDBusSubsystem* BusesAtDeal = GetWorld()->GetSubsystem<UBDBusSubsystem>();
+		if (!bCandidateWaveDealt)
+		{
+			bCandidateWaveDealt = true;
+			SpawnedBeforeCandidate = Waves->GetMatchTotals().CreepsSpawned;
+			Match->DebugSetWave(FMath::Max(0, UBDGameBalanceSettings::Get().CandidateInterval - 1));
+			Match->CallWaveEarly();
+			BusWaitAtDeal = BusesAtDeal != nullptr ? BusesAtDeal->GetParkRemaining() : 0.0f;
+			StepTicks = 0;
+		}
+		if (Candidates->IsAwaitingBus())
+		{
+			if (Candidates->HasCandidateOnBoard() || ++StepTicks > MaxWaitTicks * 10)
+			{
+				Check(TEXT("ONIBUS"), TEXT("the candidate waits for the buses to park"), false,
+					Candidates->HasCandidateOnBoard() ? TEXT("he is out while still waiting") : TEXT("he never stepped out"));
+				return false;
+			}
+			return true;
+		}
+		const float BusLeft = BusesAtDeal != nullptr ? BusesAtDeal->GetParkRemaining() : 0.0f;
+		Check(TEXT("ONIBUS"), TEXT("the candidate waits for the buses to park"),
+			Candidates->HasCandidateOnBoard() && BusLeft <= 0.0f,
+			FString::Printf(TEXT("buses had %.1fs to go at the deal, %.1fs left when he stepped out, %d tick(s) waited"), BusWaitAtDeal, BusLeft, StepTicks));
+		StepTicks = 0;
+		const int32 SpawnedBefore = SpawnedBeforeCandidate;
 		Check(TEXT("CANDIDATO"), TEXT("the candidate walks out first on his wave"),
 			Candidates->HasCandidateOnBoard() && Waves->GetMatchTotals().CreepsSpawned == SpawnedBefore && Waves->GetSpawnHoldRemaining() > 0.0f,
 			FString::Printf(TEXT("wave %d, candidate %s, creeps out %d, creeps held %.1fs"), Match->GetCurrentWave(),
 				Candidates->HasCandidateOnBoard() ? TEXT("out") : TEXT("missing"), Waves->GetMatchTotals().CreepsSpawned - SpawnedBefore, Waves->GetSpawnHoldRemaining()));
+
+		// The mouths have slid for this wave; every bus goes with its own, and none is left
+		// behind. The map parks one over each mouth.
+		if (const UBDBusSubsystem* Buses = GetWorld()->GetSubsystem<UBDBusSubsystem>())
+		{
+			int32 Bound = 0, Astray = 0;
+			const TArray<FBDSpawnPoint>& Points = Waves->GetSpawnPoints();
+			Buses->CountBuses(Points, Bound, Astray);
+			Check(TEXT("ONIBUS"), TEXT("every mouth has its bus, headed to where the mouth slid"),
+				Bound == Points.Num() && Points.Num() > 0 && Astray == 0,
+				FString::Printf(TEXT("%d of %d mouths with a bus, %d astray"), Bound, Points.Num(), Astray));
+
+			// No two buses closer than the gap, the same edge or across a corner. The map's
+			// anchors all stand further apart than that, so nothing excuses a closer pair.
+			const float MinGap = Buses->GetMinGapCells(Points);
+			Check(TEXT("ONIBUS"), TEXT("no two buses stand closer than MinBusGap, same edge or across a corner"),
+				MinGap >= UBDWaveSettings::Get().MinBusGap,
+				FString::Printf(TEXT("closest pair %.2f cell(s) apart, %.1f needed"), MinGap, UBDWaveSettings::Get().MinBusGap));
+		}
 
 		// Under a wave nothing new goes down - no kind of piece, not through the bar and not
 		// through the gesture itself - but what stands can still be evolved. Confirmed rule
@@ -564,11 +614,47 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		const int32 LevelAfter = GroundTower.IsValid() ? GroundTower->GetTowerLevel() : 0;
 		Check(TEXT("COLOCACAO"), TEXT("a defender is evolved by clicking it during a wave"), LevelAfter == LevelBefore + 1,
 			FString::Printf(TEXT("level %d -> %d"), LevelBefore, LevelAfter));
+
+		// A creep of the wave with an animated body wears it: the skeletal mesh, its loop
+		// and its material, standing a person tall times the scale on the data. Its feet
+		// are checked on the next step.
+		const UBDEnemyData* WaveEnemy = UBDWaveSettings::Get().ResolveWaveEnemy();
+		if (WaveEnemy != nullptr && !WaveEnemy->SkeletalMesh.IsNull())
+		{
+			ABDEnemyBase* Creep = Waves->SpawnEnemy(WaveEnemy, 0);
+			AnimatedCreep = Creep;
+			const USkeletalMeshComponentBudgeted* Body = Creep != nullptr ? Creep->GetSkeletalBody() : nullptr;
+			const bool bWorn = Body != nullptr && Body->GetSkeletalMeshAsset() != nullptr && Creep->GetBody() == Body
+				&& Body->GetSingleNodeInstance() != nullptr && Body->GetSingleNodeInstance()->GetAnimationAsset() != nullptr
+				&& Body->GetMaterial(0) == WaveEnemy->MeshMaterial.Get();
+			const float Height = Body != nullptr ? Body->Bounds.BoxExtent.Z * 2.0f : 0.0f;
+			const float Scale = FMath::Max(0.01f, static_cast<float>(WaveEnemy->MeshScale.Z));
+			Check(TEXT("INIMIGO"), TEXT("an animated creep wears its skeletal body, loop and material, 150-250 cm tall per unit of scale"),
+				bWorn && Height >= 150.0f * Scale && Height <= 250.0f * Scale,
+				FString::Printf(TEXT("%s, %s, %.0f cm tall at scale %.2f, %.0f-%.0f accepted"), Body != nullptr ? *GetNameSafe(Body->GetSkeletalMeshAsset()) : TEXT("no body"),
+					Body != nullptr ? *GetNameSafe(Body->GetMaterial(0)) : TEXT("-"), Height, Scale, 150.0f * Scale, 250.0f * Scale));
+		}
 		break;
 	}
 
 	case 6:
 	{
+		// The feet follow the route: the loop rate is the creep's speed over the speed the
+		// loop was made at, so it neither skates nor pedals. Then the creep goes.
+		if (ABDEnemyBase* Creep = AnimatedCreep.Get())
+		{
+			const USkeletalMeshComponentBudgeted* Body = Creep->GetSkeletalBody();
+			const UBDWaveSettings& WaveSettings = UBDWaveSettings::Get();
+			const float Rate = Body != nullptr ? Body->GetPlayRate() : -1.0f;
+			const float Expected = Creep->GetCurrentSpeed() <= 0.0f ? 0.0f
+				: FMath::Clamp(Creep->GetCurrentSpeed() / WaveSettings.AnimReferenceSpeed, WaveSettings.AnimMinPlayRate, WaveSettings.AnimMaxPlayRate);
+			Check(TEXT("INIMIGO"), TEXT("the walk loop plays at the creep's speed over the reference speed"),
+				Creep->GetCurrentSpeed() > 0.0f && FMath::IsNearlyEqual(Rate, Expected, 0.01f),
+				FString::Printf(TEXT("speed %.0f cm/s, rate %.2f, expected %.2f"), Creep->GetCurrentSpeed(), Rate, Expected));
+			Creep->Destroy();
+		}
+		AnimatedCreep.Reset();
+
 		// The scheduled candidate killed pays his drop, all of it.
 		ABDCandidate* Candidate = Candidates->GetCandidate();
 		if (Candidate == nullptr)

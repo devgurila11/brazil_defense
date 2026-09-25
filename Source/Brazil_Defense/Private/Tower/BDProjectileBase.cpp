@@ -93,10 +93,8 @@ FVector ABDProjectileBase::GetAimPoint() const
 	}
 
 	// The middle of the body, not the feet: the root of a creep is on the floor.
-	const UStaticMeshComponent* EnemyMesh = Enemy->GetMesh();
-	return EnemyMesh != nullptr && EnemyMesh->GetStaticMesh() != nullptr
-		? EnemyMesh->Bounds.Origin
-		: Enemy->GetActorLocation();
+	const UPrimitiveComponent* Body = Enemy->GetBody();
+	return Body != nullptr ? Body->Bounds.Origin : Enemy->GetActorLocation();
 }
 
 void ABDProjectileBase::Tick(const float DeltaSeconds)

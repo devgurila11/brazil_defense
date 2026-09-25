@@ -9,6 +9,7 @@
 #include "BDWaveSettings.generated.h"
 
 class UBDEnemyData;
+class UStaticMesh;
 
 /** Who draws a route cost map: see UBDWaveSettings::RouteVarianceMode. */
 UENUM(BlueprintType)
@@ -84,6 +85,49 @@ public:
 	 */
 	UPROPERTY(config, EditAnywhere, Category = "Movement", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float TurnRate = 540.0f;
+
+	//~ Animation ------------------------------------------------------------
+
+	/**
+	 * Speed the walk loop of an animated creep was authored at: a creep moving this fast
+	 * plays it at rate 1, twice as fast at rate 2. Too high and the creep skates, too low
+	 * and it pedals. The jumento Run Forward covers about 250 cm per 0.9 s cycle.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Animation", meta = (ClampMin = "1.0", UIMin = "1.0", ForceUnits = "cm/s"))
+	float AnimReferenceSpeed = 277.0f;
+
+	/** Bounds on that rate, so a creep at a standstill or a sprint never looks broken. */
+	UPROPERTY(config, EditAnywhere, Category = "Animation", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float AnimMinPlayRate = 0.2f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Animation", meta = (ClampMin = "0.1", UIMin = "0.1"))
+	float AnimMaxPlayRate = 4.0f;
+
+	//~ Buses ----------------------------------------------------------------
+	// Every mouth has a bus parked over it in the map, and the horde reads as coming out
+	// of the caravan only while the bus stays with the mouth. See UBDBusSubsystem.
+
+	/**
+	 * Mesh that makes a placed static mesh actor a bus. Each one is bound, once, to the
+	 * mouth whose authored exit cell it stands over, and follows that mouth from then on.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Buses")
+	TSoftObjectPtr<UStaticMesh> BusMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/BD/Meshs/Bus/SM_Bus.SM_Bus")));
+
+	/**
+	 * Seconds a bus takes to pull up to where its mouth slid. The creeps of the wave wait
+	 * for it, so the player sees where the horde comes from this time before it does.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Buses", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float BusMoveSeconds = 2.0f;
+
+	/**
+	 * Fewest free cells left between two buses of the same edge, body to body. A mouth
+	 * does not slide where its bus would come closer than this to its neighbour, so the
+	 * two never overlap whatever the anchors are.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Buses", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float MinBusGap = 2.0f;
 
 	//~ Organic movement -----------------------------------------------------
 	// A route is a line of cell centers, and a horde walking it exactly is a queue
