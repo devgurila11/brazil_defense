@@ -212,6 +212,11 @@ arquibancada 180°) — só entra com indicador visual claro.
   entre bipes para uma leva grande não sobrepor dezenas de toques.
 - Velocidade de jogo 1x / 2x / 4x, persistente entre ondas, via time
   dilation global.
+- **Anotado para quando mexer em iluminação (não agir antes):** a tela
+  mostra o warning do Lumen "Cached lighting in Lumen and real-time sky
+  capture lighting is going to be clipped... adjust r.EyeAdaptation...
+  Exposure -8.5, safe range [-8.0, 12.0]" (visto em 2026-09-24). É a
+  exposição da cena, a -8,5, fora da faixa segura. Não tem a ver com o HUD.
 
 ---
 
@@ -257,6 +262,17 @@ arquibancada 180°) — só entra com indicador visual claro.
 
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
+
+- **2026-09-24 (23h) — COMMIT_ID** (desde d7d5ff4):
+  - O briefing das 23:20 pediu de novo a remoção do "blue count". O
+    código já estava certo desde 316f027, mas o `Brazil_Defense.exe`
+    era de 23/09 22:54: só o alvo do editor tinha sido compilado. A
+    última partida no `PostMatch.csv` confirma, rodada com o build
+    2026.09.23-2253. O alvo do jogo foi recompilado (exe de 24/09
+    23:17), sem mudança de código.
+  - §9 ganhou a nota do warning de exposição do Lumen, para quando for
+    mexer em iluminação.
+  - `BD.Test.Regression`: 22/22 PASS.
 
 - **2026-09-24 — 316f027** (desde f5bb309):
   - **HUD sem placar repetido.** Saiu a linha "blue count" com o ícone
