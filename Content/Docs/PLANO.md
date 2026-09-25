@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-25 (noite) — COMMIT_ID** (desde 00a3b8f):
+- **2026-09-25 (noite) — 30cd40b** (desde 00a3b8f):
   - **Nome do tipo no placar de abates.** Embaixo do ícone de cada linha
     vai o nome do tipo: `BDLoc::EnemyName` lê `Enemy.<asset>` da tabela
     de texto e, na falta, o `DisplayName` do `UBDEnemyData`.
