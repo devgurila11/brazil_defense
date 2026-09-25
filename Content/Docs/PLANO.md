@@ -263,6 +263,15 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-25 (fim de tarde) — COMMIT_ID** (desde 89d375e):
+  - **Referências do jumento versionadas.** `img_references/` ganhou
+    `Jumento_PT`, `Jumento_Gay`, `Jumento_Hemp` e `Jumento_Socialista`
+    (as imagens-fonte das skins), para poder regerar os assets. Entram
+    como git comum, igual às quatro referências que já estavam lá
+    (`.jpeg` não está no LFS). Sem mudança de código.
+  - Continuam fora: `Content/imgs/` (cópias soltas),
+    `Content/Docs/Brazil_Defense.log` e o `DefaultEditor.ini`.
+
 - **2026-09-25 (tarde) — 9c7af93** (desde 48b50a2):
   - **Placar de abates por tipo, nas laterais do HUD.** Esquerda: um
     ícone por tipo de inimigo com o total de abates; direita: o
