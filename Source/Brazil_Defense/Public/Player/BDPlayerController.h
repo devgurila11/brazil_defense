@@ -82,6 +82,8 @@ private:
 	void HandleSelectSlot8();
 	void HandleSelectSlot9();
 	void HandleSelectUrn();
+	/** P: freezes the board, or lets it go. */
+	void HandleTogglePause();
 	void HandleResetCamera();
 
 	/** Puts the piece of a palette slot in hand, as the HUD button would. */

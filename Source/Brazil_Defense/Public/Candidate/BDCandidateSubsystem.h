@@ -111,8 +111,18 @@ public:
 
 	//~ Sending them out -----------------------------------------------------------
 
-	/** Sends the next scheduled candidate now, whatever the wave. Debug and the schedule both use it. */
-	ABDCandidate* SpawnCandidate(const TCHAR* Why);
+	/**
+	 * Sends the next scheduled candidate now, whatever the wave. Debug and the schedule both use it.
+	 * @param MouthUses how many of the group already came out of each mouth, so the next takes one
+	 *                  of the least used; null draws among them all.
+	 */
+	ABDCandidate* SpawnCandidate(const TCHAR* Why, TArray<int32>* MouthUses = nullptr);
+
+	/**
+	 * Sends the scheduled group of a candidate wave: GetCandidateGroupSize of the fallen so
+	 * far, each out of a different mouth while there are mouths enough. Returns how many walked out.
+	 */
+	int32 SpawnCandidateGroup(const TCHAR* Why, int32* OutMouthsUsed = nullptr);
 
 	/** Starts the return of the fallen now, whatever the count says. Nothing happens with none fallen. */
 	void BeginReturn(const TCHAR* Why);
@@ -133,7 +143,7 @@ private:
 	void HandlePhaseChanged(EBDMatchPhase NewPhase);
 
 	/** Spawns a candidate actor for a record, at that record's health. Null when it cannot. */
-	ABDCandidate* SpawnFromRecord(const FBDCandidateRecord& Record, bool bReturning, const TCHAR* Why);
+	ABDCandidate* SpawnFromRecord(const FBDCandidateRecord& Record, bool bReturning, const TCHAR* Why, TArray<int32>* MouthUses = nullptr);
 
 	/** Everything from the last match dropped: on a rewind to wave 0. */
 	void ResetForNewMatch();

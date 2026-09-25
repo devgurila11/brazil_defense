@@ -249,6 +249,10 @@ void UBDHUDWidget::BuildTree()
 	UHorizontalBoxSlot* SpeedLabelSlot = SpeedRow->AddChildToHorizontalBox(SpeedLabel);
 	SpeedLabelSlot->SetVerticalAlignment(VAlign_Center);
 	SpeedLabelSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+	PauseButton = MakeButton(PauseButtonLabel, SmallFontSize);
+	PauseButton->OnClicked.AddDynamic(this, &UBDHUDWidget::HandlePause);
+	UHorizontalBoxSlot* PauseSlot = SpeedRow->AddChildToHorizontalBox(PauseButton);
+	PauseSlot->SetPadding(FMargin(2.0f, 0.0f, 10.0f, 0.0f));
 	for (int32 Index = 0; Index < 3; ++Index)
 	{
 		SpeedButtons[Index] = MakeButton(SpeedButtonLabels[Index], SmallFontSize);
@@ -261,6 +265,11 @@ void UBDHUDWidget::BuildTree()
 	UVerticalBoxSlot* SpeedSlot = Top->AddChildToVerticalBox(SpeedRow);
 	SpeedSlot->SetHorizontalAlignment(HAlign_Center);
 	SpeedSlot->SetPadding(FMargin(0.0f, 4.0f));
+
+	PausedLine = MakeText(LineFontSize, ColorText);
+	PausedLine->SetJustification(ETextJustify::Center);
+	PausedLine->SetVisibility(ESlateVisibility::Collapsed);
+	Top->AddChildToVerticalBox(PausedLine);
 
 	MouthsLine = MakeText(SmallFontSize, ColorMuted);
 	MouthsLine->SetJustification(ETextJustify::Center);
@@ -666,6 +675,10 @@ void UBDHUDWidget::RefreshTexts()
 	EndMenuLabel->SetText(Loc(TEXT("HUD.End.MainMenu")));
 	LoadLabel->SetText(Loc(TEXT("HUD.End.Load")));
 	BuildTitle->SetText(Loc(TEXT("HUD.Build")));
+	PauseShown = -1;
+	UpdatePauseButton();
+	for (const FBDKillEntry& Entry : HordeKills) { Entry.Name->SetText(KillEntryName(Entry)); }
+	for (const FBDKillEntry& Entry : CandidateKills) { Entry.Name->SetText(KillEntryName(Entry)); }
 	UpdateSaveButton();
 	UpdateBuildPanel();
 
@@ -980,6 +993,7 @@ void UBDHUDWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTi
 	BindMatch();
 
 	UpdateWaveLine();
+	UpdatePauseButton();
 	UpdateDefenderPanel();
 	UpdatePlacementPanel();
 	UpdateCandidate(static_cast<float>(FApp::GetDeltaTime()));
@@ -993,15 +1007,26 @@ void UBDHUDWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTi
 
 //~ Kill boards ----------------------------------------------------------------------
 
-UBDHUDWidget::FBDKillEntry UBDHUDWidget::MakeKillEntry(UVerticalBox* Column, const FName Type, UTexture2D* Icon, const bool bIconFirst)
+UBDHUDWidget::FBDKillEntry UBDHUDWidget::MakeKillEntry(UVerticalBox* Column, const FName Type, UTexture2D* Icon, const bool bIconFirst, const UBDEnemyData* Data)
 {
 	using namespace BDHUDPrivate;
 
 	FBDKillEntry Entry;
 	Entry.Type = Type;
+	Entry.Data = Data;
 	TObjectPtr<UImage> Image;
 	Entry.IconBox = MakePicture(Image, Icon, ScoreIconSize);
 	Entry.Count = MakeText(MintFontSize, ColorText);
+	Entry.Name = MakeText(SmallFontSize, ColorMuted);
+	Entry.Name->SetJustification(ETextJustify::Center);
+	Entry.Name->SetText(KillEntryName(Entry));
+
+	// The icon with its kind's name under it: a picture alone does not say "militants".
+	UVerticalBox* Face = MakeColumn();
+	UVerticalBoxSlot* IconSlot = Face->AddChildToVerticalBox(Entry.IconBox);
+	IconSlot->SetHorizontalAlignment(HAlign_Center);
+	UVerticalBoxSlot* NameSlot = Face->AddChildToVerticalBox(Entry.Name);
+	NameSlot->SetHorizontalAlignment(HAlign_Center);
 
 	UHorizontalBox* Row = MakeRow();
 	const auto AddPart = [Row](UWidget* Widget, const float LeftPad)
@@ -1013,21 +1038,28 @@ UBDHUDWidget::FBDKillEntry UBDHUDWidget::MakeKillEntry(UVerticalBox* Column, con
 	// The icon stands on the edge of the screen and the number looks inwards.
 	if (bIconFirst)
 	{
-		AddPart(Entry.IconBox, 0.0f);
+		AddPart(Face, 0.0f);
 		AddPart(Entry.Count, 8.0f);
 	}
 	else
 	{
 		AddPart(Entry.Count, 0.0f);
-		AddPart(Entry.IconBox, 8.0f);
+		AddPart(Face, 8.0f);
 	}
 	UVerticalBoxSlot* RowSlot = Column->AddChildToVerticalBox(Row);
 	RowSlot->SetHorizontalAlignment(bIconFirst ? HAlign_Left : HAlign_Right);
 	RowSlot->SetPadding(FMargin(0.0f, 4.0f));
 
 	SizeKillEntry(Entry);
-	UE_LOG(LogBDUI, Log, TEXT("Kill board: %s gets its row (%s)."), *Type.ToString(), Icon != nullptr ? *Icon->GetName() : TEXT("no icon"));
+	UE_LOG(LogBDUI, Log, TEXT("Kill board: %s gets its row (%s), named \"%s\"."), *Type.ToString(),
+		Icon != nullptr ? *Icon->GetName() : TEXT("no icon"), *Entry.Name->GetText().ToString());
 	return Entry;
+}
+
+FText UBDHUDWidget::KillEntryName(const FBDKillEntry& Entry)
+{
+	const UBDEnemyData* Data = Entry.Data.Get();
+	return Data != nullptr ? BDLoc::EnemyName(Data) : BDLoc::Text(TEXT("HUD.Kills.Candidates"));
 }
 
 void UBDHUDWidget::SizeKillEntry(const FBDKillEntry& Entry) const
@@ -1080,14 +1112,10 @@ void UBDHUDWidget::UpdateKillBoards(const float RealDeltaSeconds)
 		{
 			const UBDEnemyData* Data = Tally.Data.Get();
 			UTexture2D* Icon = Data != nullptr ? Data->KillIcon.LoadSynchronous() : nullptr;
-			HordeKills.Add(MakeKillEntry(HordeKillColumn, Tally.Type, Icon, /*bIconFirst*/ true));
+			HordeKills.Add(MakeKillEntry(HordeKillColumn, Tally.Type, Icon, /*bIconFirst*/ true, Data));
 		}
-		FBDKillEntry& Entry = HordeKills[Index];
-		// With no icon the kind is named, so the count still says what it counts.
-		const bool bNamed = Entry.IconBox->GetVisibility() == ESlateVisibility::Collapsed;
-		Refresh(Entry, Tally.Kills, bNamed
-			? FText::FromString(FString::Printf(TEXT("%s %d"), *Tally.Type.ToString(), Tally.Kills))
-			: FText::AsNumber(Tally.Kills));
+		// The name under the icon says what the count counts, with or without a picture.
+		Refresh(HordeKills[Index], Tally.Kills, FText::AsNumber(Tally.Kills));
 	}
 
 	// The candidates: one row for all of them for now, how many of the scheduled ones have
@@ -1104,7 +1132,7 @@ void UBDHUDWidget::UpdateKillBoards(const float RealDeltaSeconds)
 		if (CandidateKills.Num() == 0)
 		{
 			CandidateKills.Add(MakeKillEntry(CandidateKillColumn, TEXT("Candidates"),
-				UBDUISettings::Get().CandidateKillIcon.LoadSynchronous(), /*bIconFirst*/ false));
+				UBDUISettings::Get().CandidateKillIcon.LoadSynchronous(), /*bIconFirst*/ false, /*Data*/ nullptr));
 		}
 		Refresh(CandidateKills[0], Fallen, FText::AsNumber(Fallen));
 	}
@@ -1259,6 +1287,25 @@ void UBDHUDWidget::UpdateSpeedButtons()
 		SpeedButtons[Index]->SetBackgroundColor(bCurrent ? ColorButton : ColorButtonIdle);
 		SpeedButtonLabels[Index]->SetColorAndOpacity(FSlateColor(bCurrent ? ColorPanelDark : ColorText));
 	}
+}
+
+void UBDHUDWidget::UpdatePauseButton()
+{
+	using namespace BDHUDPrivate;
+
+	const UBDUISubsystem* UI = GetUI();
+	const bool bPaused = UI != nullptr && UI->IsGameplayPaused();
+	if (PauseShown == static_cast<int32>(bPaused))
+	{
+		return;
+	}
+	PauseShown = static_cast<int32>(bPaused);
+
+	PauseButtonLabel->SetText(Loc(bPaused ? TEXT("HUD.Pause.Resume") : TEXT("HUD.Pause.Button")));
+	PauseButton->SetBackgroundColor(bPaused ? ColorButton : ColorButtonIdle);
+	PauseButtonLabel->SetColorAndOpacity(FSlateColor(bPaused ? ColorPanelDark : ColorText));
+	PausedLine->SetText(Loc(TEXT("HUD.Pause.Line")));
+	PausedLine->SetVisibility(bPaused ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 }
 
 void UBDHUDWidget::UpdateMouths()
@@ -1547,6 +1594,15 @@ void UBDHUDWidget::UpdatePlacementPanel()
 }
 
 //~ Clicks ----------------------------------------------------------------------------
+
+void UBDHUDWidget::HandlePause()
+{
+	if (UBDUISubsystem* UI = GetUI())
+	{
+		UI->ToggleGameplayPause();
+		UpdatePauseButton();
+	}
+}
 
 void UBDHUDWidget::HandleSpeed1()
 {

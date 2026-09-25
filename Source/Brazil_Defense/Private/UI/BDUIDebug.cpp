@@ -1,6 +1,7 @@
 // Brazil Defense. Console access to the interface, for driving it without a mouse.
 
 #include "BDLog.h"
+#include "Containers/Ticker.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -68,6 +69,22 @@ namespace BDUIDebug
 		}
 	}
 
+	static void ExecGamePause(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDUISubsystem* UI = Find<UBDUISubsystem>(World))
+		{
+			if (Args.Num() > 0)
+			{
+				UI->SetGameplayPaused(FCString::Atoi(*Args[0]) != 0);
+			}
+			else
+			{
+				UI->ToggleGameplayPause();
+			}
+			UE_LOG(LogBDUI, Log, TEXT("BD.UI.GamePause: the board is %s."), UI->IsGameplayPaused() ? TEXT("paused") : TEXT("running"));
+		}
+	}
+
 	static void ExecPlay(const TArray<FString>& Args, UWorld* World)
 	{
 		UBDUISubsystem* UI = Find<UBDUISubsystem>(World);
@@ -98,6 +115,22 @@ namespace BDUIDebug
 		}
 		const float Seconds = Args.Num() >= 1 ? FCString::Atof(*Args[0]) : 2.0f;
 		const FString Name = Args.Num() >= 2 ? Args[1] : TEXT("BDHUD");
+		// 0 shoots this frame; a negative delay counts real seconds, which run on a paused
+		// board where no game timer does.
+		if (Seconds <= 0.0f)
+		{
+			if (Seconds == 0.0f)
+			{
+				FScreenshotRequest::RequestScreenshot(Name, /*bShowUI*/ true, /*bAddFilenameSuffix*/ true);
+				return;
+			}
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Name](float)
+			{
+				FScreenshotRequest::RequestScreenshot(Name, /*bShowUI*/ true, /*bAddFilenameSuffix*/ true);
+				return false;
+			}), -Seconds);
+			return;
+		}
 		FTimerHandle Handle;
 		World->GetTimerManager().SetTimer(Handle, [Name]()
 		{
@@ -202,6 +235,11 @@ namespace BDUIDebug
 			}
 		}, FMath::Max(0.01f, Seconds), false);
 	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdGamePause(
+		TEXT("BD.UI.GamePause"),
+		TEXT("BD.UI.GamePause [0|1]: the gameplay pause of the HUD button and P, toggled or set. The HUD stays up, the board freezes."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecGamePause));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdDelay(
 		TEXT("BD.Delay"),

@@ -108,6 +108,16 @@ public:
 	void TogglePauseMenu();
 	bool IsPauseMenuOpen() const { return PauseMenu != nullptr; }
 
+	//~ Gameplay pause -------------------------------------------------------------
+	// The board frozen with the HUD still up, to look at the defense and plan: no menu
+	// over it. Waves, creeps, animation and timers stop; the camera and the placement
+	// gesture keep working. The HUD button and P toggle it.
+
+	void SetGameplayPaused(bool bPaused);
+	void ToggleGameplayPause();
+	/** Paused by the player on the HUD, as opposed to by the menu. */
+	bool IsGameplayPaused() const;
+
 	//~ State --------------------------------------------------------------------
 
 	EBDScreen GetCurrentScreen() const { return CurrentScreen; }
@@ -143,6 +153,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBDPauseWidget> PauseMenu;
+
+	/** Whether closing the menu resumes the match: not when it was opened over a gameplay pause. */
+	bool bResumeOnMenuClose = true;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBDFadeWidget> Fade;

@@ -64,8 +64,9 @@ public:
 	 * @param Mesh       given to the actor when it brings no mesh of its own, so a bare
 	 *                   ABDObjective still shows the urn.
 	 * @param OutRefusal why it was refused, None on success.
+	 * @param Yaw        the way the urn faces: the turn the player gave the preview.
 	 */
-	bool PlaceObjective(const FBDCellCoord& Coord, UClass* ActorClass, UStaticMesh* Mesh, EBDObjectiveRefusal& OutRefusal);
+	bool PlaceObjective(const FBDCellCoord& Coord, UClass* ActorClass, UStaticMesh* Mesh, EBDObjectiveRefusal& OutRefusal, float Yaw = 0.0f);
 
 	/** Debug: takes the urn off the board. The Goal cell goes back to Free; the actor stays where it is, unplaced. */
 	void ClearObjective();

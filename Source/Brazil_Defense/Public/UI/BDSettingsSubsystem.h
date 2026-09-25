@@ -8,6 +8,9 @@
 #include "UI/BDSettingsSave.h"
 #include "BDSettingsSubsystem.generated.h"
 
+class USoundClass;
+class USoundMix;
+
 /**
  * The one owner of UBDSettingsSave. Loads it when the game instance starts, before any
  * screen is up, and applies it: scalability, window and resolution through the engine's
@@ -78,6 +81,18 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBDSettingsSave> Settings;
+
+	/**
+	 * The mix and the classes it overrides, held for the whole game. Loaded from soft
+	 * pointers and referenced by nothing else, they were collected on the next map load:
+	 * the audio device unregistered the classes while the mix still named them, and wrote
+	 * "RecursiveApplyAdjuster failed" to the log on every frame from then on.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<USoundMix> HeldMix;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<USoundClass>> HeldClasses;
 
 	FDelegateHandle WorldInitializedHandle;
 };

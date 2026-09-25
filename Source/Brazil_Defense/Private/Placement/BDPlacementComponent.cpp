@@ -13,6 +13,7 @@
 #include "InputMappingContext.h"
 #include "GameFramework/PlayerController.h"
 #include "Grid/BDGridSubsystem.h"
+#include "Objective/BDObjective.h"
 #include "Objective/BDObjectiveSubsystem.h"
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
@@ -34,6 +35,8 @@ UBDPlacementComponent::UBDPlacementComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bStartWithTickEnabled = true;
+	// The hover, the ghost and the refusal keep up during a gameplay pause.
+	PrimaryComponentTick.bTickEvenWhenPaused = true;
 }
 
 void UBDPlacementComponent::BeginPlay()
@@ -132,6 +135,16 @@ void UBDPlacementComponent::BindInput(UInputComponent* InputComponent)
 	}
 
 	const UBDPlacementSettings& Settings = UBDPlacementSettings::Get();
+
+	// Placing, removing and cancelling all work over a paused board: the player plans
+	// with it frozen. Set on the loaded action, so the assets need no flag of their own.
+	for (const TSoftObjectPtr<UInputAction>& Soft : { Settings.PlaceAction, Settings.RemoveAction, Settings.CancelAction })
+	{
+		if (UInputAction* Action = Soft.LoadSynchronous())
+		{
+			Action->bTriggerWhenPaused = true;
+		}
+	}
 
 	// Every action is optional so a half configured project still runs: what is missing
 	// simply does nothing.
@@ -759,6 +772,10 @@ void UBDPlacementComponent::CaptureBoard(TArray<FBDSavedPiece>& OutPieces) const
 		FBDSavedPiece& Urn = OutPieces.AddDefaulted_GetRef();
 		Urn.Data = UBDObjectiveSettings::Get().ObjectivePlaceable.ToSoftObjectPath();
 		Urn.Origin = Objectives->GetGoalCell();
+		const ABDObjective* UrnActor = Objectives->GetObjective();
+		Urn.RotationSteps = UrnActor != nullptr
+			? ((FMath::RoundToInt(UrnActor->GetActorRotation().Yaw / DegreesPerRotationStep) % CellRotationStepCount) + CellRotationStepCount) % CellRotationStepCount
+			: 0;
 	}
 
 	const auto Write = [&OutPieces](const FBDPlacedPiece& Piece, const FBDCellCoord& PlatformCell)
@@ -1669,7 +1686,7 @@ bool UBDPlacementComponent::PlaceObjectivePiece()
 	UStaticMesh* Mesh = CurrentSelection->PreviewMesh.LoadSynchronous();
 
 	EBDObjectiveRefusal Refusal;
-	return Objectives->PlaceObjective(HoveredCell, ActorClass, Mesh, Refusal);
+	return Objectives->PlaceObjective(HoveredCell, ActorClass, Mesh, Refusal, GetPlacementYaw());
 }
 
 bool UBDPlacementComponent::TryPlaceAtHovered()

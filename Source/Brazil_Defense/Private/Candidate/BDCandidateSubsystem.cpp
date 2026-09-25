@@ -155,7 +155,7 @@ void UBDCandidateSubsystem::Tick(const float DeltaTime)
 		const ABDMatchManager* Match = GetMatch();
 		if (AwaitingBusRemaining <= 0.0f && Match != nullptr && !Match->IsMatchOver())
 		{
-			SpawnCandidate(*AwaitingBusWhy);
+			SpawnCandidateGroup(*AwaitingBusWhy);
 		}
 	}
 
@@ -223,7 +223,7 @@ void UBDCandidateSubsystem::HandleWaveDealt(const int32 Wave)
 		AwaitingBusWhy = Why;
 		UE_LOG(LogBDCandidate, Log, TEXT("Wave %d's candidate waits %.1fs for the buses to park."), Wave, BusWait);
 	}
-	else if (SpawnCandidate(Why) == nullptr)
+	else if (SpawnCandidateGroup(Why) == 0)
 	{
 		return;
 	}
@@ -267,7 +267,7 @@ void UBDCandidateSubsystem::ResetForNewMatch()
 
 //~ Sending them out ---------------------------------------------------------------
 
-ABDCandidate* UBDCandidateSubsystem::SpawnFromRecord(const FBDCandidateRecord& Record, const bool bReturning, const TCHAR* Why)
+ABDCandidate* UBDCandidateSubsystem::SpawnFromRecord(const FBDCandidateRecord& Record, const bool bReturning, const TCHAR* Why, TArray<int32>* MouthUses)
 {
 	ABDMatchManager* Match = GetMatch();
 	UBDWaveSubsystem* Waves = GetWaves();
@@ -317,6 +317,19 @@ ABDCandidate* UBDCandidateSubsystem::SpawnFromRecord(const FBDCandidateRecord& R
 	FRandomStream Stream(static_cast<int32>(HashCombine(
 		HashCombine(::GetTypeHash(Match->ObstacleSeed), ::GetTypeHash(Match->GetCurrentWave())),
 		::GetTypeHash(Record.Ordinal * (bReturning ? 31 : 1)))));
+
+	// In a group, only the mouths the fewest of them came out of: every one of a different
+	// mouth while there are mouths enough, then spread as evenly as the board allows.
+	if (MouthUses != nullptr)
+	{
+		MouthUses->SetNumZeroed(FMath::Max(MouthUses->Num(), Points.Num()));
+		int32 FewestUses = MAX_int32;
+		for (const int32 Index : Usable)
+		{
+			FewestUses = FMath::Min(FewestUses, (*MouthUses)[Index]);
+		}
+		Usable.RemoveAll([MouthUses, FewestUses](const int32 Index) { return (*MouthUses)[Index] > FewestUses; });
+	}
 	const int32 Mouth = Usable[Stream.RandRange(0, Usable.Num() - 1)];
 
 	// The class on the asset when it is a candidate; a plain creep class there would walk
@@ -336,6 +349,10 @@ ABDCandidate* UBDCandidateSubsystem::SpawnFromRecord(const FBDCandidateRecord& R
 		return nullptr;
 	}
 
+	if (MouthUses != nullptr)
+	{
+		++(*MouthUses)[Mouth];
+	}
 	Spawned->Ordinal = Record.Ordinal;
 	Spawned->bReturning = bReturning;
 	Spawned->SetDebugTint(BDCandidatePrivate::TintForOrdinal(Record.Ordinal));
@@ -352,7 +369,7 @@ ABDCandidate* UBDCandidateSubsystem::SpawnFromRecord(const FBDCandidateRecord& R
 	return Spawned;
 }
 
-ABDCandidate* UBDCandidateSubsystem::SpawnCandidate(const TCHAR* Why)
+ABDCandidate* UBDCandidateSubsystem::SpawnCandidate(const TCHAR* Why, TArray<int32>* MouthUses)
 {
 	ABDMatchManager* Match = GetMatch();
 	if (Match == nullptr)
@@ -374,10 +391,35 @@ ABDCandidate* UBDCandidateSubsystem::SpawnCandidate(const TCHAR* Why)
 	Record.Wave = Match->GetCurrentWave();
 	Record.MaxHealth = Health;
 
-	ABDCandidate* Spawned = SpawnFromRecord(Record, /*bReturning*/ false, Why);
+	ABDCandidate* Spawned = SpawnFromRecord(Record, /*bReturning*/ false, Why, MouthUses);
 	if (Spawned != nullptr)
 	{
 		Sent.Add(Record);
+	}
+	return Spawned;
+}
+
+int32 UBDCandidateSubsystem::SpawnCandidateGroup(const TCHAR* Why, int32* OutMouthsUsed)
+{
+	// Together, not more often: the schedule is the same, the group grows with the dead.
+	const int32 GroupSize = UBDGameBalanceSettings::Get().GetCandidateGroupSize(Fallen.Num());
+	TArray<int32> MouthUses;
+	int32 Spawned = 0;
+	for (int32 Index = 0; Index < GroupSize; ++Index)
+	{
+		if (SpawnCandidate(Why, &MouthUses) == nullptr)
+		{
+			break;
+		}
+		++Spawned;
+	}
+
+	const int32 MouthsUsed = MouthUses.FilterByPredicate([](const int32 Uses) { return Uses > 0; }).Num();
+	UE_CLOG(GroupSize > 1, LogBDCandidate, Log, TEXT("CANDIDATE GROUP: %d of %d walked out together (%d killed so far), out of %d mouth(s)."),
+		Spawned, GroupSize, Fallen.Num(), MouthsUsed);
+	if (OutMouthsUsed != nullptr)
+	{
+		*OutMouthsUsed = MouthsUsed;
 	}
 	return Spawned;
 }

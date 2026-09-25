@@ -5,6 +5,7 @@
 #include "Internationalization/StringTableRegistry.h"
 #include "Internationalization/StringTableCore.h"
 #include "Tower/BDTowerData.h"
+#include "Enemy/BDEnemyData.h"
 #include "Placement/BDPlaceableData.h"
 
 #include "BDLog.h"
@@ -96,6 +97,21 @@ FText BDLoc::PieceName(const UBDTowerData* Data)
 	}
 
 	const FString Key = FString::Printf(TEXT("Piece.%s"), *Data->GetName());
+	if (HasText(*Key))
+	{
+		return Text(*Key);
+	}
+	return Data->DisplayName.IsEmpty() ? FText::FromString(Data->GetName()) : Data->DisplayName;
+}
+
+FText BDLoc::EnemyName(const UBDEnemyData* Data)
+{
+	if (Data == nullptr)
+	{
+		return FText::GetEmpty();
+	}
+
+	const FString Key = FString::Printf(TEXT("Enemy.%s"), *Data->GetName());
 	if (HasText(*Key))
 	{
 		return Text(*Key);

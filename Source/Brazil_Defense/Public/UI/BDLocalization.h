@@ -30,6 +30,7 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FBDOnLanguageChanged, EBDLanguage /*NewLangu
  */
 class UBDPlaceableData;
 class UBDTowerData;
+class UBDEnemyData;
 
 namespace BDLoc
 {
@@ -54,6 +55,9 @@ namespace BDLoc
 
 	/** The same for a defender, whose name lives on its tower data. */
 	BRAZIL_DEFENSE_API FText PieceName(const UBDTowerData* Data);
+
+	/** The name of a kind of enemy, the same way: "Enemy.<asset name>", else its display name, else the asset name. */
+	BRAZIL_DEFENSE_API FText EnemyName(const UBDEnemyData* Data);
 
 	BRAZIL_DEFENSE_API EBDLanguage GetLanguage();
 

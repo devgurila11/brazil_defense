@@ -125,7 +125,7 @@ float UBDObjectiveSubsystem::ResolveGroundZ(const FVector& Point) const
 	return PlaneZ;
 }
 
-bool UBDObjectiveSubsystem::PlaceObjective(const FBDCellCoord& Coord, UClass* ActorClass, UStaticMesh* Mesh, EBDObjectiveRefusal& OutRefusal)
+bool UBDObjectiveSubsystem::PlaceObjective(const FBDCellCoord& Coord, UClass* ActorClass, UStaticMesh* Mesh, EBDObjectiveRefusal& OutRefusal, const float Yaw)
 {
 	OutRefusal = EvaluateCell(Coord);
 	if (OutRefusal != EBDObjectiveRefusal::None)
@@ -171,7 +171,8 @@ bool UBDObjectiveSubsystem::PlaceObjective(const FBDCellCoord& Coord, UClass* Ac
 
 	FVector Location = Grid->CellToWorld(Coord);
 	Location.Z = ResolveGroundZ(Location);
-	Urn->SetActorLocation(Location);
+	// Absolute: the level's urn keeps no authored turn of its own, it faces where the preview faced.
+	Urn->SetActorLocationAndRotation(Location, FRotator(0.0f, Yaw, 0.0f));
 
 	// Then the grid. The previous Goal cells go back to Free whatever wrote them, the
 	// authored layout included: the Goal is wherever the urn is, nowhere else.
@@ -189,8 +190,8 @@ bool UBDObjectiveSubsystem::PlaceObjective(const FBDCellCoord& Coord, UClass* Ac
 	GoalCell = Coord;
 	bPlaced = true;
 
-	UE_LOG(LogBDGrid, Log, TEXT("Objective placed at %s (%s), %d previous goal cell(s) freed."),
-		*Coord.ToString(), *Location.ToCompactString(), PreviousGoals.Num());
+	UE_LOG(LogBDGrid, Log, TEXT("Objective placed at %s (%s) facing yaw %.0f, %d previous goal cell(s) freed."),
+		*Coord.ToString(), *Location.ToCompactString(), Yaw, PreviousGoals.Num());
 	return true;
 }
 

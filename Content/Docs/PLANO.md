@@ -263,6 +263,48 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-25 (noite) — COMMIT_ID** (desde 00a3b8f):
+  - **Nome do tipo no placar de abates.** Embaixo do ícone de cada linha
+    vai o nome do tipo: `BDLoc::EnemyName` lê `Enemy.<asset>` da tabela
+    de texto e, na falta, o `DisplayName` do `UBDEnemyData`.
+    `DA_Enemy_Test` = "Militantes" (tabela: Militantes / Militants); a
+    linha dos candidatos diz "Candidatos" (`HUD.Kills.Candidates`).
+    Atualiza na troca de idioma.
+  - **Pausa de jogo.** Botão "II Pausar (P)" antes das velocidades e a
+    tecla P. Congela ondas, creeps, animação e timers (`SetGamePaused`),
+    com o HUD de pé e a linha "PAUSADO - olhe e planeje, P continua".
+    Câmera, teclas, hover, fantasma e colocação/venda continuam valendo
+    durante a pausa (bindings `bExecuteWhenPaused`, ações com
+    `bTriggerWhenPaused`, `PlacementComponent` com tick em pausa).
+    Decisão minha: com o jogo pausado dá para construir, não só olhar.
+    O menu (Esc) aberto por cima de uma pausa fecha de volta pausado.
+    `BD.UI.GamePause [0|1]` para testes.
+  - **Urna respeita o giro do preview.** `PlaceObjective` recebe o yaw
+    do preview (antes a urna ficava com a rotação que tinha); o save
+    guarda o giro da urna.
+  - **Candidatos em grupo no endless.** Numa onda de candidato saem
+    `1 + floor(mortos / CandidateGroupStep)` juntos (passo 20, em
+    Balance > Candidate e no `DefaultGame.ini`), cada um de uma boca
+    diferente; sem bocas bastantes, espalhados o mais possível.
+  - **Spam de áudio corrigido.** O `SMix_Settings` e as três
+    `SC_*` eram carregados por ponteiro fraco e coletados na troca de
+    mapa; o mix seguia citando classes desregistradas e o motor escrevia
+    `RecursiveApplyAdjuster failed` a cada frame (7,7 milhões de linhas,
+    98% do log de 971 MB da partida da onda 150). Agora o
+    `UBDSettingsSubsystem` segura os quatro. Testado: 0 linhas.
+  - **Memória no WaveLog.** Colunas `MemUsedMB`, `MemPeakMB`,
+    `UObjects`, `Actors` no fim de cada onda, mais a linha
+    `Wave N memory:` no log. `BD.Enemy.StaticBodyOnly 1` põe o
+    cilindro no lugar do jumento (só para medir). Ver a Rodada 5 no §13.
+  - **Diagnósticos (sem mudança):** o ponto vermelho do separador era
+    `WouldBlockPath` correto (a aresta 46,10|+X era a última entrada da
+    urna em 47,10, na borda leste); votos por HP, não por corpo (azul =
+    10 × escala de HP por abate, números da onda 85 batem exatos).
+  - Regressão 31/31 (novos: giro da urna, candidatos em grupo). Os dois
+    alvos compilados.
+  - Continuam fora: `Content/imgs/`, `Content/Docs/Brazil_Defense.log`
+    e o `DefaultEditor.ini`.
+
 - **2026-09-25 (fim de tarde) — e470d84** (desde 89d375e):
   - **Referências do jumento versionadas.** `img_references/` ganhou
     `Jumento_PT`, `Jumento_Gay`, `Jumento_Hemp` e `Jumento_Socialista`
@@ -1068,3 +1110,33 @@ O vermelho ficou em 0 nas 30 ondas.
 simulação, não a de um jogador. Para achar padrões ("o vermelho sempre
 encosta na onda X") falta rodar várias seeds até a onda 100 e cruzar os
 WaveLogs pelo `MatchStart`.
+
+### Rodada 5 — 2026-09-25 (memória por onda)
+
+**O que é.** Duas partidas iguais (`BD.Sim.Run 101 100 1 4 1`, Normal,
+headless com `-nullrhi -nosound`), uma com o jumento animado e outra com
+o cilindro (`BD.Enemy.StaticBodyOnly 1`). A memória é lida no fim de
+cada onda, com o tabuleiro vazio. As duas pararam no teto de 1 hora
+real do `BD.Sim.Run` (`STALLED`), na onda 95 e na 96, não na 100.
+
+| onda | jumento MB | cilindro MB | atores | UObjects (jumento) |
+|---|---|---|---|---|
+| 1 | 1.699 | 1.689 | 210 | 54.393 |
+| 20 | 1.714 | 1.714 | 292 | 56.785 |
+| 40 | 1.741 | 1.732 | 403 | 56.836 |
+| 60 | 1.754 | 1.747 | 546 | 58.219 |
+| 80 | 1.780 | 1.773 | 720 | 58.101 |
+| 90 | 1.789 | 1.797 | 821 | 56.067 |
+| 94–95 | 1.794 | 1.791 | 871 | 64.767 |
+
+**Leitura.** Sem vazamento. A memória sobe cerca de 1 MB por onda nas
+duas partidas, junto com os atores do tabuleiro (a simulação põe peças).
+Os UObjects sobem e descem entre 54 e 65 mil, então os creeps mortos são
+liberados. O jumento fica uns 10 MB acima do cilindro, e essa diferença
+não cresce (na onda 90 o cilindro chegou a ficar acima).
+
+**Limites.** Sem RHI, a animação não roda (só com o creep na tela) e a
+memória de renderização não entra. O que se via na partida real da onda
+150 tinha ainda o log de áudio a cada frame, já corrigido. A próxima
+partida na tela grava `MemUsedMB` no WaveLog e confirma o resultado com
+renderização.

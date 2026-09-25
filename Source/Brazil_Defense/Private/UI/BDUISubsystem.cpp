@@ -402,6 +402,7 @@ void UBDUISubsystem::OpenPauseMenu()
 	}
 
 	PauseMenu->AddToViewport(PauseZ);
+	bResumeOnMenuClose = !UGameplayStatics::IsGamePaused(Controller);
 	UGameplayStatics::SetGamePaused(Controller, true);
 
 	FInputModeUIOnly Mode;
@@ -424,13 +425,46 @@ void UBDUISubsystem::ClosePauseMenu()
 	PauseMenu->RemoveFromParent();
 	PauseMenu = nullptr;
 
-	if (APlayerController* Controller = GetLocalController())
+	// Opened over a gameplay pause, it closes back onto the frozen board.
+	APlayerController* Controller = GetLocalController();
+	if (Controller != nullptr && bResumeOnMenuClose)
 	{
 		UGameplayStatics::SetGamePaused(Controller, false);
 	}
 	ApplyInputMode(CurrentScreen);
 
-	UE_LOG(LogBDUI, Log, TEXT("Game menu closed, match resumed."));
+	UE_LOG(LogBDUI, Log, TEXT("Game menu closed, match %s."), bResumeOnMenuClose ? TEXT("resumed") : TEXT("still paused"));
+	bResumeOnMenuClose = true;
+}
+
+//~ Gameplay pause --------------------------------------------------------------
+
+void UBDUISubsystem::SetGameplayPaused(const bool bPaused)
+{
+	// Only over the bare HUD: the menu owns the pause while it is up.
+	APlayerController* Controller = GetLocalController();
+	if (Controller == nullptr || PauseMenu != nullptr || CurrentScreen != EBDScreen::HUD)
+	{
+		return;
+	}
+	if (UGameplayStatics::IsGamePaused(Controller) == bPaused)
+	{
+		return;
+	}
+
+	UGameplayStatics::SetGamePaused(Controller, bPaused);
+	UE_LOG(LogBDUI, Log, TEXT("Gameplay %s."), bPaused ? TEXT("paused: the board is frozen, the HUD and the gesture stay live") : TEXT("resumed"));
+}
+
+void UBDUISubsystem::ToggleGameplayPause()
+{
+	SetGameplayPaused(!IsGameplayPaused());
+}
+
+bool UBDUISubsystem::IsGameplayPaused() const
+{
+	const APlayerController* Controller = GetLocalController();
+	return Controller != nullptr && PauseMenu == nullptr && UGameplayStatics::IsGamePaused(Controller);
 }
 
 void UBDUISubsystem::TogglePauseMenu()

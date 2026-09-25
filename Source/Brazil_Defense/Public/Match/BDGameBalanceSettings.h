@@ -97,6 +97,22 @@ public:
 	int32 CandidateInterval = 5;
 
 	/**
+	 * Every this many candidates killed, one more walks out together on a candidate wave:
+	 * 1 + floor(killed / step), each out of a different mouth. With the twenty of the
+	 * regular match down the endless starts sending them in pairs, then threes, and never
+	 * stops growing: the endless is "how far can you hold", never won. 0 keeps them one
+	 * at a time.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "0", UIMin = "0"))
+	int32 CandidateGroupStep = 20;
+
+	/** How many candidates walk out together on a candidate wave, with this many killed so far. */
+	int32 GetCandidateGroupSize(int32 CandidatesKilled) const
+	{
+		return CandidateGroupStep > 0 ? 1 + FMath::Max(0, CandidatesKilled) / CandidateGroupStep : 1;
+	}
+
+	/**
 	 * Seconds the creeps of a candidate's wave wait after he walks out. He is the first
 	 * thing out of the buses on his wave, so the player sees him and can make him the
 	 * priority; walking out in the middle of the horde, he went by unnoticed.

@@ -19,7 +19,9 @@
 #include "HAL/PlatformMisc.h"
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
+#include "Objective/BDObjective.h"
 #include "Objective/BDObjectiveSettings.h"
+#include "Objective/BDObjectiveSubsystem.h"
 #include "Placement/BDPlaceableData.h"
 #include "SkeletalMeshComponentBudgeted.h"
 #include "Placement/BDPlacementComponent.h"
@@ -331,6 +333,8 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				{
 					continue;
 				}
+				// A quarter turn in hand, the way the wheel click gives it: the urn has to keep it.
+				Placement->SetRotationSteps(1);
 				Placement->SetHoveredCellDirect(Cell);
 				if (Placement->IsCurrentPlacementValid() && Placement->TryPlaceAtHovered())
 				{
@@ -341,6 +345,14 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		}
 		Placement->CancelSelection();
 		Check(TEXT("SETUP"), TEXT("the urn goes down"), bPlaced, bPlaced ? UrnCell.ToString() : TEXT("no open cell took it"));
+		if (bPlaced)
+		{
+			const UBDObjectiveSubsystem* Objectives = GetWorld()->GetSubsystem<UBDObjectiveSubsystem>();
+			const AActor* UrnActor = Objectives != nullptr ? Objectives->GetObjective() : nullptr;
+			const float UrnYaw = UrnActor != nullptr ? FRotator::NormalizeAxis(UrnActor->GetActorRotation().Yaw) : -1.0f;
+			Check(TEXT("COLOCACAO"), TEXT("the urn faces the turn the preview had"), FMath::IsNearlyEqual(UrnYaw, 90.0f, 1.0f),
+				FString::Printf(TEXT("yaw %.1f, 90 given"), UrnYaw));
+		}
 		if (!bPlaced)
 		{
 			return false;
@@ -734,6 +746,23 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			FString::Printf(TEXT("gap %lld over %d built, %d levels, %d earned, %d refunded"), Gap, Ledger.PiecesBuilt, Ledger.LevelsBought, Ledger.BribeEarned, Ledger.Refunded));
 		Check(TEXT("PLACAR"), TEXT("blue votes never go down but through the levelling after a parade"), UnexplainedDrops == 0,
 			FString::Printf(TEXT("%d unexplained drop(s), %d levelling(s)"), UnexplainedDrops, LevelDownsSeen));
+
+		// The endless group: with the step brought down to 1, the one fallen so far makes it
+		// two walking out together, each out of a mouth of his own while there are mouths.
+		{
+			UBDGameBalanceSettings* Balance = GetMutableDefault<UBDGameBalanceSettings>();
+			const int32 SavedStep = Balance->CandidateGroupStep;
+			Balance->CandidateGroupStep = 1;
+			const int32 Expected = Balance->GetCandidateGroupSize(Candidates->GetFallenCount());
+			int32 Mouths = 0;
+			const int32 Out = Candidates->SpawnCandidateGroup(TEXT("BD.Test.Regression"), &Mouths);
+			Balance->CandidateGroupStep = SavedStep;
+			const int32 Routed = Waves->GetSpawnPoints().FilterByPredicate([](const FBDSpawnPoint& Point) { return Point.Route.Num() > 0; }).Num();
+			const bool bFormula = Balance->GetCandidateGroupSize(19) == 1 && Balance->GetCandidateGroupSize(20) == 2 && Balance->GetCandidateGroupSize(40) == 3 && Balance->GetCandidateGroupSize(60) == 4;
+			Check(TEXT("CANDIDATO"), TEXT("in the endless the candidates walk out in groups, one more per 20 killed, each out of his own mouth"),
+				bFormula && Expected >= 2 && Out == Expected && Mouths == FMath::Min(Out, Routed),
+				FString::Printf(TEXT("%d of %d out of %d mouth(s), %d routed, formula %s"), Out, Expected, Mouths, Routed, bFormula ? TEXT("ok") : TEXT("off")));
+		}
 
 		// Last, because it ends the match: a candidate at the urn is the defeat.
 		ABDCandidate* Walker = Candidates->SpawnCandidate(TEXT("BD.Test.Regression"));

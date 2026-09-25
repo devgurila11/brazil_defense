@@ -67,6 +67,8 @@ private:
 	void UpdateMoneyCounters();
 	void UpdateWaveLine();
 	void UpdateSpeedButtons();
+	/** The pause button and the paused line, from the UI subsystem. */
+	void UpdatePauseButton();
 	void UpdateMouths();
 	void UpdateDefenderPanel();
 	void UpdatePlacementPanel();
@@ -110,18 +112,24 @@ private:
 	// grow down as new kinds turn up and never show one not met yet. A kill makes only its
 	// own icon pulse, the way a vote does, and a burst of kills is one or two pulses.
 
-	/** One row of a board: an icon and its count. The widgets belong to the tree. */
+	/** One row of a board: an icon with the kind's name under it, and its count. The widgets belong to the tree. */
 	struct FBDKillEntry
 	{
 		FName Type;
 		TObjectPtr<USizeBox> IconBox;
+		TObjectPtr<UTextBlock> Name;
 		TObjectPtr<UTextBlock> Count;
+		/** Whose name the row shows; null for the candidates' row, which reads its name from the table. */
+		TWeakObjectPtr<const UBDEnemyData> Data;
 		int32 Shown = 0;
 		FBDPulse Pulse;
 	};
 
 	/** Adds a row to a board, icon towards the edge of the screen it stands on. */
-	FBDKillEntry MakeKillEntry(UVerticalBox* Column, FName Type, UTexture2D* Icon, bool bIconFirst);
+	FBDKillEntry MakeKillEntry(UVerticalBox* Column, FName Type, UTexture2D* Icon, bool bIconFirst, const UBDEnemyData* Data);
+
+	/** The name under a row's icon, in the current language. */
+	static FText KillEntryName(const FBDKillEntry& Entry);
 
 	/** Reads the tallies, adds the rows of kinds just met, and pulses the rows that went up. */
 	void UpdateKillBoards(float RealDeltaSeconds);
@@ -160,6 +168,9 @@ private:
 
 	/** The refusal of the placement gesture as words. */
 	FText RefusalText(EBDPlacementRefusal Refusal) const;
+
+	UFUNCTION()
+	void HandlePause();
 
 	UFUNCTION()
 	void HandleSpeed1();
@@ -352,6 +363,20 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> SpeedButtonLabels[3];
+
+	/** Before the speeds: the gameplay pause, lit while the board is frozen. */
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> PauseButton;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> PauseButtonLabel;
+
+	/** "PAUSED" under the speeds while the board is frozen, so a still board never reads as a hang. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> PausedLine;
+
+	/** The pause state last shown, so the button is only restyled when it changes. -1 until first shown. */
+	int32 PauseShown = -1;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> MouthsLine;

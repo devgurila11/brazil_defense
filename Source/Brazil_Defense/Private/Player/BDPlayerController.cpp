@@ -17,6 +17,7 @@
 #include "Objective/BDObjectiveSettings.h"
 #include "UI/BDSettingsSave.h"
 #include "UI/BDSettingsSubsystem.h"
+#include "UI/BDUISubsystem.h"
 #include "Engine/GameInstance.h"
 
 ABDPlayerController::ABDPlayerController()
@@ -385,4 +386,21 @@ void ABDPlayerController::SetupInputComponent()
 	InputComponent->BindKey(EKeys::Eight, IE_Pressed, this, &ABDPlayerController::HandleSelectSlot8);
 	InputComponent->BindKey(EKeys::Nine, IE_Pressed, this, &ABDPlayerController::HandleSelectSlot9);
 	InputComponent->BindKey(EKeys::U, IE_Pressed, this, &ABDPlayerController::HandleSelectUrn);
+	InputComponent->BindKey(EKeys::P, IE_Pressed, this, &ABDPlayerController::HandleTogglePause);
+
+	// The gameplay pause freezes the board, not the player: the view and the hand keep
+	// answering, so the defense can be studied and planned while nothing moves.
+	for (FInputKeyBinding& Binding : InputComponent->KeyBindings)
+	{
+		Binding.bExecuteWhenPaused = true;
+	}
+}
+
+void ABDPlayerController::HandleTogglePause()
+{
+	UGameInstance* GameInstance = GetGameInstance();
+	if (UBDUISubsystem* UI = GameInstance != nullptr ? GameInstance->GetSubsystem<UBDUISubsystem>() : nullptr)
+	{
+		UI->ToggleGameplayPause();
+	}
 }

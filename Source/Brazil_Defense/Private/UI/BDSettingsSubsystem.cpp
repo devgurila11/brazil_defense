@@ -243,6 +243,16 @@ void UBDSettingsSubsystem::ApplyAudio(UWorld* World)
 		return;
 	}
 
+	// Kept alive past every map load: see HeldClasses.
+	HeldMix = Mix;
+	for (USoundClass* Class : { Master, Music, Effects })
+	{
+		if (Class != nullptr)
+		{
+			HeldClasses.AddUnique(Class);
+		}
+	}
+
 	// Mute is the master class at zero; the two sliders keep their values underneath it,
 	// so unmuting brings back exactly what was set.
 	const float MasterVolume = Settings->bMuted ? 0.0f : 1.0f;

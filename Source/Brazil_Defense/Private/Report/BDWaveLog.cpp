@@ -6,6 +6,9 @@
 #include "BDLog.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "HAL/PlatformMemory.h"
+#include "UObject/UObjectArray.h"
 #include "HAL/IConsoleManager.h"
 #include "Match/BDMatchManager.h"
 #include "Misc/Paths.h"
@@ -166,6 +169,19 @@ void BDWaveLog::Write(ABDMatchManager& Match, const TCHAR* Ending)
 	AddInt(TEXT("RouteShortest"), RouteShortest);
 	AddInt(TEXT("RouteLongest"), RouteLongest);
 
+	// The weight of the process at the end of the wave, when the board is empty: a curve
+	// that climbs from wave to wave with nothing alive is a leak, one that settles is not.
+	const FPlatformMemoryStats Memory = FPlatformMemory::GetStats();
+	int32 LiveActors = 0;
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		++LiveActors;
+	}
+	AddInt(TEXT("MemUsedMB"), static_cast<int64>(Memory.UsedPhysical / (1024 * 1024)));
+	AddInt(TEXT("MemPeakMB"), static_cast<int64>(Memory.PeakUsedPhysical / (1024 * 1024)));
+	AddInt(TEXT("UObjects"), GUObjectArray.GetObjectArrayNumMinusAvailable());
+	AddInt(TEXT("Actors"), LiveActors);
+
 	Ledger.WaveMark = Now;
 
 	// One line, kept short: the detail is in the file. It still opens the way the old
@@ -181,6 +197,8 @@ void BDWaveLog::Write(ABDMatchManager& Match, const TCHAR* Ending)
 		Now.VotesBlue, Now.VotesBlue - Before.VotesBlue, Now.VotesRed, Now.VotesRed - Before.VotesRed, Now.VotesNull, Now.VotesNull - Before.VotesNull,
 		Now.Funds, Earned + Refunded + Granted, Spent, Board.Defenders, Board.GetAverageLevel(),
 		Now.CreepsKilled - Before.CreepsKilled, Now.CreepsArrived - Before.CreepsArrived, PeakAlive, *Candidate, RouteShortest, RouteLongest);
+	UE_LOG(LogBDMatch, Log, TEXT("Wave %d memory: %llu MB used (peak %llu MB), %d UObjects, %d actors."), Wave,
+		Memory.UsedPhysical / (1024 * 1024), Memory.PeakUsedPhysical / (1024 * 1024), GUObjectArray.GetObjectArrayNumMinusAvailable(), LiveActors);
 	if (Gap != 0)
 	{
 		UE_LOG(LogBDMatch, Warning, TEXT("Wave %d: the money does not close, %lld unaccounted for since the last wave."), Wave, Gap);

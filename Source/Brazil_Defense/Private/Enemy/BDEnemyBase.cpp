@@ -3,6 +3,7 @@
 #include "Enemy/BDEnemyBase.h"
 
 #include "BDLog.h"
+#include "HAL/IConsoleManager.h"
 #include "Animation/AnimSequenceBase.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -19,6 +20,13 @@
 
 namespace BDEnemyPrivate
 {
+	/** Debug: every creep wears its static fallback, to compare the animated body against the cylinder. */
+	static int32 GStaticBodyOnly = 0;
+	static FAutoConsoleVariableRef CVarStaticBodyOnly(
+		TEXT("BD.Enemy.StaticBodyOnly"),
+		GStaticBodyOnly,
+		TEXT("1 makes every creep spawned from now on wear its static mesh instead of the skeletal body (debug, for measuring). 0 (default) as authored."));
+
 	/** Straight segments a cut corner is drawn with. Four already reads as a curve at creep size. */
 	static constexpr int32 CornerSegments = 4;
 
@@ -259,7 +267,7 @@ void ABDEnemyBase::UpdateAnimationRate()
 
 void ABDEnemyBase::ApplyMesh()
 {
-	if (Data != nullptr && !Data->SkeletalMesh.IsNull() && ApplySkeletalMesh())
+	if (Data != nullptr && !Data->SkeletalMesh.IsNull() && BDEnemyPrivate::GStaticBodyOnly == 0 && ApplySkeletalMesh())
 	{
 		return;
 	}
