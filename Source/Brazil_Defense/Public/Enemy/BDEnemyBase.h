@@ -232,6 +232,9 @@ private:
 	/** Keeps the feet of the loop in step with CurrentSpeed, so the creep neither skates nor pedals. */
 	void UpdateAnimationRate();
 
+	/** Counts down to the next thing this creep says or calls, and asks for it when due. */
+	void UpdateVocal(float DeltaSeconds);
+
 	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Enemy")
 	TObjectPtr<UStaticMeshComponent> Mesh;
 
@@ -285,6 +288,9 @@ private:
 	float SpeedBreathFrac = 0.0f;
 	float SpeedBreathPeriod = 0.0f;
 	float SpeedBreathPhase = 0.0f;
+
+	/** Seconds to its next vocalization, dilated like the walk. Negative for a creep that never makes a sound. */
+	float VocalCountdown = -1.0f;
 
 	/** Seconds this creep has been walking, for the breath. Dilated like everything else. */
 	float Age = 0.0f;

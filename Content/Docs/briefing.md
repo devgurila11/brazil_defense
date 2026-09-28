@@ -1,177 +1,101 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-09-25 19:10**
+**Versão: 2026-09-26 10:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Ajustes de UI/controle + dois diagnósticos
+# Som dos Militantes (jumentos): dois Sound Cues + casco sincronizado
 
-Coisas notadas jogando após o último push (89d375e). Alguns são para
-fazer, outros são para o Claude do terminal INVESTIGAR e explicar
-antes de mexer — marcados como DIAGNÓSTICO.
+Dar voz e passos à horda de jumentos. O usuário importa os áudios na
+engine; o terminal monta os Cues e os disparos. Estrutura pensada para
+REUSO: falas e efeitos em Cues SEPARADOS, para reaproveitar em outros
+NPCs/personagens no futuro só ajustando parâmetros (ex: pitch da voz).
 
----
-
-## 1. Nome do tipo no placar de abates
-
-- Abaixo do ícone do jumento no placar lateral, mostrar o nome do
-  tipo: "Militantes".
-- Vem de um DisplayName no DataAsset do inimigo (UBDEnemyData), para
-  cada tipo futuro trazer o seu nome. Preencher o do jumento com
-  "Militantes".
-- Abaixo do ícone do candidato (placeholder à direita), mostrar
-  "Candidatos".
-- Tudo FText (localizável), só na UI — não sobre o inimigo no jogo.
+Assets que o usuário vai importar (confirmar os nomes/caminhos reais
+quando ele avisar que importou):
+- Falas neutras (várias, vozes variadas) — humor do "militante
+  fanático genérico", sem mirar lado político.
+- Relinchos / rosnados — efeitos prontos.
+- Casco batendo no chão — efeito pronto (1-2 variações).
 
 ---
 
-## 2. Botão de pause
+## 1. Cue de FALAS (separado, reutilizável)
 
-- Adicionar um botão de PAUSE no HUD (e uma tecla, ex: P ou Esc) para
-  o jogador parar o jogo e avaliar a estratégia com tudo congelado.
-- Pausa tudo: ondas, movimento, animação, timers. O HUD continua
-  visível e legível.
-- Despausar retoma de onde parou. Não confundir com o menu de
-  derrota/vitória — é pause de gameplay.
-- Confirmar que o pause não quebra a colocação/preview (deve dar para
-  olhar, e talvez planejar, com o jogo parado).
+- Sound Cue próprio só com as falas: nó Random sorteando entre os
+  clipes de voz.
+- Parâmetro de PITCH exposto/fácil de ajustar no Cue — para reusar em
+  outro personagem engrossando/afinando a voz sem refazer o Cue.
+- Modulação leve de pitch aleatória (ex: ±5%) para as repetições não
+  soarem idênticas.
+- Este Cue é o que será reaproveitado; manter genérico e limpo.
 
----
+## 2. Cue de EFEITOS (separado)
 
-## 3. Rotação da urna não respeita o giro
+- Sound Cue próprio com relinchos e rosnados: nó Random.
+- Separado das falas de propósito — efeitos animais ficam só para os
+  bichos; as falas viajam para outros personagens.
+- Modulação leve de pitch aleatória também.
 
-- Ao posicionar a urna, girar com o clique da roda do mouse deveria
-  mudar a direção que ela encara. Mas ao fixar, ela vira para uma
-  direção pré-fixada, ignorando o giro do preview.
-- É o mesmo tipo de bug de rotação já visto nas peças: o yaw do
-  preview não está sendo aplicado ao ator no spawn. A urna
-  provavelmente tem uma orientação forçada no código.
-- Corrigir: o yaw escolhido no preview (clique da roda) vira o yaw da
-  urna ao ser fixada.
+## 3. Disparo das vocalizações (falas + efeitos) — evitar o enxame
 
----
+Cada militante solta uma vocalização de tempos em tempos, NÃO
+constante, e o jogo limita quantas tocam juntas.
 
-## 4. DIAGNÓSTICO — ponto do grid vermelho para separador mesmo vazio
+- Por NPC: timer com intervalo ALEATÓRIO entre disparos (ex: 8 a 20s,
+  expor em settings). Ao disparar, sorteia entre falar (Cue de Falas)
+  ou fazer efeito (Cue de Efeitos) — proporção ajustável (ex: 30%
+  fala, 70% relincho/rosnado, para não virar tagarelice).
+- GLOBAL (concurrency): Sound Concurrency limitando o total de
+  vocalizações simultâneas no jogo todo (ex: máx 3-4). Mesmo com 50
+  militantes, só 3-4 vocalizam ao mesmo tempo — vira "murmuração de
+  multidão", não enxame. Cortar a mais antiga quando estourar.
+- Este é o ponto que faz ou quebra o resultado: sem o concurrency,
+  uma horda densa vira parede de falas.
 
-Existe um ponto onde, mesmo sem nada posicionado ali, o preview do
-separador de fila fica vermelho (recusado).
+## 4. Casco sincronizado com a passada (via animação, não aleatório)
 
-Investigar e explicar ANTES de mexer:
+- O som de casco toca no MOMENTO em que o pé toca o chão, sincronizado
+  com a animação de corrida — NÃO em timer aleatório.
+- Mecanismo: Anim Notify na animação Run Forward, nos frames de
+  contato de cada pé (2 ou 4 por ciclo). O Notify dispara o som do
+  casco.
+- O terminal tenta identificar os frames de contato. Se não conseguir
+  (headless não visualiza bem a animação), o usuário marca os Anim
+  Notifies no editor de animação — deixar essa parte pronta para ele
+  plugar o som no Notify.
+- Casco também com leve modulação de pitch para os passos não soarem
+  idênticos.
+- O casco NÃO passa pelo concurrency das vocalizações (é passo, não
+  voz) — mas pode ter um concurrency próprio mais alto se a horda
+  densa fizer muito casco junto (avaliar).
 
-- Separador é em ARESTA. Aquela aresta, se bloqueada, fecharia o único
-  caminho da horda naquele trecho? Se sim, o vermelho é o
-  WouldBlockPath recusando corretamente (não é bug).
-- Ou é um ponto aberto, com caminho de sobra ao redor, que deveria
-  aceitar e não aceita? Aí é bug.
-- Logar o motivo da recusa naquele ponto (o EBDPlacementRefusal já
-  existe) e dizer qual é.
+## 5. Áudio espacial (como os outros sons do jogo)
 
-Não consertar até saber se é a validação funcionando ou bug real.
-
----
-
-## 5. DIAGNÓSTICO — votos azuis não batem com jumentos mortos
-
-Números observados: votos AZUIS 772.000, VERMELHOS 18.000, jumentos
-mortos 21.491. A conta "mortos menos passados" não bate com o placar.
-
-772.000 / 21.491 = ~36 votos por jumento morto. Suspeita: o voto azul
-é por HP (bBlueVotesByHealth), não por contagem de corpos — então o
-placar de abates conta CORPOS e o placar de votos soma HP eliminado.
-São métricas diferentes de propósito, e não batem por subtração.
-
-Investigar e confirmar:
-
-- O voto azul é por HP do inimigo morto, ou por contagem?
-- O voto vermelho é por HP de quem passa? Candidato que passa dá o HP
-  dele (enorme) ao vermelho?
-- Matar candidato dá voto? (deve ser NÃO.) Conta como "morte" em
-  algum contador?
-- Se for tudo por HP: NÃO é bug, os números estão certos medindo
-  coisas diferentes. Nesse caso, AVALIAR se vale deixar isso claro na
-  UI — ex: o placar de abates rotulado como corpos, o de votos como
-  "influência"/votos, para o jogador não estranhar a discrepância.
-- Se NÃO for por HP e os números realmente não fecham, aí é bug de
-  contagem — reportar onde.
-
-Explicar a lógica atual antes de propor qualquer mudança.
+- Todos os Cues 3D, tocados na posição do NPC.
+- Atenuação por CÂMERA (listener na câmera, como já configurado):
+  militante longe/zoom afastado = quase inaudível; perto = claro.
+- Roteados para SC_Effects (o slider de efeitos e o mudo geral
+  controlam eles).
 
 ---
 
-## 6. DIAGNÓSTICO — consumo de memória crescente
+## Reuso futuro (deixar preparado)
 
-Jogando, o consumo de memória parece crescer conforme as ondas
-avançam (observado até a onda 150). Investigar antes de mexer:
-
-1. A memória sobe durante a onda e VOLTA a cair quando os creeps
-   morrem / o tabuleiro esvazia entre ondas? Ou só sobe e nunca desce?
-   - Sobe e desce = normal (pico da onda, mais creeps vivos).
-   - Só sobe, nunca desce = LEAK, sério numa partida de 150 ondas.
-2. Se for leak: checar se o creep (jumento skeletal) libera TUDO ao
-   morrer — a instância de animação, o material dinâmico, o physics
-   asset (foi criado na importação, um corpo por creep), o ator em si.
-3. O leak começou com o jumento skeletal ou já existia com os
-   cilindros? (o skeletal animado é bem mais pesado; suspeito
-   principal.)
-4. Rodar simulação longa (ex: 50-100 ondas) medindo memória por onda.
-   Se a curva só cresce sem platô, confirma o leak. Se estabiliza
-   entre ondas, é normal.
-
-Reportar: a memória estabiliza entre ondas ou cresce sem parar? E onde
-vaza, se for o caso. Não consertar até saber.
-
-Nota de contexto: o teto de onda sem evoluir nada está consistente em
-~150 no Easy (dois testes seguidos). É a linha de base do
-posicionamento puro — útil como referência, e também relevante aqui:
-se a memória cresce a ponto de travar antes disso, pode estar
-limitando o teto por vazamento, não por dificuldade.
-
-## 7. Escalada de candidatos no endless (saem em grupo)
-
-Hoje sai 1 candidato por onda de candidato (a cada 5 ondas). No
-endless (depois dos 20 padrão), isso fica esparso e o fim de jogo
-perde intensidade. Escalar quantos saem JUNTOS conforme o total de
-candidatos MORTOS cresce:
-
-- Até 20 candidatos mortos: 1 por vez (padrão atual).
-- Passou de 20 mortos: 2 candidatos saem juntos.
-- Passou de 40 mortos: 3 juntos.
-- Passou de 60: 4 juntos. E assim por diante (+1 a cada 20 mortes).
-
-Regra: NumCandidatosJuntos = 1 + floor(CandidatosMortos / 20).
-
-- Eles saem JUNTOS (vários candidatos-chefe andando ao mesmo tempo),
-  não é mudar a frequência — continua nas ondas de candidato, mas com
-  mais de um por vez.
-- Cada candidato do grupo sai de uma boca DIFERENTE (não amontoar no
-  mesmo respawn). Sortear bocas distintas para eles — atacam por
-  frentes diferentes ao mesmo tempo, obrigando a dividir a defesa.
-  Se houver menos bocas ativas que candidatos, distribuir o mais
-  espalhado possível (no máximo repetir boca quando não houver
-  alternativa).
-- Isso torna o endless progressivamente brutal, de propósito — é o
-  que faz o endless ser "até onde você aguenta", nunca vencível.
-- Interage com o retorno dos caídos (quando o vermelho vira, os
-  mortos voltam): aceito que isso possa virar uma parede de
-  candidatos no endless profundo. É intencional.
-- Expor o passo (20 mortes por +1 candidato) em settings.
-
-Confirmar que a barra de candidatos no HUD (a lista) aguenta vários
-vivos ao mesmo tempo — ela já foi feita para isso, mas com 4-5 juntos
-mais o retorno, testar o "+N a caminho".
+- O Cue de Falas deve ser fácil de duplicar/reaproveitar para outro
+  personagem só trocando o pitch e, se quiser, o conjunto de clipes.
+- Estruturar para que um novo NPC vocal precise de pouco: apontar o
+  Cue, ajustar pitch, definir intervalo.
 
 ## Entregável
 
-- "Militantes" e "Candidatos" abaixo dos ícones no placar.
-- Botão de pause funcional (+ tecla).
-- Rotação da urna respeitando o giro do preview.
-- Diagnóstico do ponto vermelho: dizer se é validação correta ou bug.
-- Diagnóstico dos votos vs abates: explicar a lógica (HP vs contagem)
-  e dizer se é comportamento correto ou bug.
-- Diagnóstico de memória: dizer se estabiliza entre ondas ou vaza, e
-  onde vaza se for o caso.
-- Escalada de candidatos: +1 candidato junto a cada 20 mortos, saindo
-  em grupo no endless.
-- Os itens 1-3 são para fazer; os 4-6 são para investigar e explicar
-  primeiro (só corrigir se for bug de verdade).
+- Cue de Falas e Cue de Efeitos, separados, com Random e pitch
+  ajustável.
+- Vocalização por NPC com timer aleatório + concurrency global (sem
+  enxame).
+- Casco sincronizado por Anim Notify (terminal tenta; usuário marca se
+  preciso).
+- Tudo 3D, atenuação por câmera, SC_Effects.
 - BD.Test.Regression passa; compilar os dois alvos.
+- Testar numa onda densa e confirmar que soa como multidão, não
+  enxame — reportar quantas vocalizações simultâneas em pico.

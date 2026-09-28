@@ -7,6 +7,7 @@
 #include "Animation/AnimSequenceBase.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Enemy/BDCreepSoundSubsystem.h"
 #include "Enemy/BDEnemyData.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
@@ -26,6 +27,13 @@ namespace BDEnemyPrivate
 		TEXT("BD.Enemy.StaticBodyOnly"),
 		GStaticBodyOnly,
 		TEXT("1 makes every creep spawned from now on wear its static mesh instead of the skeletal body (debug, for measuring). 0 (default) as authored."));
+
+	/** Debug: the pose of every creep ticks unseen too, so the step notifies fire in a headless run. */
+	static int32 GAlwaysTickPose = 0;
+	static FAutoConsoleVariableRef CVarAlwaysTickPose(
+		TEXT("BD.Enemy.AlwaysTickPose"),
+		GAlwaysTickPose,
+		TEXT("1 makes every creep spawned from now on tick its animation even when not rendered (debug: headless runs render nothing, so no step would sound). 0 (default) only when seen."));
 
 	/** Straight segments a cut corner is drawn with. Four already reads as a curve at creep size. */
 	static constexpr int32 CornerSegments = 4;
@@ -143,6 +151,12 @@ void ABDEnemyBase::InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDC
 	SpeedBreathPeriod = FMath::FRandRange(BDEnemyPrivate::MinBreathSeconds, BDEnemyPrivate::MaxBreathSeconds);
 	SpeedBreathPhase = FMath::FRandRange(0.0f, UE_TWO_PI);
 
+	// The first vocalization anywhere up to a full interval away, so a wave pouring out of
+	// a bus does not bray in unison.
+	VocalCountdown = Data != nullptr && Data->IsVocal()
+		? FMath::FRandRange(0.0f, FMath::Max(Data->VocalIntervalMin, Data->VocalIntervalMax))
+		: -1.0f;
+
 	ApplyMesh();
 	SetPath(InPath);
 
@@ -229,6 +243,10 @@ bool ABDEnemyBase::ApplySkeletalMesh()
 	{
 		// Starts frozen: the creep spawns at rest and the rate follows it up to speed.
 		// Each creep starts at its own point of the loop, or a wave would march in step.
+		if (BDEnemyPrivate::GAlwaysTickPose != 0)
+		{
+			SkeletalBody->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPose;
+		}
 		SkeletalBody->PlayAnimation(Animation, /*bLooping*/ true);
 		SkeletalBody->SetPosition(FMath::FRandRange(0.0f, Animation->GetPlayLength()), /*bFireNotifies*/ false);
 		SkeletalBody->SetPlayRate(0.0f);
@@ -606,6 +624,7 @@ void ABDEnemyBase::Tick(const float DeltaSeconds)
 
 	SetActorLocation(Location);
 	UpdateAnimationRate();
+	UpdateVocal(DeltaSeconds);
 
 	const FRotator WantedRotation = Direction.GetSafeNormal2D().ToOrientationRotator();
 	SetActorRotation(Settings.TurnRate > 0.0f
@@ -616,6 +635,28 @@ void ABDEnemyBase::Tick(const float DeltaSeconds)
 	{
 		Arrive();
 	}
+}
+
+void ABDEnemyBase::UpdateVocal(const float DeltaSeconds)
+{
+	if (VocalCountdown < 0.0f)
+	{
+		return;
+	}
+	VocalCountdown -= DeltaSeconds;
+	if (VocalCountdown > 0.0f)
+	{
+		return;
+	}
+
+	// Asked whatever the budget: the budget is the sound subsystem's to keep, and a creep
+	// that stayed quiet because the board was loud would only speak up all together later.
+	if (UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(this))
+	{
+		Sounds->PlayVocal(*this);
+	}
+	const float Low = FMath::Max(0.5f, Data->VocalIntervalMin);
+	VocalCountdown = FMath::FRandRange(Low, FMath::Max(Low, Data->VocalIntervalMax));
 }
 
 float ABDEnemyBase::GetBaseMoveSpeed() const

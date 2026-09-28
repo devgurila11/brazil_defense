@@ -11,6 +11,11 @@
 #include "Enemy/BDEnemyData.h"
 #include "Engine/Engine.h"
 #include "Engine/SkeletalMesh.h"
+#include "Enemy/BDAnimNotify_Footstep.h"
+#include "UI/BDUISettings.h"
+#include "Sound/SoundBase.h"
+#include "Sound/SoundClass.h"
+#include "Animation/AnimSequenceBase.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
@@ -645,6 +650,35 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				bWorn && Height >= 150.0f * Scale && Height <= 250.0f * Scale,
 				FString::Printf(TEXT("%s, %s, %.0f cm tall at scale %.2f, %.0f-%.0f accepted"), Body != nullptr ? *GetNameSafe(Body->GetSkeletalMeshAsset()) : TEXT("no body"),
 					Body != nullptr ? *GetNameSafe(Body->GetMaterial(0)) : TEXT("-"), Height, Scale, 150.0f * Scale, 250.0f * Scale));
+
+			// Its sound: the words and the call through the effects class, so the options
+			// own them, and a step on its loop wherever a foot lands. Sound itself cannot be
+			// heard in a -nosound run; the wiring can be checked.
+			if (WaveEnemy->IsVocal() || !WaveEnemy->FootstepSound.IsNull())
+			{
+				const USoundClass* Effects = UBDUISettings::Get().EffectsSoundClass.LoadSynchronous();
+				int32 Routed = 0;
+				int32 Sounds = 0;
+				for (const TSoftObjectPtr<USoundBase>& Each : { WaveEnemy->SpeechSound, WaveEnemy->CallSound, WaveEnemy->FootstepSound })
+				{
+					if (const USoundBase* Sound = Each.LoadSynchronous())
+					{
+						++Sounds;
+						Routed += Sound->GetSoundClass() == Effects ? 1 : 0;
+					}
+				}
+				int32 Steps = 0;
+				if (const UAnimSequenceBase* Loop = WaveEnemy->MoveAnimation.LoadSynchronous())
+				{
+					for (const FAnimNotifyEvent& Event : Loop->Notifies)
+					{
+						Steps += Cast<UBDAnimNotify_Footstep>(Event.Notify) != nullptr ? 1 : 0;
+					}
+				}
+				Check(TEXT("SOM"), TEXT("a vocal creep's sounds go through the effects class, and its loop steps where the feet land"),
+					Sounds > 0 && Routed == Sounds && (WaveEnemy->FootstepSound.IsNull() || Steps > 0),
+					FString::Printf(TEXT("%d of %d sounds on %s, %d step notifies on the loop"), Routed, Sounds, *GetNameSafe(Effects), Steps));
+			}
 		}
 		break;
 	}

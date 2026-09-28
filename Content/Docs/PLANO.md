@@ -263,6 +263,42 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-28 — (id no próximo commit)** (desde 3e27feb):
+  - **Som dos militantes (briefing 09-26).** Três Sound Cues em
+    `/Game/BD/Audio/`, todos Random sem repetição → Modulator → SC_Effects:
+    `SCue_Militante_Falas` (25 falas `VO_Militante_01..25`, ±5% de pitch;
+    reutilizável em outro personagem pelo Pitch Multiplier do Cue ou pelo
+    `VoicePitch` do data asset), `SCue_Jumento_Efeitos` (4 zurros `ANML*`,
+    ±5%) e `SCue_Jumento_Casco` (2 batidas recortadas do `ANMLHors`, ±6%
+    de pitch, até -15% de volume).
+  - **Falas em lote:** 25 MP3 da ElevenLabs → WAV 16-bit 44,1 kHz mono em
+    `Content/audio/Militante/`, importados; os MP3 originais em
+    `SourceAudio/Militante_mp3/` (fora do Content, para o editor não
+    reimportar).
+  - **Vocalização por creep:** `UBDEnemyData` ganhou SpeechSound,
+    CallSound, SpeechShare (0,3), VoicePitch, VocalIntervalMin/Max (8/20 s)
+    e FootstepSound; `ABDEnemyBase::UpdateVocal` sorteia o próximo
+    intervalo. `UBDCreepSoundSubsystem` toca tudo em 3D com o listener na
+    câmera; teto global de vozes (`VoiceMaxConcurrent` = 5 no
+    `DefaultGame.ini`), cortando a mais distante e, empatado, a mais
+    antiga (pedido do usuário). Além do alcance (voz 320 m, casco 160 m)
+    o som é mudo e nem é disparado. Ajustes em Project Settings > Brazil
+    Defense - Creep Sound (`UBDCreepSoundSettings`).
+  - **Casco por Anim Notify:** `UBDAnimNotify_Footstep` ("BD Footstep")
+    nos quadros 9 e 23 de 27 do Run_Forward (contatos medidos pelos ossos
+    dos pés; o rig é bípede). Concorrência própria de 10, cortando a mais
+    antiga.
+  - **Ferramentas:** commandlet `-run=BDBuildSoundCue` (monta ou refaz um
+    Cue a partir de uma pasta de waves); `BD.Sound.Stats [reset]`,
+    `BD.Sound.Mute`, CVar `BD.Enemy.AlwaysTickPose` para testar headless.
+    Regressão ganhou o check SOM: 32/32.
+  - **Medição** (≈200 jumentos, câmera perto da urna, 60 s, teto 5):
+    30% do tempo com 5 vozes, 38% com 4, 21% com 3; picos de 6–7 somam
+    menos de 0,5 s (sobreposição de quadro no corte). Com zoom afastado
+    só ~15% das vozes ficam ao alcance e nenhum casco.
+  - Fora do commit: `Content/imgs/`, `Content/Docs/Brazil_Defense.log`,
+    `Config/DefaultEditor.ini`.
+
 - **2026-09-25 (noite) — ab31991** (desde 00a3b8f):
   - **Nome do tipo no placar de abates.** Embaixo do ícone de cada linha
     vai o nome do tipo: `BDLoc::EnemyName` lê `Enemy.<asset>` da tabela

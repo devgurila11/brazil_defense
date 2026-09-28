@@ -10,6 +10,7 @@ class ABDEnemyBase;
 class UAnimSequenceBase;
 class UMaterialInterface;
 class USkeletalMesh;
+class USoundBase;
 class UStaticMesh;
 class UTexture2D;
 
@@ -108,6 +109,45 @@ public:
 	/** Face of that kind on the kill board. The first creep of a kind killed brings its icon. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Kill Board", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
 	TSoftObjectPtr<UTexture2D> KillIcon;
+
+	//~ Sound ------------------------------------------------------------------
+	// A creep is vocal when it has SpeechSound, CallSound or both: now and then, on a timer
+	// of its own, it says something or makes its noise. How many creeps may sound at once
+	// over the whole board is not here but in UBDCreepSoundSettings. Another vocal NPC only
+	// needs these filled: the cues, a pitch, an interval.
+
+	/** Words. A cue meant to travel between characters: VoicePitch makes it someone else. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
+	TSoftObjectPtr<USoundBase> SpeechSound;
+
+	/** The creature's own noise, kept apart from the words so the words can be reused on a creature that makes another. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
+	TSoftObjectPtr<USoundBase> CallSound;
+
+	/** Share of the vocalizations that are words rather than the call. Low, or the horde chatters. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float SpeechShare = 0.3f;
+
+	/** Pitch the words are played at: below 1 deepens the voice, above 1 thins it. The call is left alone. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0.25", ClampMax = "4.0", UIMin = "0.5", UIMax = "2.0"))
+	float VoicePitch = 1.0f;
+
+	/** Seconds between two vocalizations of one creep, drawn anew each time inside this range. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0.5", UIMin = "0.5", ForceUnits = "s"))
+	float VocalIntervalMin = 8.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0.5", UIMin = "0.5", ForceUnits = "s"))
+	float VocalIntervalMax = 20.0f;
+
+	/**
+	 * A step, played by the BD Footstep notifies placed on MoveAnimation at the frames a
+	 * foot lands, so it keeps time with the legs at any speed. No notify, no step.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
+	TSoftObjectPtr<USoundBase> FootstepSound;
+
+	/** Whether this creep ever speaks or calls. */
+	bool IsVocal() const { return !SpeechSound.IsNull() || !CallSound.IsNull(); }
 
 	/** KillType, or the asset's own name when it names none. */
 	FName GetKillType() const { return KillType.IsNone() ? GetFName() : KillType; }
