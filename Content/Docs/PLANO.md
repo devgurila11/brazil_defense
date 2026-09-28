@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-28 — (id no próximo commit)** (desde 3e27feb):
+- **2026-09-28 — 662d262** (desde 3e27feb):
   - **Som dos militantes (briefing 09-26).** Três Sound Cues em
     `/Game/BD/Audio/`, todos Random sem repetição → Modulator → SC_Effects:
     `SCue_Militante_Falas` (25 falas `VO_Militante_01..25`, ±5% de pitch;
