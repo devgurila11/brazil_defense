@@ -300,6 +300,18 @@ mudou desde o push anterior.
     queda com baque).
   - Fora do commit: `Content/imgs/`, `Content/Docs/Brazil_Defense.log`,
     `Config/DefaultEditor.ini`.
+  - **Onde paramos (fim do dia 28, noite):**
+    - Som do jumento aprovado pelo usuário ("ficou demais"): falas,
+      zurros, casco, grito, queda e baque. Os números (volumes, alcances,
+      tetos em Creep Sound; queda e corpos em Waves > Death) ficam como
+      estão até alguém ouvir algo a mudar.
+    - Se reimportar as quedas do FBX, escolher `SKEL_Jumento` na janela:
+      as opções guardadas ainda citam o esqueleto antigo.
+    - Os `S_Jumento_Tombo` agora são o baque; não sobrou som solto sem uso
+      na pasta do jumento.
+    - Continuam abertas as checagens na tela do dia 25 (pausa, nomes no
+      placar, urna, candidatos em grupo, memória numa partida longa), se
+      ainda não foram vistas.
 
 - **2026-09-28 — 662d262** (desde 3e27feb):
   - **Som dos militantes (briefing 09-26).** Três Sound Cues em
