@@ -7,6 +7,7 @@
 #include "Animation/AnimSequenceBase.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Enemy/BDCreepCorpse.h"
 #include "Enemy/BDCreepSoundSubsystem.h"
 #include "Enemy/BDEnemyData.h"
 #include "Engine/SkeletalMesh.h"
@@ -672,6 +673,11 @@ void ABDEnemyBase::Arrive()
 	}
 	bFinished = true;
 
+	// Where the arrival really happened, for anyone wondering why the urn rang: the last
+	// waypoint is the urn itself.
+	UE_LOG(LogBDWave, Verbose, TEXT("%s arrives %.0f cm from the urn."),
+		*GetName(), Waypoints.Num() > 0 ? FVector::Dist2D(GetActorLocation(), Waypoints.Last()) : -1.0f);
+
 	if (UBDWaveSubsystem* Waves = GetWaves())
 	{
 		Waves->NotifyEnemyArrived(this);
@@ -737,6 +743,14 @@ void ABDEnemyBase::Die()
 	{
 		Waves->NotifyEnemyDied(this);
 	}
+
+	// The show of the death, after the game is done with it: the cry and a body left to
+	// fall. The creep itself goes now, so nothing waits on either.
+	if (UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(this))
+	{
+		Sounds->PlayDeath(*this);
+	}
+	ABDCreepCorpse::SpawnFrom(*this);
 
 	Destroy();
 }

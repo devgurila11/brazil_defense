@@ -263,6 +263,44 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-28 (noite) — (id no próximo commit)** (desde 735d0e1):
+  - **Casco mudo era bug do recorte.** Os `SFX_Jumento_Casco` de 662d262
+    eram silêncio puro (no ffmpeg o `-ss` veio depois do `-i` e o fade-out
+    zerou o clipe). Refeitos como `S_Jumento_Casco_01/02` com compressão e
+    ganho (pico -2,4 dBFS). Casco agora com volume 1, alcance 8000+22000 cm
+    e teto 12 cortando o mais distante. Com render real (`-RenderOffScreen`,
+    sem CVar de debug): 4.935 passos em 30 s.
+  - **Vozes 60/40.** `SpeechShare` 0,6. As 25 falas foram normalizadas
+    (loudnorm -11 LUFS, pico máx -1,1 dBFS): ≈+8 dB em média, sem estourar;
+    dobrar por volume passaria de 0 dBFS. `SpeechVolume` 1,0 e
+    `CallVolume` 0,7 em Creep Sound para fechar o equilíbrio de ouvido.
+  - **Morte em três camadas.** Grito (`SCue_Jumento_Morte`, 8 sons, teto 5
+    farthest-first), queda (`ABDCreepCorpse`: corpo só visual, sem
+    colisão, creep destruído no instante do abate, uma de 4 quedas
+    `A_Jumento_Death_01..04` a 1,5x, afunda 0,4 s, no máximo 40 deitados)
+    e baque (`SCue_Jumento_Tombo`, 4 sons, `UBDAnimNotify_BodyFall` no
+    quadro do impacto de cada queda: 27, 33, 64, 68; teto 5). KillAll de
+    189: 40 caem, 149 afundam na hora, chão limpo em ~3 s; 189 gritos e
+    20 baques pedidos, 5 de cada no máximo.
+  - **Urna (diagnóstico):** o som só toca em `AddVotesRed` vindo de
+    `NotifyEnemyArrived`; nivelamento e load não tocam. 292 chegadas
+    medidas, todas a ≤40 cm da urna. Nada mudado; o log Verbose de chegada
+    agora traz a distância.
+  - **Nomes limpos.** Sons do jumento em `/Game/audio/Jumento/`
+    (`S_Jumento_Zurro/Casco/Morte/Tombo_NN`); originais em
+    `SourceAudio/Jumento_originais` e `SourceAudio/Urna`. Animações
+    `A_Jumento_Run` e `A_Jumento_Death_01..04`; malha, esqueleto e physics
+    viraram `SKM_Jumento`, `SKEL_Jumento`, `PHYS_Jumento` (em `Mesh/`) e a
+    estática sem uso `SM_Jumento`, renomeados pela ferramenta do editor,
+    referências conferidas numa sessão nova. Resta o texto das opções de
+    importação FBX das quedas citando o esqueleto antigo (só vale para
+    reimportar).
+  - `BD.Sound.Stats` conta mortes, baques e corpos; `BD.Sound.LogSteps`.
+    Regressão 33/33 (novos: queda sem colisão e creep fora na hora; cada
+    queda com baque).
+  - Fora do commit: `Content/imgs/`, `Content/Docs/Brazil_Defense.log`,
+    `Config/DefaultEditor.ini`.
+
 - **2026-09-28 — 662d262** (desde 3e27feb):
   - **Som dos militantes (briefing 09-26).** Três Sound Cues em
     `/Game/BD/Audio/`, todos Random sem repetição → Modulator → SC_Effects:

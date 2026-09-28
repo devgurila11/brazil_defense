@@ -6,6 +6,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "BDCreepSoundSubsystem.generated.h"
 
+class ABDCreepCorpse;
 class ABDEnemyBase;
 class UAudioComponent;
 class USoundAttenuation;
@@ -55,6 +56,12 @@ public:
 	/** A foot of the creep landed. False when nothing was played. */
 	bool PlayFootstep(const ABDEnemyBase& Creep);
 
+	/** The creep was killed: its death cry, at the spot, under the death budget. False when nothing was played. */
+	bool PlayDeath(const ABDEnemyBase& Creep);
+
+	/** A body hit the ground: its thud, at the spot, under the fall budget. False when nothing was played. */
+	bool PlayBodyFall(const ABDCreepCorpse& Corpse);
+
 	/** Voices audible right now. Drops the finished ones as it counts. */
 	int32 CountActiveVoices();
 
@@ -70,6 +77,10 @@ public:
 	int32 GetVoicesStarted() const { return VoicesStarted; }
 	int32 GetStepsRequested() const { return StepsRequested; }
 	int32 GetStepsPlayed() const { return StepsPlayed; }
+	int32 GetDeathsRequested() const { return DeathsRequested; }
+	int32 GetDeathsPlayed() const { return DeathsPlayed; }
+	int32 GetFallsRequested() const { return FallsRequested; }
+	int32 GetFallsPlayed() const { return FallsPlayed; }
 
 	/** Seconds spent with exactly N voices sounding, by N. Tells a real crowd from a frame of overlap. */
 	const TArray<float>& GetSecondsAtCount() const { return SecondsAtCount; }
@@ -85,6 +96,12 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<USoundConcurrency> FootstepConcurrency;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USoundConcurrency> DeathConcurrency;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USoundConcurrency> BodyFallConcurrency;
 
 	UPROPERTY(Transient)
 	TObjectPtr<USoundAttenuation> VoiceAttenuation;
@@ -103,4 +120,8 @@ private:
 	int32 VoicesStarted = 0;
 	int32 StepsRequested = 0;
 	int32 StepsPlayed = 0;
+	int32 DeathsRequested = 0;
+	int32 DeathsPlayed = 0;
+	int32 FallsRequested = 0;
+	int32 FallsPlayed = 0;
 };

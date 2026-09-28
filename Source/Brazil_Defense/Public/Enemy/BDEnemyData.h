@@ -83,6 +83,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "SkeletalMesh != nullptr"))
 	TSoftObjectPtr<UAnimSequenceBase> MoveAnimation;
 
+	/**
+	 * Falls played on SkeletalMesh when the creep is killed, one drawn at random. Show only:
+	 * the creep is out of the game the instant it dies, and a body is left behind to play
+	 * the fall and sink away (ABDCreepCorpse). Empty: the creep just vanishes.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "SkeletalMesh != nullptr"))
+	TArray<TSoftObjectPtr<UAnimSequenceBase>> DeathAnimations;
+
 	/** Yaw added to the body so its front faces along the route. A Mixamo import faces +Y and wants -90. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (ForceUnits = "deg"))
 	float MeshYaw = 0.0f;
@@ -124,9 +132,12 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
 	TSoftObjectPtr<USoundBase> CallSound;
 
-	/** Share of the vocalizations that are words rather than the call. Low, or the horde chatters. */
+	/**
+	 * Share of the vocalizations that are words rather than the call. The words are the
+	 * charm; the budget in UBDCreepSoundSettings is what keeps the horde from chattering.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
-	float SpeechShare = 0.3f;
+	float SpeechShare = 0.6f;
 
 	/** Pitch the words are played at: below 1 deepens the voice, above 1 thins it. The call is left alone. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0.25", ClampMax = "4.0", UIMin = "0.5", UIMax = "2.0"))
@@ -145,6 +156,18 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
 	TSoftObjectPtr<USoundBase> FootstepSound;
+
+	/** Cry at the moment of the kill, at the spot, under the death budget of UBDCreepSoundSettings. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
+	TSoftObjectPtr<USoundBase> DeathSound;
+
+	/**
+	 * The thud of the body hitting the ground, played by the BD Body Fall notifies placed on
+	 * the DeathAnimations at the frame of the impact. Third layer of a kill, after the cry
+	 * and the fall.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
+	TSoftObjectPtr<USoundBase> BodyFallSound;
 
 	/** Whether this creep ever speaks or calls. */
 	bool IsVocal() const { return !SpeechSound.IsNull() || !CallSound.IsNull(); }

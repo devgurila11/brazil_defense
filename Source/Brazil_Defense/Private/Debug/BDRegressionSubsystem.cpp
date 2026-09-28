@@ -11,7 +11,10 @@
 #include "Enemy/BDEnemyData.h"
 #include "Engine/Engine.h"
 #include "Engine/SkeletalMesh.h"
+#include "Enemy/BDAnimNotify_BodyFall.h"
 #include "Enemy/BDAnimNotify_Footstep.h"
+#include "Enemy/BDCreepCorpse.h"
+#include "EngineUtils.h"
 #include "UI/BDUISettings.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundClass.h"
@@ -659,7 +662,7 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				const USoundClass* Effects = UBDUISettings::Get().EffectsSoundClass.LoadSynchronous();
 				int32 Routed = 0;
 				int32 Sounds = 0;
-				for (const TSoftObjectPtr<USoundBase>& Each : { WaveEnemy->SpeechSound, WaveEnemy->CallSound, WaveEnemy->FootstepSound })
+				for (const TSoftObjectPtr<USoundBase>& Each : { WaveEnemy->SpeechSound, WaveEnemy->CallSound, WaveEnemy->FootstepSound, WaveEnemy->DeathSound, WaveEnemy->BodyFallSound })
 				{
 					if (const USoundBase* Sound = Each.LoadSynchronous())
 					{
@@ -675,9 +678,21 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						Steps += Cast<UBDAnimNotify_Footstep>(Event.Notify) != nullptr ? 1 : 0;
 					}
 				}
-				Check(TEXT("SOM"), TEXT("a vocal creep's sounds go through the effects class, and its loop steps where the feet land"),
-					Sounds > 0 && Routed == Sounds && (WaveEnemy->FootstepSound.IsNull() || Steps > 0),
-					FString::Printf(TEXT("%d of %d sounds on %s, %d step notifies on the loop"), Routed, Sounds, *GetNameSafe(Effects), Steps));
+				// Every fall lands with a thud, when the data has one.
+				int32 FallsLanding = 0;
+				for (const TSoftObjectPtr<UAnimSequenceBase>& Each : WaveEnemy->DeathAnimations)
+				{
+					const UAnimSequenceBase* Fall = Each.LoadSynchronous();
+					FallsLanding += Fall != nullptr && Fall->Notifies.ContainsByPredicate([](const FAnimNotifyEvent& Event)
+					{
+						return Cast<UBDAnimNotify_BodyFall>(Event.Notify) != nullptr;
+					}) ? 1 : 0;
+				}
+				Check(TEXT("SOM"), TEXT("a vocal creep's sounds go through the effects class, its loop steps where the feet land and every fall lands with a thud"),
+					Sounds > 0 && Routed == Sounds && (WaveEnemy->FootstepSound.IsNull() || Steps > 0)
+						&& (WaveEnemy->BodyFallSound.IsNull() || FallsLanding == WaveEnemy->DeathAnimations.Num()),
+					FString::Printf(TEXT("%d of %d sounds on %s, %d step notifies on the loop, %d of %d falls land"), Routed, Sounds, *GetNameSafe(Effects), Steps,
+						FallsLanding, WaveEnemy->DeathAnimations.Num()));
 			}
 		}
 		break;
@@ -709,7 +724,35 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			};
 			const int32 KindsBefore = Waves->GetMatchTotals().KillsByType.Num();
 			const int32 KillsBefore = KillsOf(Type);
+			int32 CorpsesBefore = 0;
+			for (ABDCreepCorpse* Each : TActorRange<ABDCreepCorpse>(GetWorld()))
+			{
+				++CorpsesBefore;
+			}
 			Creep->Kill();
+
+			// Its fall is show only: the creep is gone from the game on the spot (nothing
+			// may aim at it or wait on it), and what is left is a body that is not a creep
+			// and blocks nothing.
+			if (CreepData != nullptr && CreepData->DeathAnimations.Num() > 0)
+			{
+				int32 CorpsesAfter = 0;
+				bool bInert = true;
+				for (ABDCreepCorpse* Each : TActorRange<ABDCreepCorpse>(GetWorld()))
+				{
+					++CorpsesAfter;
+					for (const UActorComponent* Component : Each->GetComponents())
+					{
+						const UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component);
+						bInert &= Primitive == nullptr || Primitive->GetCollisionEnabled() == ECollisionEnabled::NoCollision;
+					}
+				}
+				const bool bGone = !IsValid(Creep) || Creep->IsActorBeingDestroyed();
+				Check(TEXT("INIMIGO"), TEXT("a kill leaves a fall to watch, the creep itself out of the game at once"),
+					bGone && CorpsesAfter == CorpsesBefore + 1 && bInert && !Waves->GetLivingEnemiesRef().Contains(Creep),
+					FString::Printf(TEXT("creep %s, bodies %d -> %d, %s"), bGone ? TEXT("gone") : TEXT("still there"),
+						CorpsesBefore, CorpsesAfter, bInert ? TEXT("no collision") : TEXT("a body collides")));
+			}
 			const int32 KindsAfter = Waves->GetMatchTotals().KillsByType.Num();
 			Check(TEXT("PLACAR"), TEXT("a kill counts once under its kind on the kill board"),
 				KillsOf(Type) == KillsBefore + 1 && KindsAfter - KindsBefore == (KillsBefore == 0 ? 1 : 0),

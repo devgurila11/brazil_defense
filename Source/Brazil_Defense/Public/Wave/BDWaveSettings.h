@@ -103,6 +103,31 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Animation", meta = (ClampMin = "0.1", UIMin = "0.1"))
 	float AnimMaxPlayRate = 4.0f;
 
+	//~ Death ------------------------------------------------------------------
+	// A killed creep leaves a body behind that plays one of its falls and sinks into the
+	// ground. Show only: the creep is already out of the game. Short on purpose, a dense
+	// wave cleared at once must not carpet the board.
+
+	/** Rate the fall is played at. The falls are made to be watched; the board wants them brisk. */
+	UPROPERTY(config, EditAnywhere, Category = "Death", meta = (ClampMin = "0.1", UIMin = "0.5", UIMax = "3.0"))
+	float CorpsePlayRate = 1.5f;
+
+	/** Seconds the body lies still once the fall ends, before it sinks. */
+	UPROPERTY(config, EditAnywhere, Category = "Death", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float CorpseHoldSeconds = 0.3f;
+
+	/** The body starts to sink no later than this, whatever the length of the fall. */
+	UPROPERTY(config, EditAnywhere, Category = "Death", meta = (ClampMin = "0.1", UIMin = "0.1", ForceUnits = "s"))
+	float CorpseMaxSeconds = 2.5f;
+
+	/** Seconds the body takes to sink out of sight. What stands in for a fade: the creep material is opaque. */
+	UPROPERTY(config, EditAnywhere, Category = "Death", meta = (ClampMin = "0.05", UIMin = "0.05", ForceUnits = "s"))
+	float CorpseSinkSeconds = 0.4f;
+
+	/** Most bodies on the board at once. Past it the oldest starts sinking right away. */
+	UPROPERTY(config, EditAnywhere, Category = "Death", meta = (ClampMin = "0", UIMin = "0", UIMax = "200"))
+	int32 MaxCorpses = 40;
+
 	//~ Buses ----------------------------------------------------------------
 	// Every mouth has a bus parked over it in the map, and the horde reads as coming out
 	// of the caravan only while the bus stays with the mouth. See UBDBusSubsystem.
