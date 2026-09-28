@@ -298,6 +298,22 @@ mudou desde o push anterior.
     só ~15% das vozes ficam ao alcance e nenhum casco.
   - Fora do commit: `Content/imgs/`, `Content/Docs/Brazil_Defense.log`,
     `Config/DefaultEditor.ini`.
+  - **Onde paramos (fim do dia 28):**
+    - Ouvir no `.exe`: volume das falas e zurros, alcance (perto claro,
+      zoom afastado quase mudo), proporção de 30% de fala e se o teto de
+      5 vozes soa como multidão. Todos os testes rodaram mudos.
+    - Casco: ver se os dois passos por ciclo (quadros 9 e 23) batem com a
+      pata na tela e se o volume (0,6) não vira metralhadora com a horda
+      perto. O rig é bípede; se quiser quatro batidas, marcar mais dois
+      notifies "BD Footstep" no Run_Forward.
+    - Decisões minhas ainda não confirmadas: além do alcance o som nem é
+      disparado (voz 320 m, casco 160 m); o casco tem teto próprio de 10
+      e corta o mais antigo; a fala continua se o jumento morre no meio.
+    - Vieram 25 falas, não 24; todas entraram no Cue. Se alguma sobrou,
+      é só apagar e refazer o Cue com `-run=BDBuildSoundCue`.
+    - Continuam abertas as checagens na tela do dia 25 (pausa, nomes no
+      placar, urna, candidatos em grupo, memória numa partida longa), se
+      ainda não foram vistas.
 
 - **2026-09-25 (noite) — ab31991** (desde 00a3b8f):
   - **Nome do tipo no placar de abates.** Embaixo do ícone de cada linha
