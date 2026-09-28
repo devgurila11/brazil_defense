@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-28 (noite) — (id no próximo commit)** (desde 735d0e1):
+- **2026-09-28 (noite) — 336a837** (desde 735d0e1):
   - **Casco mudo era bug do recorte.** Os `SFX_Jumento_Casco` de 662d262
     eram silêncio puro (no ffmpeg o `-ss` veio depois do `-i` e o fade-out
     zerou o clipe). Refeitos como `S_Jumento_Casco_01/02` com compressão e
