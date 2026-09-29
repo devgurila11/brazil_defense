@@ -263,6 +263,14 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-29 (limpeza 2) — (este commit)** (desde 5c7a831):
+  - Apagados os 4 `.uasset` de `Content/imgs/` (`T_UI_Urn`,
+    `T_UI_Vote_Blue/Null/Red`): segunda importação dos mesmos PNGs,
+    sem nenhuma referência em mapa, asset, config ou código. O placar usa
+    os de `/Game/BD/UI/`. Os PNGs ficam em `Content/imgs/`: são a única
+    cópia da arte original no repositório (os de `BD/UI` foram importados
+    de `Downloads`).
+
 - **2026-09-29 (limpeza) — 857cbf9** (desde 28007c8):
   - Apagado `Content/Docs/Brazil_Defense.log`, o rascunho antigo do PLANO
     subido em 6e5a7af: o PLANO é este arquivo, e uma cópia velha só
