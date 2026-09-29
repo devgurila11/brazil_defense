@@ -92,8 +92,9 @@ void ABDPlayerController::SetupMatchCamera()
 		SetAudioListenerOverride(Camera, FVector::ZeroVector, FRotator::ZeroRotator);
 	}
 
-	UE_LOG(LogBDGrid, Log, TEXT("Match camera at %s looking at %s (height %.0f, pitch %.0f, fov %.0f); WASD moves it, the wheel changes the height between %.0f and %.0f, Q/E or a middle drag turn it near the ground."),
-		*Location.ToCompactString(), *CameraTarget.ToCompactString(), Settings.Height, Settings.PitchDegrees, Settings.FieldOfView, Settings.MinHeight, Settings.Height);
+	UE_LOG(LogBDGrid, Log, TEXT("Match camera at %s looking at %s (height %.0f, pitch %.0f, fov %.0f); WASD moves it, the wheel changes the height between %.0f and %.0f (close look below %.0f), Q/E or a middle drag turn it near the ground."),
+		*Location.ToCompactString(), *CameraTarget.ToCompactString(), Settings.Height, Settings.PitchDegrees, Settings.FieldOfView,
+		FMath::Min(Settings.CloseUpHeight, Settings.MinHeight), Settings.Height, Settings.MinHeight);
 }
 
 FVector ABDPlayerController::CameraForward(const float Yaw) const
@@ -133,7 +134,10 @@ void ABDPlayerController::ClampCameraTarget()
 	CameraTarget.X = FMath::Clamp(CameraTarget.X, BoardMin.X, BoardMax.X);
 	CameraTarget.Y = FMath::Clamp(CameraTarget.Y, BoardMin.Y, BoardMax.Y);
 	CameraTarget.Z = BoardMin.Z;
-	CameraHeight = FMath::Clamp(CameraHeight, FMath::Min(Settings.MinHeight, Settings.Height), Settings.Height);
+	// Down to the close look; pitch and turn read MinHeight as their floor, so below it
+	// they hold what they have there.
+	const float Lowest = FMath::Min3(Settings.CloseUpHeight, Settings.MinHeight, Settings.Height);
+	CameraHeight = FMath::Clamp(CameraHeight, Lowest, Settings.Height);
 
 	// The turn is allowed by the height: zooming out narrows it and brings the view back.
 	const float YawLimit = YawLimitAtHeight(CameraHeight);

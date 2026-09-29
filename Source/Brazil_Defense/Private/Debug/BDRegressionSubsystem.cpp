@@ -655,13 +655,32 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			const USkeletalMeshComponentBudgeted* Body = Creep != nullptr ? Creep->GetSkeletalBody() : nullptr;
 			const bool bWorn = Body != nullptr && Body->GetSkeletalMeshAsset() != nullptr && Creep->GetBody() == Body
 				&& Body->GetSingleNodeInstance() != nullptr && Body->GetSingleNodeInstance()->GetAnimationAsset() != nullptr
-				&& Body->GetMaterial(0) == WaveEnemy->MeshMaterial.Get();
+				&& (WaveEnemy->GetSkinCount() == 0 || WaveEnemy->IsSkin(Body->GetMaterial(0)));
 			const float Height = Body != nullptr ? Body->Bounds.BoxExtent.Z * 2.0f : 0.0f;
 			const float Scale = FMath::Max(0.01f, static_cast<float>(WaveEnemy->MeshScale.Z));
 			Check(TEXT("INIMIGO"), TEXT("an animated creep wears its skeletal body, loop and material, 150-250 cm tall per unit of scale"),
 				bWorn && Height >= 150.0f * Scale && Height <= 250.0f * Scale,
 				FString::Printf(TEXT("%s, %s, %.0f cm tall at scale %.2f, %.0f-%.0f accepted"), Body != nullptr ? *GetNameSafe(Body->GetSkeletalMeshAsset()) : TEXT("no body"),
 					Body != nullptr ? *GetNameSafe(Body->GetMaterial(0)) : TEXT("-"), Height, Scale, 150.0f * Scale, 250.0f * Scale));
+
+			// The skins: every one in the pool loads, and a horde's worth of draws wears
+			// them all. 200 draws miss one of four skins about once in 10^24.
+			if (WaveEnemy->GetSkinCount() > 0)
+			{
+				TMap<const UMaterialInterface*, int32> Drawn;
+				for (int32 Draw = 0; Draw < 200; ++Draw)
+				{
+					++Drawn.FindOrAdd(WaveEnemy->PickSkin());
+				}
+				FString Tally;
+				for (const TPair<const UMaterialInterface*, int32>& Entry : Drawn)
+				{
+					Tally += FString::Printf(TEXT("%s%s %d"), Tally.IsEmpty() ? TEXT("") : TEXT(", "), *GetNameSafe(Entry.Key), Entry.Value);
+				}
+				Check(TEXT("INIMIGO"), TEXT("the horde wears every skin of the pool"),
+					!Drawn.Contains(nullptr) && Drawn.Num() == WaveEnemy->GetSkinCount(),
+					FString::Printf(TEXT("%d skin(s) in the pool, 200 draws: %s"), WaveEnemy->GetSkinCount(), *Tally));
+			}
 
 			// Its sound: the words and the call through the effects class, so the options
 			// own them, and a step on its loop wherever a foot lands. Sound itself cannot be

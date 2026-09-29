@@ -211,6 +211,9 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 		return;
 	}
 
+	// Every skin in memory before the first creep walks out: none of them loads mid-wave.
+	Data->PreloadSkins();
+
 	// One more creep per spawn point every wave: the pressure grows with the board, not
 	// with a flat number, so a map with more mouths is a harder map.
 	const int32 PointCount = GetSpawnPointCount();

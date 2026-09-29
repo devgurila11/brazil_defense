@@ -263,6 +263,28 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-29 (noite) — (este commit)** (desde 7ef679b):
+  - **Zoom de perto.** `CloseUpHeight` 1500 cm em Camera > Movement: a
+    roda desce abaixo do `MinHeight` 3000 (≈4 cliques a mais, jumento com
+    o dobro do tamanho na tela) para ler estampas e detalhes. Pitch e giro
+    ficam congelados no que têm em 3000, então de 3000 para cima tudo
+    enquadra como antes. Igual ao `MinHeight` desliga.
+  - **Skins da horda.** `UBDEnemyData::SkinMaterials` junta-se ao
+    `MeshMaterial` num pool; cada creep sorteia um ao nascer. O pool é
+    carregado uma vez no início da onda (`PreloadSkins`), nenhum spawn
+    carrega nada; o corpo que cai copia o material do vivo. Mesmos
+    números e mesma linha no placar de abates: skin é só aparência. Log
+    `DA_...: N skin(s) in the pool` a cada início de onda.
+  - `DA_Enemy_Test` com 4 skins: `MI_Jumento_PT` + `MI_Jumento_Gay`,
+    `MI_Jumento_Hemp`, `MI_Jumento_Soci` (novas, pai
+    `M_Master_Environment`, texturas `T_Jumento_<Skin>_Diffuse/Normal/
+    Roughness`), preenchido por script Python headless.
+  - Regressão 35/35 (novo: 200 sorteios vestem as 4 skins, deu
+    53/46/52/49; o check do corpo animado aceita qualquer skin do pool).
+  - **Onde paramos:** falta ver na tela a mistura de skins e o zoom de
+    perto; a compressão das 9 texturas novas (Normalmap / Masks) o
+    usuário confere no Texture Editor.
+
 - **2026-09-29 (limpeza 2) — 6d0bc20** (desde 5c7a831):
   - Apagados os 4 `.uasset` de `Content/imgs/` (`T_UI_Urn`,
     `T_UI_Vote_Blue/Null/Red`): segunda importação dos mesmos PNGs,

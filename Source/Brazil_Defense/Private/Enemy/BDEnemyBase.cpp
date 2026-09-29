@@ -232,7 +232,8 @@ bool ABDEnemyBase::ApplySkeletalMesh()
 	SkeletalBody->SetRelativeScale3D(Data->MeshScale);
 	SkeletalBody->SetRelativeRotation(FRotator(0.0f, Data->MeshYaw, 0.0f));
 
-	if (UMaterialInterface* Material = Data->MeshMaterial.LoadSynchronous())
+	// A skin drawn from the pool, already in memory: the wave loaded them all up front.
+	if (UMaterialInterface* Material = Data->PickSkin())
 	{
 		for (int32 Slot = 0; Slot < SkeletalBody->GetNumMaterials(); ++Slot)
 		{
@@ -317,7 +318,7 @@ void ABDEnemyBase::ApplyMesh()
 	Mesh->SetRelativeScale3D(Data->MeshScale);
 	Mesh->SetRelativeRotation(FRotator(0.0f, Data->MeshYaw, 0.0f));
 
-	if (UMaterialInterface* Material = Data->MeshMaterial.LoadSynchronous())
+	if (UMaterialInterface* Material = Data->PickSkin())
 	{
 		for (int32 Slot = 0; Slot < Mesh->GetNumMaterials(); ++Slot)
 		{

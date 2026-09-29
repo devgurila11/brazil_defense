@@ -59,6 +59,15 @@ public:
 	float PitchDegreesAtMinHeight = 30.0f;
 
 	/**
+	 * A close look below MinHeight, to read the prints on a shirt and the finer detail of
+	 * creeps and defenders. Pitch and turn stay as they are at MinHeight, so everything
+	 * from MinHeight up frames exactly as before; only the wheel goes further in. Equal to
+	 * MinHeight turns it off.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Movement", meta = (ClampMin = "100.0", UIMin = "100.0", ForceUnits = "cm"))
+	float CloseUpHeight = 1500.0f;
+
+	/**
 	 * How far the view may turn, either way, when the camera is at MinHeight. Zooming out
 	 * shrinks the allowance to nothing at Height (see YawLimitExponent), and the view
 	 * turns back to the board's side on its own: the edge of the world is never shown

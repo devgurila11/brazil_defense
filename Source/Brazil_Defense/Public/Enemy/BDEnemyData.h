@@ -34,6 +34,11 @@ public:
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 	//~ End UPrimaryDataAsset interface
 
+#if WITH_EDITOR
+	/** Forgets the loaded skins, so a pool edited between two plays is read again. */
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy")
 	FText DisplayName;
 
@@ -107,6 +112,26 @@ public:
 	TSoftObjectPtr<UMaterialInterface> MeshMaterial;
 
 	/**
+	 * More skins of this same creep, drawn with MeshMaterial as one pool: every creep that
+	 * spawns wears one of them at random. Same stats, same kill board line - a skin is
+	 * only a look. Instances of one parent material cost next to nothing more to draw.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "Mesh != nullptr || SkeletalMesh != nullptr"))
+	TArray<TSoftObjectPtr<UMaterialInterface>> SkinMaterials;
+
+	/** Loads MeshMaterial and every skin once, so no creep loads anything when it spawns. */
+	void PreloadSkins() const;
+
+	/** One skin drawn at random from the pool; null when there is none. */
+	UMaterialInterface* PickSkin() const;
+
+	/** How many skins the pool holds, loaded or not. */
+	int32 GetSkinCount() const;
+
+	/** Whether a material is one of the skins of this creep. */
+	bool IsSkin(const UMaterialInterface* Material) const;
+
+	/**
 	 * What the kill board counts this creep as: its kind of gameplay, never its skin. The
 	 * skins of one enemy all name the same kind and add up on one icon; an enemy with other
 	 * stats names its own. Empty counts the asset as a kind of its own.
@@ -174,4 +199,11 @@ public:
 
 	/** KillType, or the asset's own name when it names none. */
 	FName GetKillType() const { return KillType.IsNone() ? GetFName() : KillType; }
+
+private:
+	/** The pool, loaded. Held here so a skin stays in memory as long as its creep's data does. */
+	UPROPERTY(Transient)
+	mutable TArray<TObjectPtr<UMaterialInterface>> LoadedSkins;
+
+	mutable bool bSkinsLoaded = false;
 };
