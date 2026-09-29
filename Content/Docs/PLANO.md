@@ -263,6 +263,11 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-29 (limpeza) — (este commit)** (desde 28007c8):
+  - Apagado `Content/Docs/Brazil_Defense.log`, o rascunho antigo do PLANO
+    subido em 6e5a7af: o PLANO é este arquivo, e uma cópia velha só
+    confundia buscas.
+
 - **2026-09-29 (resto) — 6e5a7af** (desde 908f5ca), a pedido do
   usuário, o que vinha ficando fora dos commits:
   - `Content/imgs/T_UI_Urn`, `T_UI_Vote_Blue`, `T_UI_Vote_Null`,
