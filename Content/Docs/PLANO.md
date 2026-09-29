@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-29 (limpeza 2) — (este commit)** (desde 5c7a831):
+- **2026-09-29 (limpeza 2) — 6d0bc20** (desde 5c7a831):
   - Apagados os 4 `.uasset` de `Content/imgs/` (`T_UI_Urn`,
     `T_UI_Vote_Blue/Null/Red`): segunda importação dos mesmos PNGs,
     sem nenhuma referência em mapa, asset, config ou código. O placar usa
