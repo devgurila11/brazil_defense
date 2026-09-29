@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-29 (sons) — (este commit)** (desde 2acda79):
+- **2026-09-29 (sons) — 0561dfa** (desde 2acda79):
   - Os 43 sons do jumento e do militante no estado em que o editor os
     salvou em 28/09 às 13:55, quatro minutos depois de 336a837: 18
     `S_Jumento_Zurro/Casco/Morte/Tombo_NN` e 25 `VO_Militante_01..25`. É o
