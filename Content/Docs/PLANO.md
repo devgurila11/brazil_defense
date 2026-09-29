@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-29 (resto) — (este commit)** (desde 908f5ca), a pedido do
+- **2026-09-29 (resto) — 6e5a7af** (desde 908f5ca), a pedido do
   usuário, o que vinha ficando fora dos commits:
   - `Content/imgs/T_UI_Urn`, `T_UI_Vote_Blue`, `T_UI_Vote_Null`,
     `T_UI_Vote_Red` (14/09, ~3,3 MB cada, LFS). O placar carrega os de
