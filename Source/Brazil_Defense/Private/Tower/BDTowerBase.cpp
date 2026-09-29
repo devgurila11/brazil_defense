@@ -24,14 +24,16 @@
 
 namespace BDTowerPrivate
 {
-	static int32 GShowRange = 0;
+	// On while defenders of different reach are being tuned: the sphere is how short and
+	// long range read against the horde, and how much a level adds.
+	static int32 GShowRange = 1;
 	// On for now: the line from a defender to its creep is how the player sees who is shooting.
 	static int32 GShowTarget = 1;
 
 	static FAutoConsoleVariableRef CVarShowRange(
 		TEXT("BD.Tower.ShowRange"),
 		GShowRange,
-		TEXT("1 draws the effective range of every tower as a circle on the ground. 0 to hide."),
+		TEXT("1 draws the effective range of every tower as a sphere on the ground, its level and range above it, and the next level's range when it reaches further. 0 to hide."),
 		ECVF_Cheat);
 
 	static FAutoConsoleVariableRef CVarShowTarget(
@@ -255,8 +257,9 @@ FString ABDTowerBase::DescribeUpgrade() const
 	const bool bCan = CanUpgrade(Reason);
 
 	// Public money only: the count is not touched by an upgrade, so it is not quoted here.
-	return FString::Printf(TEXT("%s level %d -> %d: cost %d public money, %d -> %d held, damage %.1f -> %.1f.%s"),
+	return FString::Printf(TEXT("%s level %d -> %d: cost %d public money, %d -> %d held, damage %.1f -> %.1f, range %.2f -> %.2f cells.%s"),
 		*GetName(), Level, Level + 1, Cost, Money, Money - Cost, GetEffectiveDamage(), GetDamageAtNextLevel(),
+		GetEffectiveRangeCells(), GetRangeCellsAtNextLevel(),
 		bCan ? TEXT("") : *FString::Printf(TEXT(" Refused: %s."), *Reason));
 }
 
@@ -272,6 +275,7 @@ bool ABDTowerBase::Upgrade()
 	ABDMatchManager* Match = ABDMatchManager::Get(this);
 	const int32 Cost = GetUpgradeCost();
 	const float DamageBefore = GetEffectiveDamage();
+	const float RangeBefore = GetEffectiveRangeCells();
 	if (Match == nullptr || !Match->SpendPublicMoney(Cost, EBDFundsUse::Evolve))
 	{
 		return false;
@@ -279,8 +283,9 @@ bool ABDTowerBase::Upgrade()
 
 	++Level;
 	EvolutionSpent += Cost;
-	UE_LOG(LogBDBribe, Log, TEXT("EVOLVED %s to level %d of %d for %d public money: damage %.1f -> %.1f, %d public money left.%s"),
-		*GetName(), Level, UBDTowerData::MaxLevels, Cost, DamageBefore, GetEffectiveDamage(), Match->GetPublicMoney(),
+	UE_LOG(LogBDBribe, Log, TEXT("EVOLVED %s to level %d of %d for %d public money: damage %.1f -> %.1f, range %.2f -> %.2f cells, %d public money left.%s"),
+		*GetName(), Level, UBDTowerData::MaxLevels, Cost, DamageBefore, GetEffectiveDamage(), RangeBefore, GetEffectiveRangeCells(),
+		Match->GetPublicMoney(),
 		// The one that finishes the floor is worth saying out loud: it is the only thing
 		// that builds the platform a storey higher.
 		GetPlatform() != nullptr && GetPlatform()->GetBlockLevel() >= Level
@@ -300,16 +305,37 @@ void ABDTowerBase::RestoreEvolution(const int32 NewLevel, const int32 Spent)
 	EvolutionSpent = Level > 1 ? FMath::Max(0, Spent) : 0;
 }
 
-float ABDTowerBase::GetEffectiveRangeCells() const
+float ABDTowerBase::GetRangeCellsAtLevel(const int32 AtLevel) const
 {
-	const FBDTowerLevel* LevelStats = GetCurrentLevel();
-	if (LevelStats == nullptr)
+	if (Data == nullptr)
 	{
 		return 0.0f;
 	}
 
+	// Like the damage: an authored level says its own range, past the authored ones the
+	// formula grows the base range.
+	float Range = 0.0f;
+	if (Data->HasAuthoredLevel(AtLevel) && AtLevel > 1)
+	{
+		Range = Data->GetLevel(AtLevel)->Range;
+	}
+	else if (const FBDTowerLevel* Base = Data->GetLevel(1))
+	{
+		Range = Base->Range * UBDGameBalanceSettings::Get().GetUpgradeRangeScale(AtLevel);
+	}
+
 	const UBDPlatformComponent* CurrentPlatform = Platform.Get();
-	return CurrentPlatform != nullptr ? LevelStats->Range * CurrentPlatform->RangeMultiplier : LevelStats->Range;
+	return CurrentPlatform != nullptr ? Range * CurrentPlatform->RangeMultiplier : Range;
+}
+
+float ABDTowerBase::GetEffectiveRangeCells() const
+{
+	return GetRangeCellsAtLevel(Level);
+}
+
+float ABDTowerBase::GetRangeCellsAtNextLevel() const
+{
+	return GetRangeCellsAtLevel(IsMaxLevel() ? Level : Level + 1);
 }
 
 float ABDTowerBase::GetEffectiveRange() const
@@ -638,10 +664,34 @@ void ABDTowerBase::DrawDebug() const
 		const UBDGridSubsystem* Grid = World->GetSubsystem<UBDGridSubsystem>();
 		const float PlaneZ = Grid != nullptr ? Grid->GetOrigin().Z : GetActorLocation().Z;
 		const FVector Center(GetActorLocation().X, GetActorLocation().Y, PlaneZ + Settings.RangeDrawHeightOffset);
+		const float CellSize = Grid != nullptr ? Grid->GetCellSize() : 0.0f;
+		const float RangeCells = GetEffectiveRangeCells();
+		const float Range = RangeCells * CellSize;
 
-		DrawDebugCircle(World, Center, GetEffectiveRange(), Settings.RangeSegments, Settings.RangeColor,
+		// Combat is judged flat, so the sphere sits on the plane: its equator, the circle,
+		// is exactly where a creep enters range; the dome is what reads from the camera.
+		DrawDebugSphere(World, Center, Range, Settings.RangeSphereSegments, Settings.RangeColor,
+			BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority,
+			Settings.RangeSphereThickness);
+		DrawDebugCircle(World, Center, Range, Settings.RangeSegments, Settings.RangeColor,
 			BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority,
 			Settings.RangeThickness, FVector::ForwardVector, FVector::RightVector, /*bDrawAxis*/ false);
+
+		// What the next evolution buys in reach, only when it buys any.
+		const float NextRangeCells = GetRangeCellsAtNextLevel();
+		const bool bNextReachesFurther = NextRangeCells > RangeCells + KINDA_SMALL_NUMBER;
+		if (bNextReachesFurther)
+		{
+			DrawDebugCircle(World, Center, NextRangeCells * CellSize, Settings.RangeSegments, Settings.NextLevelRangeColor,
+				BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority,
+				Settings.RangeThickness * 0.5f, FVector::ForwardVector, FVector::RightVector, /*bDrawAxis*/ false);
+		}
+
+		const FString Label = bNextReachesFurther
+			? FString::Printf(TEXT("L%d  %.1f cells (next %.1f)"), Level, RangeCells, NextRangeCells)
+			: FString::Printf(TEXT("L%d  %.1f cells"), Level, RangeCells);
+		DrawDebugString(World, GetMuzzleLocation() + FVector(0.0f, 0.0f, 60.0f), Label, /*TestBaseActor*/ nullptr,
+			Settings.RangeLabelColor, /*Duration*/ 0.0f, /*bDrawShadow*/ true);
 	}
 
 	const ABDEnemyBase* Target = CurrentTarget.Get();

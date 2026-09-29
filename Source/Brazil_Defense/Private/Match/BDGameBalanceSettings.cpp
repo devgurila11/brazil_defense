@@ -94,6 +94,11 @@ float UBDGameBalanceSettings::GetUpgradeDamageScale(const int32 Level) const
 	return 1.0f + FMath::Max(0.0f, DamageGrowthPerLevel) * (FMath::Max(1, Level) - 1);
 }
 
+float UBDGameBalanceSettings::GetUpgradeRangeScale(const int32 Level) const
+{
+	return 1.0f + FMath::Max(0.0f, RangeGrowthPerLevel) * (FMath::Max(1, Level) - 1);
+}
+
 int32 UBDGameBalanceSettings::GetEvolutionSpent(const int32 UpgradeCostBase, const int32 Level) const
 {
 	// Summed rather than closed form: the rounding of each level is what was actually

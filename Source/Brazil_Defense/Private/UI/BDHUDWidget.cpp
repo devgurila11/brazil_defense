@@ -1477,6 +1477,7 @@ void UBDHUDWidget::UpdateDefenderPanel()
 		Args.Add(TEXT("Cost"), Cost);
 		Args.Add(TEXT("NextLevel"), Tower->GetTowerLevel() + 1);
 		Args.Add(TEXT("NextDamage"), FMath::RoundToInt(Tower->GetDamageAtNextLevel()));
+		Args.Add(TEXT("NextRange"), FText::AsNumber(Tower->GetRangeCellsAtNextLevel(), &FNumberFormattingOptions().SetMaximumFractionalDigits(1)));
 		UpgradeLabel->SetText(BDLoc::Format(TEXT("HUD.Defender.Upgrade"), Args));
 
 		// A defender on a platform climbs with the others, so the button goes dead for

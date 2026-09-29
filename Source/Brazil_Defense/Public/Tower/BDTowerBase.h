@@ -96,6 +96,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	float GetEffectiveRangeCells() const;
 
+	/** Range in cells one level up, on the same footing; the current range at the top level. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
+	float GetRangeCellsAtNextLevel() const;
+
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	ABDEnemyBase* GetCurrentTarget() const { return CurrentTarget.Get(); }
 
@@ -197,6 +201,9 @@ private:
 
 	/** Where shots leave from: the top of the mesh, or the weapon pivot when there is none. */
 	FVector GetMuzzleLocation() const;
+
+	/** Range in cells of a level of this defender where it stands, platform included. */
+	float GetRangeCellsAtLevel(int32 AtLevel) const;
 
 	void DrawDebug() const;
 

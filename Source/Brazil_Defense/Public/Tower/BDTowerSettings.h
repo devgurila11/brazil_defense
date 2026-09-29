@@ -36,7 +36,7 @@ public:
 
 	//~ Debug ----------------------------------------------------------------
 
-	/** Color of the range circle drawn by BD.Tower.ShowRange. */
+	/** Color of the range sphere and circle drawn by BD.Tower.ShowRange. */
 	UPROPERTY(config, EditAnywhere, Category = "Debug")
 	FColor RangeColor = FColor(80, 200, 255, 255);
 
@@ -45,6 +45,24 @@ public:
 
 	UPROPERTY(config, EditAnywhere, Category = "Debug", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float RangeThickness = 4.0f;
+
+	/**
+	 * Segments of the range sphere. Low on purpose: a sphere is segments squared in lines,
+	 * drawn every frame for every defender.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Debug", meta = (ClampMin = "4", UIMin = "4"))
+	int32 RangeSphereSegments = 16;
+
+	UPROPERTY(config, EditAnywhere, Category = "Debug", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float RangeSphereThickness = 1.0f;
+
+	/** Color of the circle of the next level's range, drawn only when the next level reaches further. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug")
+	FColor NextLevelRangeColor = FColor(255, 210, 60, 255);
+
+	/** Color of the level and range written above each defender. */
+	UPROPERTY(config, EditAnywhere, Category = "Debug")
+	FColor RangeLabelColor = FColor(255, 255, 255, 255);
 
 	/** Color of the line from a tower to its target drawn by BD.Tower.ShowTarget. */
 	UPROPERTY(config, EditAnywhere, Category = "Debug")

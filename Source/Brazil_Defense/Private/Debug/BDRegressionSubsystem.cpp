@@ -448,10 +448,19 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 
 		const int32 Cost = GroundTower->GetUpgradeCost();
 		const int32 MoneyAtLevel = Match->GetPublicMoney();
+		const float RangeAtLevel = GroundTower->GetEffectiveRangeCells();
+		const float RangePromised = GroundTower->GetRangeCellsAtNextLevel();
 		const bool bEvolved = GroundTower->Upgrade();
 		Check(TEXT("ECONOMIA"), TEXT("evolving takes the level's cost in public money and no votes"),
 			bEvolved && Match->GetPublicMoney() == MoneyAtLevel - Cost && Match->GetVotesBlue() == BlueBefore,
 			FString::Printf(TEXT("cost %d, money %d -> %d, blue %d -> %d, level %d"), Cost, MoneyAtLevel, Match->GetPublicMoney(), BlueBefore, Match->GetVotesBlue(), GroundTower->GetTowerLevel()));
+
+		// The reach a level promises is the reach it gives, and on the formula it grows.
+		const float RangeNow = GroundTower->GetEffectiveRangeCells();
+		const float Growth = UBDGameBalanceSettings::Get().RangeGrowthPerLevel;
+		Check(TEXT("EVOLUCAO"), TEXT("evolving grows the range by the level formula"),
+			bEvolved && FMath::IsNearlyEqual(RangeNow, RangePromised, 0.01f) && (Growth <= 0.0f || RangeNow > RangeAtLevel),
+			FString::Printf(TEXT("range %.2f -> %.2f cells, promised %.2f, growth %.2f per level"), RangeAtLevel, RangeNow, RangePromised, Growth));
 		break;
 	}
 

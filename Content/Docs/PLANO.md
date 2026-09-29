@@ -263,6 +263,28 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-29 — (este commit)** (desde 498b0fd):
+  - **Esfera de alcance.** `BD.Tower.ShowRange` agora vem ligado: esfera
+    (16 segmentos) centrada no plano sob cada defensor, com o círculo no
+    equador (onde o creep entra no alcance, o combate mede no plano), um
+    círculo amarelo do alcance do próximo nível quando ele vai mais longe e
+    o rótulo `L2  4.0 cells (next 4.5)`. Cores e segmentos em Towers > Debug.
+  - **Alcance cresce por nível, como o dano.** `RangeGrowthPerLevel` 0,10
+    (nível 5 = 1,4x) em Balance > Upgrades; nível autorado no `Levels` do
+    DataAsset vale o próprio alcance, a fórmula cobre os demais; plataforma
+    multiplica por cima. Medido: 3,75 → 4,12 células no chão (1→2), 4,40 →
+    4,80 na plataforma (2→3). As rodadas da §13 foram medidas sem isso.
+  - Painel do defensor mostra o alcance do próximo nível
+    (`HUD.Defender.Upgrade` com `{NextRange}`, pt e en); `EVOLVED` e a
+    descrição da evolução trazem alcance antes → depois.
+  - Regressão 34/34 (novo: EVOLUCAO, alcance prometido = alcance obtido e
+    cresce pela fórmula).
+  - Fora do commit: `Content/audio/` (43 .uasset modificados que não são
+    desta leva), `Content/imgs/`, `Content/Docs/Brazil_Defense.log`,
+    `Config/DefaultEditor.ini`.
+  - **Onde paramos:** falta ver na tela a esfera, o rótulo e o painel; o
+    0,10 de crescimento é chute inicial para o usuário ajustar.
+
 - **2026-09-28 (noite) — 336a837** (desde 735d0e1):
   - **Casco mudo era bug do recorte.** Os `SFX_Jumento_Casco` de 662d262
     eram silêncio puro (no ffmpeg o `-ss` veio depois do `-i` e o fade-out

@@ -102,7 +102,7 @@
 "HUD.Result.MoneyShort","Not enough public funds: {Money} of {Cost}, {Missing} short"
 "HUD.Defender.Name","{Name} · level {Level}"
 "HUD.Defender.Stats","Damage {Damage} · range {Range} cells · {FireRate} shots/s"
-"HUD.Defender.Upgrade","Evolve to level {NextLevel} ({Cost} public funds) · damage {NextDamage}"
+"HUD.Defender.Upgrade","Evolve to level {NextLevel} ({Cost} public funds) · damage {NextDamage} · range {NextRange} cells"
 "HUD.Defender.MaxLevel","Level {MaxLevel}: fully evolved"
 "HUD.Defender.BlockedSlots","The platform has {Slots} empty slot(s): nobody on it evolves until every slot is filled"
 "HUD.Defender.BlockedStep","The platform climbs as a block: its shooters at level {Block} evolve first"

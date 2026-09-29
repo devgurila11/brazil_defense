@@ -277,7 +277,9 @@ public:
 	// Cost of level N = UpgradeCostBase x UpgradeCostGrowth ^ (N - 1), at wave 1 prices;
 	// on a later wave it climbs with the price scale, like a piece does, so a level keeps
 	// its weight against what a boss drops all match long. Damage at level N =
-	// Damage x (1 + DamageGrowthPerLevel x (N - 1)). Exponential cost against linear damage
+	// Damage x (1 + DamageGrowthPerLevel x (N - 1)), range the same with RangeGrowthPerLevel,
+	// kept light: reach decides which cells a defender covers at all, so a large step would
+	// redraw the board on every level. Exponential cost against linear damage
 	// makes stacking the same defender expensive on its own, so spreading out becomes the
 	// right move without forbidding anything. Paid in public money, like everything the
 	// player buys. UBDTowerData::MaxLevels caps the ladder at five.
@@ -288,6 +290,9 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float DamageGrowthPerLevel = 0.60f;
 
+	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float RangeGrowthPerLevel = 0.10f;
+
 	/** Public money it costs to bring a defender of this upgrade cost base to a level (2 and up), at wave 1 prices. */
 	int32 GetUpgradeCost(int32 UpgradeCostBase, int32 Level) const;
 
@@ -296,6 +301,9 @@ public:
 
 	/** Damage multiplier of a level, 1.0 at level 1. */
 	float GetUpgradeDamageScale(int32 Level) const;
+
+	/** Range multiplier of a level, 1.0 at level 1. */
+	float GetUpgradeRangeScale(int32 Level) const;
 
 	/** Everything a defender of this upgrade cost base costs to reach a level, at wave 1 prices: levels 2 to Level. 0 at level 1. */
 	int32 GetEvolutionSpent(int32 UpgradeCostBase, int32 Level) const;

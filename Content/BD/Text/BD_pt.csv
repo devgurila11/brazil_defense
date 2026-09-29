@@ -102,7 +102,7 @@
 "HUD.Result.MoneyShort","Dinheiro público insuficiente: {Money} de {Cost}, faltam {Missing}"
 "HUD.Defender.Name","{Name} · nível {Level}"
 "HUD.Defender.Stats","Dano {Damage} · alcance {Range} células · {FireRate} tiros/s"
-"HUD.Defender.Upgrade","Evoluir para nível {NextLevel} ({Cost} de dinheiro público) · dano {NextDamage}"
+"HUD.Defender.Upgrade","Evoluir para nível {NextLevel} ({Cost} de dinheiro público) · dano {NextDamage} · alcance {NextRange} células"
 "HUD.Defender.MaxLevel","Nível {MaxLevel}: totalmente evoluído"
 "HUD.Defender.BlockedSlots","A plataforma tem {Slots} slot(s) vazio(s): ninguém nela evolui até todos estarem preenchidos"
 "HUD.Defender.BlockedStep","A plataforma sobe em bloco: os do nível {Block} evoluem primeiro"
