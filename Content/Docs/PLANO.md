@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-29 (noite) — (este commit)** (desde 7ef679b):
+- **2026-09-29 (noite) — bb1fd63** (desde 7ef679b):
   - **Zoom de perto.** `CloseUpHeight` 1500 cm em Camera > Movement: a
     roda desce abaixo do `MinHeight` 3000 (≈4 cliques a mais, jumento com
     o dobro do tamanho na tela) para ler estampas e detalhes. Pitch e giro
