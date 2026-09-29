@@ -263,6 +263,15 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-29 (sons) — (este commit)** (desde 2acda79):
+  - Os 43 sons do jumento e do militante no estado em que o editor os
+    salvou em 28/09 às 13:55, quatro minutos depois de 336a837: 18
+    `S_Jumento_Zurro/Casco/Morte/Tombo_NN` e 25 `VO_Militante_01..25`. É o
+    que o jogo carrega e o que o usuário ouviu e aprovou; o repositório
+    guardava a versão de antes desse save.
+  - Continuam fora: `Content/imgs/`, `Content/Docs/Brazil_Defense.log`,
+    `Config/DefaultEditor.ini`.
+
 - **2026-09-29 — 14958f5** (desde 498b0fd):
   - **Esfera de alcance.** `BD.Tower.ShowRange` agora vem ligado: esfera
     (16 segmentos) centrada no plano sob cada defensor, com o círculo no
