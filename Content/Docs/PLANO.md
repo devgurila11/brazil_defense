@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-09-29 — (este commit)** (desde 498b0fd):
+- **2026-09-29 — 14958f5** (desde 498b0fd):
   - **Esfera de alcance.** `BD.Tower.ShowRange` agora vem ligado: esfera
     (16 segmentos) centrada no plano sob cada defensor, com o círculo no
     equador (onde o creep entra no alcance, o combate mede no plano), um
