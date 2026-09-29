@@ -263,6 +263,17 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-09-29 (resto) — (este commit)** (desde 908f5ca), a pedido do
+  usuário, o que vinha ficando fora dos commits:
+  - `Content/imgs/T_UI_Urn`, `T_UI_Vote_Blue`, `T_UI_Vote_Null`,
+    `T_UI_Vote_Red` (14/09, ~3,3 MB cada, LFS). O placar carrega os de
+    `/Game/BD/UI/`, que já estavam no repositório.
+  - `Content/Docs/Brazil_Defense.log` (14/09): apesar do nome, é um
+    rascunho antigo do PLANO (20 KB), não log do jogo.
+  - `Config/DefaultEditor.ini`: os perfis de preview "Epic Headquarters" e
+    "Grey Wireframe" que o editor regravou.
+  - Árvore limpa depois deste push.
+
 - **2026-09-29 (sons) — 0561dfa** (desde 2acda79):
   - Os 43 sons do jumento e do militante no estado em que o editor os
     salvou em 28/09 às 13:55, quatro minutos depois de 336a837: 18
