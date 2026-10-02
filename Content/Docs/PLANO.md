@@ -263,6 +263,27 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 — fechamento do dia** (dfeaa05 → 7cd4ac0, 7 briefings):
+  - Feito hoje: Agente (fatia 2 do palácio) com patrulha, tiro pelo
+    gesto, perseguição ao candidato, descanso por tempo e barra; regra
+    de ouro da economia (construir fixo, evoluir ×3, palácio 3000);
+    estrutura de som de tiro (slot vazio); voto por corpo e placar 0 a
+    0; virada solta o candidato cedo; mira local das torres; alcance
+    on-click; falas 2 por lado; recursos a qualquer momento (com
+    proteção contra prender militante); Esc/direito cancelam; noite em
+    18% das ondas. Regressão 55/55.
+  - **Onde paramos / pendências:**
+    - Som do tiro da pistola: o slot `Weapons[0].FireSound` está vazio
+      até chegarem 2–3 variações (montar com `BDBuildSoundCue`).
+    - Conferir na tela: falas de lados opostos (de fone), ritmo da
+      perseguição do Agente e descanso de 45 s, mira das torres.
+    - Noite escura: fica para os postes de iluminação.
+    - Próximas fatias do palácio: 3 (ministros, usa o chute já pronto)
+      e 4 (garrafa).
+    - Fora dos commits, do usuário: texturas do STF, normais do
+      Jumento, pasta `Meshs/Building/Palacio`, `MI_Palacio` e
+      `DA_PalaceData.uasset` modificado no editor.
+
 - **2026-10-02 (fechamento: Esc e mais dia) — 8eb9c98** (desde 034da7e):
   - Briefing 2026-10-02 18:45.
   - **Esc cancela a peça na mão:** o código já cancelava, mas os botões
