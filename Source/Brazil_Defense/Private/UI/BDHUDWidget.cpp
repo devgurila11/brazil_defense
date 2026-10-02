@@ -586,8 +586,12 @@ UButton* UBDHUDWidget::MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox
 {
 	using namespace BDHUDPrivate;
 
-	// Same face as every other button, with a column inside instead of one label.
+	// Same face as every other button, with a column inside instead of one label. Never
+	// focused, like every button of the HUD: taking a piece must leave Escape to the game.
 	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	Button->IsFocusable = ButtonsTakeFocus();
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	Button->SetBackgroundColor(ColorButton);
 	UVerticalBox* Column = MakeColumn();
 

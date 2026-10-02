@@ -265,6 +265,12 @@ public:
 	/** Debug: a press and a release of the place button on the current hover, as the mouse does it. */
 	void DebugClick();
 
+	/** Debug: the right button on the current hover, as the mouse does it. */
+	void DebugRightClick() { HandleRemoveInput(); }
+
+	/** Debug: Escape, as the keyboard does it. */
+	void DebugEscape() { HandleCancelInput(); }
+
 	/** Public money dropping the lifted piece would charge. 0 when nothing is lifted. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	int32 GetMoveCost() const;

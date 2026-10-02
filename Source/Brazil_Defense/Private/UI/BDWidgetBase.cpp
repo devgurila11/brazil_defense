@@ -72,6 +72,10 @@ UTextBlock* UBDWidgetBase::MakeText(const int32 FontSize, const FLinearColor& Co
 UButton* UBDWidgetBase::MakeButton(TObjectPtr<UTextBlock>& OutLabel, const int32 FontSize) const
 {
 	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	// Set before the Slate widget is built; the property has no public setter yet.
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	Button->IsFocusable = ButtonsTakeFocus();
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	Button->SetBackgroundColor(ColorButton);
 	OutLabel = MakeText(FontSize, ColorPanelDark);
 	Button->AddChild(OutLabel);

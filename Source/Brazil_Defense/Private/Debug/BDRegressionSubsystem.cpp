@@ -30,6 +30,11 @@
 #include "Match/BDMatchManager.h"
 #include "Objective/BDObjective.h"
 #include "Animation/AnimSequenceBase.h"
+#include "Day/BDDayCycleComponent.h"
+#include "Day/BDDaySettings.h"
+#include "Components/Button.h"
+#include "UI/BDHUDWidget.h"
+#include "UObject/UObjectIterator.h"
 #include "Palace/BDAgent.h"
 #include "Palace/BDAnimNotify_Shot.h"
 #include "Placement/BDInspection.h"
@@ -332,6 +337,41 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 	{
 	case 0:
 	{
+		// The night is a short stretch of the day's waves: the share asked, not the third
+		// of the sky the clock gives it. The light curves are not touched.
+		{
+			const UBDDaySettings& Day = UBDDaySettings::Get();
+			int32 NightSteps = 0;
+			constexpr int32 Steps = 1000;
+			for (int32 Sample = 0; Sample < Steps; ++Sample)
+			{
+				const float Hour = Day.HourForAlpha(Day.SkyAlphaForProgress(static_cast<float>(Sample) / Steps));
+				NightSteps += UBDDayCycleComponent::PhaseForHour(Hour) == EBDDayPhase::Night ? 1 : 0;
+			}
+			const float NightFraction = static_cast<float>(NightSteps) / Steps;
+			Check(TEXT("DIA"), TEXT("the waves spend NightShare of the day at night, the rest by daylight"),
+				FMath::Abs(NightFraction - Day.NightShare) <= 0.01f,
+				FString::Printf(TEXT("%.1f%% of the waves at night, %.1f%% asked; the clock gives the night %.1f%% of the sky"),
+					NightFraction * 100.0f, Day.NightShare * 100.0f,
+					(FMath::Frac((Day.SunriseHour - Day.NightHour) / 24.0f + 1.0f)) * 100.0f));
+		}
+
+		// The HUD's buttons never keep the keyboard: a focused button would swallow Escape.
+		{
+			int32 HudButtons = 0;
+			int32 Focusable = 0;
+			for (TObjectIterator<UButton> It; It; ++It)
+			{
+				if (It->GetWorld() == World && It->GetTypedOuter<UBDHUDWidget>() != nullptr)
+				{
+					++HudButtons;
+					Focusable += It->GetIsFocusable() ? 1 : 0;
+				}
+			}
+			Check(TEXT("INTERFACE"), TEXT("no button of the HUD takes the keyboard focus, so Escape reaches the game"),
+				Focusable == 0, FString::Printf(TEXT("%d HUD button(s), %d focusable"), HudButtons, Focusable));
+		}
+
 		// An election opens with no votes, on every difficulty.
 		Check(TEXT("VOTOS"), TEXT("the count opens at 0 to 0"), Match->GetVotesBlue() == 0 && Match->GetVotesRed() == 0,
 			FString::Printf(TEXT("%d blue / %d red on %s"), Match->GetVotesBlue(), Match->GetVotesRed(), *UEnum::GetValueAsString(Match->Difficulty)));
@@ -765,6 +805,24 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				Killed != nullptr && Leaked != nullptr && Match->GetVotesBlue() == BlueBeforeBody + 1 && Match->GetVotesRed() == RedBeforeBody + 1,
 				FString::Printf(TEXT("blue %d -> %d, red %d -> %d, creep of %.0f hp"), BlueBeforeBody, Match->GetVotesBlue(), RedBeforeBody, Match->GetVotesRed(),
 					Killed != nullptr ? Killed->GetMaxHealth() : 0.0f));
+		}
+
+		// With a piece in hand, the right button and Escape put it back, and sell nothing:
+		// the hand never keeps the click from reaching what is on the board.
+		{
+			const int32 MoneyBeforeCancel = Match->GetPublicMoney();
+			Placement->SelectPlaceable(Tower);
+			Placement->SetHoveredCellDirect(PalaceCell);
+			Placement->DebugRightClick();
+			const bool bRightCancelled = Placement->GetCurrentSelection() == nullptr;
+			const bool bPalaceStands = Palace != nullptr && IsValid(Palace);
+			Placement->SelectPlaceable(Tower);
+			Placement->DebugEscape();
+			const bool bEscCancelled = Placement->GetCurrentSelection() == nullptr;
+			Check(TEXT("COLOCACAO"), TEXT("the right button and Escape put the piece in hand back, selling nothing"),
+				bRightCancelled && bEscCancelled && bPalaceStands && Match->GetPublicMoney() == MoneyBeforeCancel,
+				FString::Printf(TEXT("right button %s, Escape %s, palace %s, money %d -> %d"), bRightCancelled ? TEXT("emptied the hand") : TEXT("KEPT IT"),
+					bEscCancelled ? TEXT("emptied the hand") : TEXT("KEPT IT"), bPalaceStands ? TEXT("standing") : TEXT("SOLD"), MoneyBeforeCancel, Match->GetPublicMoney()));
 		}
 
 		Placement->SetHoveredCellDirect(PalaceCell);

@@ -43,6 +43,13 @@ protected:
 	/** Puts every text in place, in the current language. Runs after BuildTree and on every language change. */
 	virtual void RefreshTexts() {}
 
+	/**
+	 * Whether the buttons this widget makes may take the keyboard focus. True for the
+	 * menus, which are driven by it. False for a screen over the board: a focused button
+	 * swallows the keys it does not use, and Escape never reaches the game.
+	 */
+	virtual bool ButtonsTakeFocus() const { return true; }
+
 	UBDUISubsystem* GetUI() const;
 	UBDSettingsSubsystem* GetSettings() const;
 

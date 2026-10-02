@@ -74,4 +74,19 @@ public:
 
 	/** Hour of the day, 0 to 24, for a cycle alpha. */
 	float HourForAlpha(float Alpha) const;
+
+	/**
+	 * Share of the waves of a day spent at night, NightHour to SunriseHour. The clock and
+	 * the curves give the night about a third of the sky; the waves walk through that part
+	 * faster, so the match is played mostly by daylight. The light itself is untouched -
+	 * only how long the waves stay in each part of the day. 0 skips the night entirely.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Clock", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float NightShare = 0.18f;
+
+	/**
+	 * The cycle alpha - where the sky is - for a share of the day's waves gone by: even
+	 * steps through the day, NightShare of them through the night.
+	 */
+	float SkyAlphaForProgress(float Progress) const;
 };

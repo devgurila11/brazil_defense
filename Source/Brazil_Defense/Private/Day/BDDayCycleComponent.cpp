@@ -89,7 +89,8 @@ float UBDDayCycleComponent::ComputeAlphaForWave(const int32 Wave) const
 {
 	const int32 Waves = FMath::Max(1, WavesPerCycle);
 	const int32 Position = ((Wave % Waves) + Waves) % Waves;
-	return static_cast<float>(Position) / static_cast<float>(Waves);
+	// Even steps through the day, quicker ones through the night: see UBDDaySettings::NightShare.
+	return UBDDaySettings::Get().SkyAlphaForProgress(static_cast<float>(Position) / static_cast<float>(Waves));
 }
 
 namespace BDDayDebug

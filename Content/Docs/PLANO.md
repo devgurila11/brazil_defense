@@ -263,6 +263,23 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (fechamento: Esc e mais dia) — (commit)** (desde 034da7e):
+  - Briefing 2026-10-02 18:45.
+  - **Esc cancela a peça na mão:** o código já cancelava, mas os botões
+    da HUD (sobretudo os itens da barra de construção) eram focáveis: ao
+    clicar num deles o botão ficava com o teclado e engolia o Esc, que
+    nunca chegava ao jogo. Agora nenhum botão da HUD pega foco
+    (`ButtonsTakeFocus`; menus continuam focáveis). **Botão direito**
+    com peça na mão (ou movendo) também cancela; antes vendia o que
+    estava embaixo do cursor. Sem nada na mão segue vendendo.
+  - **Mais dia, menos noite:** as ondas caíam em passos iguais pelo
+    ciclo, e a noite (20:30–05:00) ocupava 35% dele. Agora as ondas
+    atravessam a noite mais depressa: `NightShare` 0,18 (Day Cycle >
+    Clock). Com 16 ondas por dia, a noite caiu de 6 para 3 ondas. Curvas
+    de luz e horários intocados — a noite escura fica para os postes.
+  - Regressão 55/55 (novo: botões da HUD sem foco, direito/Esc com
+    peça na mão cancelam sem vender, 18% das ondas à noite).
+
 - **2026-10-02 (recursos a qualquer momento) — 4c6aaa8** (desde e3fe06f):
   - Briefing 2026-10-02 17:15. Construir (qualquer peça), pôr
     personagem em slot, evoluir, mover (com a taxa) e vender passam a

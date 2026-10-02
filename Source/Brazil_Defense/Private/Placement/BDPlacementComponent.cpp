@@ -2668,6 +2668,18 @@ bool UBDPlacementComponent::UpgradeSelectedDefender()
 
 void UBDPlacementComponent::HandleRemoveInput()
 {
+	// With a piece in hand or one being moved, the right button puts it back, as Escape
+	// does; only with an empty hand does it sell what is under the cursor.
+	if (bMoving)
+	{
+		CancelMove();
+		return;
+	}
+	if (CurrentSelection != nullptr)
+	{
+		CancelSelection();
+		return;
+	}
 	TryRemoveAtHovered();
 }
 

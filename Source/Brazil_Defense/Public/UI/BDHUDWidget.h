@@ -46,6 +46,9 @@ class BRAZIL_DEFENSE_API UBDHUDWidget : public UBDWidgetBase
 protected:
 	virtual void BuildTree() override;
 	virtual void RefreshTexts() override;
+
+	/** The HUD lies over the board: a click on its buttons must leave the keys to the game, Escape first. */
+	virtual bool ButtonsTakeFocus() const override { return false; }
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
