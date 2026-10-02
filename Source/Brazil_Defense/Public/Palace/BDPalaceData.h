@@ -8,6 +8,7 @@
 
 class UAnimSequenceBase;
 class USkeletalMesh;
+class USoundBase;
 class UStaticMesh;
 
 /**
@@ -39,6 +40,14 @@ struct FBDAgentWeapon
 	/** Seconds of patrol a kill with this weapon puts back on the bar. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "0.0", ForceUnits = "s"))
 	float KillBonusSeconds = 1.0f;
+
+	/**
+	 * Played at every shot, through UBDShotSoundSubsystem. Empty fires in silence: the
+	 * slot waits for a cue of two or three variations (see UBDShotSoundSettings for how
+	 * to build one).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
+	TSoftObjectPtr<USoundBase> FireSound;
 };
 
 /**

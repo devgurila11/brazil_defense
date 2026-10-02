@@ -263,6 +263,32 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (ajustes do Agente) — (commit)** (desde 91b1832):
+  - Briefing 2026-10-02 10:30.
+  - **Palácio 3000** (`PalaceCost`, fixo): acima dos 2000 iniciais do
+    Normal, o Agente vira conquista de alguns candidatos.
+  - Confirmados, sem mudança: taxa de mover sobe com a onda (exceção
+    consciente à regra de ouro); bônus por abate −0,15 s/nível e 6
+    armas.
+  - **Debug do tiro do Agente pisca:** cada disparo desenha um risco
+    magenta que some em 0,06 s, no ritmo da cadência
+    (`BD.Agent.ShowShots`). Saiu a linha contínua até o alvo. Raio do
+    Agente agora verde (`BD.Agent.ShowRange`), para não confundir com
+    as torres (ciano/vermelho/amarelo). Arma contínua (laser, rajada),
+    quando existir, terá linha contínua.
+  - **Som de disparo reutilizável:** `UBDShotSoundSubsystem::PlayShot`
+    (3D na posição do atirador, atenuação pela câmera, SC_Effects,
+    concorrência com corte do mais distante) e `UBDShotSoundSettings`
+    (Project Settings > Brazil Defense - Shot Sound: teto 8, volume,
+    raios). Cada arma tem `FireSound` (no `FBDAgentWeapon`; torres e
+    atiradores ganham o mesmo campo depois). **Slot vazio**: tiro sem
+    som. Para plugar: pôr as 2-3 variações numa pasta, rodar
+    `-run=BDBuildSoundCue -Cue=/Game/BD/Audio/SCue_Pistola_Tiro
+    -Folder=<pasta>` e apontar `Weapons[0].FireSound` no
+    `DA_PalaceData`. `BD.Agent.Status` conta pedidos/tocados/silenciosos.
+  - Regressão 47/47 (novo: fundos iniciais não compram o palácio).
+    Cenário headless: 18 tiros, 18 pedidos de som, 18 silenciosos.
+
 - **2026-10-02 (regra de ouro) — df908b6** (desde 6a16985):
   - Briefing 2026-10-01 16:30. **Construir tem preço fixo; só a
     evolução sobe (por nível); só a renda sobe com a onda.**

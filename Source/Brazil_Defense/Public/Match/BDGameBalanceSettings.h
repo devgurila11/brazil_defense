@@ -357,11 +357,11 @@ public:
 	int32 ReplacementReferenceCost = 100;
 
 	/**
-	 * What the Palácio do Governo costs, in public money, on any wave. 1800 is about what
-	 * a player who spent nothing holds by the third candidate on Normal.
+	 * What the Palácio do Governo costs, in public money, on any wave. 3000 is out of reach
+	 * of the opening funds (2000 on Normal): the Agent is earned with a few candidates.
 	 */
 	UPROPERTY(config, EditAnywhere, Category = "Price", meta = (ClampMin = "0", UIMin = "0"))
-	int32 PalaceCost = 1800;
+	int32 PalaceCost = 3000;
 
 	/** The palace's base cost on the reference scale, for the reports: PalaceCost once priced. */
 	int32 GetPalaceBaseCost() const;

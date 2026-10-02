@@ -605,6 +605,8 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		const int32 Start = Match->GetDifficultyData() != nullptr ? Match->GetDifficultyData()->StartingFunds : 0;
 		const int32 ThirdWave = Interval * 3;
 		const int32 ByThird = Start + Match->GetCandidateFunds(Interval) + Match->GetCandidateFunds(Interval * 2) + Match->GetCandidateFunds(ThirdWave);
+		Check(TEXT("PALACIO"), TEXT("the opening funds do not buy the palace: it waits for a few candidates"), PalacePrice > Start,
+			FString::Printf(TEXT("price %d, opening funds %d"), PalacePrice, Start));
 		UE_LOG(LogBDDebug, Log, TEXT("REGRESSION palace calibration: price %d on every wave; saved by the third candidate %d (start %d + bribes of waves %d, %d, %d)."),
 			PalacePrice, ByThird, Start, Interval, Interval * 2, ThirdWave);
 

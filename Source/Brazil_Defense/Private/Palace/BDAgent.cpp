@@ -10,6 +10,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Sound/SoundBase.h"
 #include "Enemy/BDEnemyBase.h"
 #include "Grid/BDGridDebug.h"
 #include "Grid/BDGridSubsystem.h"
@@ -18,6 +19,7 @@
 #include "Match/BDMatchTypes.h"
 #include "Palace/BDPalace.h"
 #include "Palace/BDPalaceData.h"
+#include "Tower/BDShotSound.h"
 #include "Wave/BDWaveSubsystem.h"
 
 namespace BDAgentPrivate
@@ -26,13 +28,24 @@ namespace BDAgentPrivate
 	static FAutoConsoleVariableRef CVarShowRange(
 		TEXT("BD.Agent.ShowRange"),
 		GShowRange,
-		TEXT("1 draws the Agent's detection radius on the board and a line to his target. 0 hides them."));
+		TEXT("1 draws the Agent's detection radius on the board. 0 hides it."));
 
-	static const FColor RangeColor(80, 200, 255, 255);
-	static const FColor TracerColor(255, 230, 90, 255);
+	static int32 GShowShots = 1;
+	static FAutoConsoleVariableRef CVarShowShots(
+		TEXT("BD.Agent.ShowShots"),
+		GShowShots,
+		TEXT("1 flashes a line from the Agent to his target at every shot, gone a moment later. 0 hides them."));
 
-	/** How long a tracer stays on screen, in seconds. */
-	static constexpr float TracerLife = 0.07f;
+	// Colours of his own, apart from the towers' (cyan reach, red target, yellow next level).
+	static const FColor RangeColor(90, 230, 110, 255);
+	static const FColor ShotColor(255, 60, 220, 255);
+
+	/**
+	 * How long the line of a shot stays on screen, in seconds: a flash, not a beam. A shot
+	 * is a discrete thing; a weapon that fires continuously (a laser, a burst) will draw a
+	 * steady line instead, so the two read apart at a glance.
+	 */
+	static constexpr float ShotFlashLife = 0.06f;
 
 	/** Where on a creep the shot lands, over its location. */
 	static constexpr float TargetChestHeight = 100.0f;
@@ -468,10 +481,17 @@ FVector ABDAgent::GetMuzzleLocation() const
 void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 {
 	++ShotsFired;
-	if (UWorld* World = GetWorld())
+	UWorld* World = GetWorld();
+	if (World != nullptr && BDAgentPrivate::GShowShots != 0)
 	{
 		DrawDebugLine(World, GetMuzzleLocation(), Target->GetActorLocation() + FVector(0.0f, 0.0f, BDAgentPrivate::TargetChestHeight),
-			BDAgentPrivate::TracerColor, /*bPersistent*/ false, BDAgentPrivate::TracerLife, /*DepthPriority*/ 0, /*Thickness*/ 4.0f);
+			BDAgentPrivate::ShotColor, /*bPersistent*/ false, BDAgentPrivate::ShotFlashLife, /*DepthPriority*/ 0, /*Thickness*/ 4.0f);
+	}
+
+	// The sound of the weapon, on the same instant as the flash and the cadence.
+	if (UBDShotSoundSubsystem* Shots = World != nullptr ? World->GetSubsystem<UBDShotSoundSubsystem>() : nullptr)
+	{
+		Shots->PlayShot(Weapon.FireSound.LoadSynchronous(), GetMuzzleLocation());
 	}
 	UE_LOG(LogBDTower, Verbose, TEXT("%s fires %s at %s: %.0f damage."), *GetName(), *Weapon.Name.ToString(), *Target->GetName(), Weapon.Damage);
 	Target->ApplyDamage(Weapon.Damage, this);
@@ -696,12 +716,6 @@ void ABDAgent::DrawDebug() const
 	DrawDebugCircle(World, Center, Radius, 64, BDAgentPrivate::RangeColor,
 		BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority,
 		6.0f, FVector::ForwardVector, FVector::RightVector, /*bDrawAxis*/ false);
-
-	if (const ABDEnemyBase* Target = CurrentTarget.Get())
-	{
-		DrawDebugLine(World, GetMuzzleLocation(), Target->GetActorLocation(), BDAgentPrivate::RangeColor,
-			BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority, 2.0f);
-	}
 }
 
 //~ Debug ------------------------------------------------------------------------
@@ -759,7 +773,9 @@ namespace BDAgentDebug
 	static void ExecStatus(const TArray<FString>& Args, UWorld* World)
 	{
 		const int32 Count = ForEachAgent(World, [](ABDAgent& Agent) { UE_LOG(LogBDTower, Log, TEXT("  %s"), *Agent.Describe()); });
-		UE_LOG(LogBDTower, Log, TEXT("BD.Agent.Status: %d agent(s) on the board."), Count);
+		const UBDShotSoundSubsystem* Shots = World != nullptr ? World->GetSubsystem<UBDShotSoundSubsystem>() : nullptr;
+		UE_LOG(LogBDTower, Log, TEXT("BD.Agent.Status: %d agent(s) on the board. Shot sounds: %d asked, %d played, %d silent (empty slot)."), Count,
+			Shots != nullptr ? Shots->GetShotsRequested() : 0, Shots != nullptr ? Shots->GetShotsPlayed() : 0, Shots != nullptr ? Shots->GetShotsSilent() : 0);
 	}
 
 	static void ExecKick(const TArray<FString>& Args, UWorld* World)

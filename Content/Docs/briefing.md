@@ -1,70 +1,78 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-01 16:30**
+**Versão: 2026-10-02 10:30**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Regra de ouro da economia + 2 correções
+# Ajustes do Agente e economia + debug de tiro intermitente
 
-## 1. REGRA DE OURO: preço de construir é FIXO; só evolução sobe
+## 1. Preço do palácio: 3000
 
-Decisão estrutural que vale para o JOGO INTEIRO (modelo Clash of
-Clans). Hoje vários preços estão atrelados à onda/candidato e viram
-"areia movediça" — o preço foge da renda e a peça fica inalcançável
-(aconteceu com o palácio: custou 3.546 na onda 16 com o jogador tendo
-3.064).
+- PalaceCost de 1800 para 3000. Assim não dá para comprar antes da
+  onda 1 (fundos iniciais 2000) — o Agente vira conquista de começo,
+  o jogador junta alguns candidatos antes. Preço continua FIXO (regra
+  de ouro), só esse valor muda.
 
-Nova regra:
-- CONSTRUIR qualquer peça (palácio, palanque, caminhão, arquibancada,
-  personagem, torre, cerca/separador — tudo): PREÇO FIXO. Nunca sobe
-  com a onda. O jogador sempre sabe quanto custa e pode planejar.
-- EVOLUIR (subir nível/estrela): o preço CRESCE por nível. Curva
-  sugerida: TRIPLICAR a cada nível (nível 1→2 = base; 2→3 = 3×;
-  3→4 = 9×; 4→5 = 27×). Expor o multiplicador (3.0) em settings.
-- RENDA (propina por candidato morto): continua CRESCENDO com a onda —
-  é a ÚNICA coisa que sobe, para acompanhar a dificuldade e permitir
-  evoluir conforme as ondas endurecem.
+## 2. Taxa de mover peça: continua subindo com a onda (confirmado)
 
-Aplicar:
-- Remover QUALQUER custo de construção atrelado a onda/candidato.
-  Procurar todos os preços que hoje escalam (PalaceCostInCandidates e
-  outros que a reforma da economia atrelou) e torná-los FIXOS.
-- Palácio: preço fixo de ~1.800 (o valor-alvo do 3º candidato, para
-  manter a progressão "junta uns candidatos e compra", mas SEM fugir
-  depois).
-- Reportar quais peças tinham preço atrelado à onda e viraram fixas.
-- A evolução é que usa a curva de triplicar.
+- Mover NÃO é construir — é refazer o que foi mal planejado, e deve
+  custar. Manter a taxa de movimentação crescente como está. Isso é
+  exceção consciente à regra de ouro: construir é fixo, mas MOVER
+  (corrigir posição) fica mais caro com a onda, para premiar boa
+  estratégia desde o início. Deixar como está.
 
-## 2. Som dos passos dos militantes -50%
+## 3. Bônus por abate e armas do Agente (confirmado)
 
-- Reduzir o volume do casco (passos) em 50%. Está alto demais em
-  relação ao resto.
+- Bônus por abate caindo 0,15s por nível (1,00 / 0,85 / 0,70 / 0,55 /
+  0,40 / 0,25) e a lista de 6 armas (níveis 0-5): confirmados, manter.
 
-## 3. DIAGNÓSTICO — candidato passou na wave 11 sem game over
+## 4. Debug de tiro do Agente — intermitente, cor própria
 
-O usuário relatou: na wave 11 um candidato passou e o jogo CONTINUOU
-(não deu game over), e o vermelho subiu ~500.
+O tiro do Agente deve ter line trace de DEBUG para ver a mecânica da
+ação, mas INTERMITENTE, não contínuo:
 
-Investigar:
-- Era um CANDIDATO de verdade (chefe) ou um militante comum? Se foi
-  militante comum, os ~500 vermelhos são o HP dele e está correto
-  (não é game over).
-- Se foi CANDIDATO mesmo: o game over por candidato na urna está
-  QUEBRADO? Era regra central (candidato na urna = derrota imediata).
-  Checar se alguma mudança recente quebrou isso.
-- Logar: quando um candidato chega na urna, ele dispara Defeat? Testar
-  forçando um candidato até a urna.
+- Cada disparo da pistola desenha um risco que APARECE E SOME (pisca
+  no instante do tiro, dura uma fração de segundo), NÃO uma linha fixa
+  ligando Agente e alvo o tempo todo.
+- Motivo: é DISPARO, não laser/rajada. Linha fixa pareceria arma
+  contínua. O pisca-pisca mostra tiros individuais, no ritmo da
+  cadência (Glock, 1,5/s).
+- COR PRÓPRIA, diferente do debug das torres (que mostram alcance/alvo
+  em outra cor), para distinguir o tiro do Agente.
+- Ligável por cvar (ex: BD.Agent.ShowShots), como os outros debugs.
+- Nota para o futuro: quando entrarem armas CONTÍNUAS (laser, rajada),
+  o debug delas SIM será uma linha contínua — a diferença de debug
+  (pisca vs contínuo) ajuda a distinguir disparo de feixe. Por ora
+  todas as defesas são disparo, então todos os debugs de tiro piscam.
 
-Explicar o que achou antes de corrigir.
+## 5. Som de disparo — estrutura pronta, placeholder por enquanto
+
+Deixar o sistema de som de tiro PRONTO, mas sem arquivo ainda (os sons
+reais vêm depois do teste do Agente).
+
+- Estrutura reutilizável: um Cue de disparo que QUALQUER defensor que
+  atira possa usar (Agente agora; torres e atiradores de plataforma
+  depois), trocando só o conjunto de clipes por arma.
+- Disparado no instante de cada tiro, sincronizado com a cadência
+  (Glock) e com a animação Shooting / o debug intermitente.
+- 3D na posição do atirador, atenuação por câmera, SC_Effects.
+- Concurrency (teto cortando o mais distante), como os outros sons —
+  numa cena com várias defesas atirando, não virar parede.
+- SLOT vazio por enquanto (sem som). Quando o usuário trouxer 2-3
+  variações de disparo de pistola, é só apontar no Cue. Deixar o
+  caminho/campo pronto e documentado onde plugar.
+- NÃO é partícula — partículas (muzzle flash, projétil, impacto) ficam
+  para o futuro, depois do teste. Agora só a estrutura de som +
+  o debug intermitente que já existe.
 
 ## NÃO fazer agora
 - Ministros, garrafa (fatias 3 e 4).
 
 ## Entregável
-- Todos os preços de CONSTRUÇÃO fixos; só evolução sobe (triplicando).
-- Palácio fixo ~1.800.
-- Lista das peças que tinham preço atrelado à onda e foram corrigidas.
-- Passos -50%.
-- Diagnóstico do candidato na wave 11: dizer se era candidato e se o
-  game over está funcionando.
+- Palácio 3000 (fixo).
+- Taxa de mover mantida (crescente).
+- Bônus/armas confirmados.
+- Debug de tiro do Agente: piscadas por disparo, cor própria, por cvar.
+- Sistema de som de disparo pronto e reutilizável, com slot vazio
+  (placeholder) para plugar o som depois.
 - BD.Test.Regression passa; compilar os dois alvos; commit.
