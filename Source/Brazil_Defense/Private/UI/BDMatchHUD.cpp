@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "Palace/BDAgent.h"
 #include "Palace/BDPalace.h"
 #include "Palace/BDPalaceData.h"
 #include "UI/BDUISettings.h"
@@ -27,6 +28,7 @@ void ABDMatchHUD::DrawHUD()
 	Super::DrawHUD();
 
 	DrawPalaceStars();
+	DrawAgentBars();
 	DrawCreepBars();
 }
 
@@ -192,4 +194,46 @@ void ABDMatchHUD::DrawStar(const FVector2D& Center, const float Radius, const bo
 	};
 	DrawOutline(Shadow, Thickness + 1.5f);
 	DrawOutline(Color, Thickness);
+}
+
+void ABDMatchHUD::DrawAgentBars()
+{
+	UWorld* World = GetWorld();
+	if (Canvas == nullptr || World == nullptr || PlayerOwner == nullptr || PlayerOwner->PlayerCameraManager == nullptr)
+	{
+		return;
+	}
+
+	const UBDUISettings& Settings = UBDUISettings::Get();
+	const FVector CameraRight = FRotationMatrix(PlayerOwner->PlayerCameraManager->GetCameraRotation()).GetUnitAxis(EAxis::Y);
+	const FVector HalfWidth = CameraRight * (Settings.AgentBarWorldWidth * 0.5f);
+
+	for (TActorIterator<ABDAgent> It(World); It; ++It)
+	{
+		const ABDAgent* Agent = *It;
+		if (Agent->IsAsleep())
+		{
+			continue;
+		}
+
+		// Projected ends, as the creep bars: the zoom sizes it, and always facing the camera.
+		const FVector Center = Agent->GetBarAnchor();
+		const FVector Left = Canvas->Project(Center - HalfWidth);
+		const FVector Right = Canvas->Project(Center + HalfWidth);
+		if (Left.Z <= 0.0f || Right.Z <= 0.0f)
+		{
+			continue;
+		}
+		const float Width = Right.X - Left.X;
+		if (Width < Settings.CreepBarMinPixels)
+		{
+			continue;
+		}
+		const float Height = FMath::Clamp(Width * Settings.CreepBarAspect, 3.0f, 14.0f);
+		const float X = Left.X;
+		const float Y = Left.Y - Height * 0.5f;
+
+		DrawRect(FLinearColor(0.0f, 0.0f, 0.0f, 0.6f), X - 1.0f, Y - 1.0f, Width + 2.0f, Height + 2.0f);
+		DrawRect(Settings.AgentBarColor, X, Y, Width * Agent->GetPatrolFraction(), Height);
+	}
 }

@@ -1306,6 +1306,25 @@ namespace BDMatchCommands
 		}
 	}
 
+	static void ExecAddMoney(const TArray<FString>& Args, UWorld* World)
+	{
+		if (Args.Num() != 1)
+		{
+			UE_LOG(LogBDMatch, Error, TEXT("Usage: BD.Match.AddMoney <amount>"));
+			return;
+		}
+
+		if (ABDMatchManager* Match = FindMatch(World))
+		{
+			Match->AddPublicMoney(FCString::Atoi(*Args[0]), TEXT("BD.Match.AddMoney"));
+		}
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdAddMoney(
+		TEXT("BD.Match.AddMoney"),
+		TEXT("BD.Match.AddMoney <amount>: public money for nothing, for testing what it buys."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecAddMoney));
+
 	static FAutoConsoleCommandWithWorldAndArgs CmdSetWave(
 		TEXT("BD.Match.SetWave"),
 		TEXT("BD.Match.SetWave <wave>: jumps the wave counter, for testing the scaling of a given wave."),

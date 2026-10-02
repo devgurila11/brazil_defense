@@ -110,6 +110,16 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Creep Bars", meta = (ClampMin = "1.0", UIMin = "1.0"))
 	float CreepBarMinPixels = 14.0f;
 
+	//~ Agent bar -----------------------------------------------------------------
+	// Drawn by ABDMatchHUD over the palace's Agent: his patrol time left, as the creep bars,
+	// a fixed width in the world over his head. Hidden while he sleeps.
+
+	UPROPERTY(config, EditAnywhere, Category = "Agent Bar", meta = (ClampMin = "10.0", UIMin = "10.0", ForceUnits = "cm"))
+	float AgentBarWorldWidth = 360.0f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Agent Bar")
+	FLinearColor AgentBarColor = FLinearColor(0.15f, 0.55f, 1.0f, 1.0f);
+
 	//~ Palace stars --------------------------------------------------------------
 	// Drawn by ABDMatchHUD over every palace: five stars facing the camera, as many filled
 	// as its level, the rest an outline. Sized by the screen, not the world, so they read

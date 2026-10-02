@@ -263,6 +263,43 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (fatia 2) — (commit)** (desde dfeaa05):
+  - **Palácio, fatia 2 de 4: o Agente ("Mito")** (briefing 2026-10-01
+    15:00). `ABDAgent`, um por palácio: nasce em `InitializePalace` numa
+    célula ao lado (frente primeiro, livre antes de ocupada) e é
+    destruído no `EndPlay` do palácio (venda, limpeza, fim).
+  - **Patrulha:** anda 1–3 células numa direção aleatória
+    (`Pistol_Walk`), para às vezes 1–3,5 s (`Pistol_Idle`, chance 0,4).
+    Passa por torre, plataforma, palácio e creep; só o separador e o
+    cenário fixo (`Blocked`) o barram. Sem colisão.
+  - **Tiro:** raio de 3 células (esfera azul, `BD.Agent.ShowRange`).
+    Creep no raio: para, vira, `Shooting`, tiro instantâneo com
+    traçante, um alvo por vez, o mais próximo (`bTargetFurthestAlong`
+    troca pelo mais adiantado). Não persegue. Pistola: 10 de dano a
+    1,5 tiro/s.
+  - **Barra de tempo** azul sobre a cabeça (`ABDMatchHUD`, Interface >
+    Agent Bar). 120 s, corre sempre. Zerou: volta pra casa por busca em
+    largura respeitando separadores, dorme deitado na célula ao lado do
+    palácio (`Sleeping_Idle`) e só acorda quando termina a onda seguinte
+    à que esgotou a barra (`SleepWaves` 1). Não defende nesse tempo.
+  - **Abate:** +`KillBonusSeconds` na barra, sem teto. Array `Weapons`
+    no `DA_PalaceData` com 6 entradas (nível 0 a 5): pistola feita, as
+    outras 5 placeholder com os números da pistola e bônus 1,00 / 0,85 /
+    0,70 / 0,55 / 0,40 / 0,25 s. O nível do palácio escolhe a arma.
+  - **Chute pronto sem alvo:** `Kicking` toca uma vez e devolve o
+    estado; `BD.Agent.Kick`. Também `BD.Agent.Status`, `SetTime`,
+    `Wake`, e `BD.Match.AddMoney` para testar compras.
+  - Tudo exposto no `DA_PalaceData` (categoria Agent), defaults no C++
+    (o asset não precisou ser regravado).
+  - Regressão 44/44 (novo: agente ao lado com barra cheia, tabela de
+    armas, +1 s por abate, chute, barra zerada manda pra casa, venda leva
+    o agente). Cenário headless: 10 abates em 3 ondas, dormiu na onda 2
+    e acordou ao fim dela; capturas renderizadas conferidas.
+  - **Onde paramos:** confirmar a leitura do bônus (−0,15 s por nível)
+    e o array de 6 (o briefing diz 5). Ver na tela: escala do Mito
+    (1,0 = 4 m em célula de 7 m), passo do andar, tempo de 120 s.
+    Fora do commit: troca de texturas do STF (do usuário).
+
 - **2026-10-02 (fecho da fatia 1) — 2ffdfa0** (desde 82033a6):
   - Briefing 2026-10-01 11:00. Preço 6.4 já tinha subido em 2f27fa6.
   - **Estrelas com fade por distância.** Opacidade cai suave (smoothstep)

@@ -17,6 +17,8 @@
  * rest only an outline. These are sized by the screen rather than the world, so the
  * evolution reads the same at every zoom they are shown at. They fade out as the
  * camera pulls back, and are gone in the overview (UBDUISettings::PalaceStarFade*).
+ *
+ * Over every Agent awake, a blue bar of his patrol time left, the creep bars' way.
  */
 UCLASS()
 class BRAZIL_DEFENSE_API ABDMatchHUD : public AHUD
@@ -30,6 +32,9 @@ public:
 private:
 	void DrawCreepBars();
 	void DrawPalaceStars();
+
+	/** The patrol time left over every Agent awake, blue on dark. */
+	void DrawAgentBars();
 
 	/** One five-pointed star centered on a screen point, Radius from the center to a tip: filled, or only its outline. */
 	void DrawStar(const FVector2D& Center, float Radius, bool bFilled, const FLinearColor& Color);

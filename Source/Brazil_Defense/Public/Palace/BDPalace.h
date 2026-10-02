@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "BDPalace.generated.h"
 
+class ABDAgent;
 class UBDPalaceData;
 class UStaticMeshComponent;
 
@@ -13,9 +14,9 @@ class UStaticMeshComponent;
  * The palace as placed: a static building over 2x2 cells, the mesh of its data fitted to
  * the footprint, and a level that the HUD draws as five stars over the roof.
  *
- * It holds the cells like a platform does - the placement flow writes them - and nothing
- * else for now: the Agent it will send out, and what the level gives him, come later.
- * Units do not collide with it: only the cursor's visibility traces see it.
+ * It holds the cells like a platform does - the placement flow writes them - and sends
+ * out one Agent (ABDAgent) when it goes up, who goes when it goes. The level picks the
+ * Agent's weapon. Units do not collide with it: only the cursor's visibility traces see it.
  */
 UCLASS(Blueprintable, meta = (DisplayName = "BD Palace"))
 class BRAZIL_DEFENSE_API ABDPalace : public AActor
@@ -47,6 +48,12 @@ public:
 
 	UStaticMeshComponent* GetMeshComponent() const { return Mesh; }
 
+	/** The Agent this palace sent out, or null before InitializePalace. He goes when the palace goes. */
+	ABDAgent* GetAgent() const { return Agent.Get(); }
+
+protected:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 private:
 	UPROPERTY(VisibleAnywhere, Category = "Palace")
 	TObjectPtr<USceneComponent> Root;
@@ -58,4 +65,7 @@ private:
 	TObjectPtr<const UBDPalaceData> Data;
 
 	int32 PalaceLevel = 0;
+
+	/** Weak: he is destroyed with the palace in EndPlay, and checks for it himself every tick. */
+	TWeakObjectPtr<ABDAgent> Agent;
 };

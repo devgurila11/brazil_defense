@@ -8,6 +8,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
+#include "Palace/BDAgent.h"
 #include "Palace/BDPalaceData.h"
 
 namespace BDPalacePrivate
@@ -36,6 +37,20 @@ void ABDPalace::InitializePalace(const UBDPalaceData* InData, const FVector2D& F
 {
 	Data = InData;
 	PalaceLevel = InData != nullptr ? FMath::Clamp(InData->Level, 0, UBDPalaceData::MaxLevel) : 0;
+
+	// One Agent per palace, out of the door as it goes up.
+	UWorld* World = GetWorld();
+	if (InData != nullptr && World != nullptr && World->IsGameWorld() && !Agent.IsValid())
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnParams.Owner = this;
+		if (ABDAgent* Spawned = World->SpawnActor<ABDAgent>(ABDAgent::StaticClass(), GetActorTransform(), SpawnParams))
+		{
+			Agent = Spawned;
+			Spawned->InitializeAgent(this);
+		}
+	}
 
 	UStaticMesh* LoadedMesh = InData != nullptr ? InData->Mesh.LoadSynchronous() : nullptr;
 	if (LoadedMesh == nullptr)
@@ -74,6 +89,18 @@ void ABDPalace::InitializePalace(const UBDPalaceData* InData, const FVector2D& F
 	UE_LOG(LogBDTower, Log, TEXT("Palace '%s' up from '%s': mesh %s scaled %s over %.0fx%.0f cm, level %d of %d."),
 		*GetName(), *GetNameSafe(InData), *GetNameSafe(LoadedMesh), *Scale.ToCompactString(),
 		FootprintSize.X, FootprintSize.Y, PalaceLevel, UBDPalaceData::MaxLevel);
+}
+
+void ABDPalace::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Sold, cleared or the match over: his Agent goes with him.
+	if (ABDAgent* Gone = Agent.Get())
+	{
+		Gone->Destroy();
+	}
+	Agent.Reset();
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void ABDPalace::SetPalaceLevel(const int32 NewLevel)

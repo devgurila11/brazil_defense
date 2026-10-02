@@ -16,6 +16,7 @@
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
 #include "Grid/BDGridSubsystem.h"
+#include "Palace/BDAgent.h"
 #include "Tower/BDTowerBase.h"
 #include "Wave/BDWaveSettings.h"
 #include "Wave/BDWaveSubsystem.h"
@@ -713,7 +714,11 @@ void ABDEnemyBase::ApplyDamage(const float Damage, AActor* Source)
 	if (CurrentHealth <= 0.0f)
 	{
 		CurrentHealth = 0.0f;
-		if (ABDTowerBase* Tower = Cast<ABDTowerBase>(Source))
+		if (ABDAgent* Agent = Cast<ABDAgent>(Source))
+		{
+			Agent->NotifyKill();
+		}
+		else if (ABDTowerBase* Tower = Cast<ABDTowerBase>(Source))
 		{
 			Tower->NotifyKill();
 		}

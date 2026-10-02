@@ -29,6 +29,7 @@
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
 #include "Objective/BDObjective.h"
+#include "Palace/BDAgent.h"
 #include "Palace/BDPalace.h"
 #include "Palace/BDPalaceData.h"
 #include "Components/StaticMeshComponent.h"
@@ -641,8 +642,51 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			FString::Printf(TEXT("opacity %.2f at %.0f cm, %.2f halfway, %.2f at %.0f cm; overview camera %.0f cm away, %.2f"),
 				Near, UI.PalaceStarFadeStart, Middle, Far, UI.PalaceStarFadeEnd, Overview, Overview > 0.0f ? UI.GetPalaceStarOpacity(Overview) : -1.0f));
 
+		// Its Agent: out of the door on a full bar with the pistol, on a cell beside the palace.
+		ABDAgent* Agent = Palace->GetAgent();
+		const TWeakObjectPtr<ABDAgent> AgentRef = Agent;
+		FBDCellCoord AgentCell;
+		const bool bAgentOnBoard = Agent != nullptr && Grid->WorldToCell(Agent->GetActorLocation(), AgentCell);
+		const bool bBeside = bAgentOnBoard && AgentCell.X >= PalaceCell.X - 1 && AgentCell.X <= PalaceCell.X + 2
+			&& AgentCell.Y >= PalaceCell.Y - 1 && AgentCell.Y <= PalaceCell.Y + 2
+			&& Grid->GetCellState(AgentCell) != EBDCellState::Platform;
+		Check(TEXT("AGENTE"), TEXT("the palace sends out one Agent, beside it, on a full bar"),
+			Agent != nullptr && bBeside && FMath::IsNearlyEqual(Agent->GetPatrolFraction(), 1.0f, 0.01f) && !Agent->IsAsleep(),
+			Agent != nullptr ? Agent->Describe() : FString(TEXT("no agent")));
+
+		// One weapon a level, the pistol designed, the kill bonus 1 s down 0.15 s a star.
+		FString Bonuses;
+		bool bWeaponsRight = PalaceData != nullptr && PalaceData->Weapons.Num() == UBDPalaceData::MaxLevel + 1 && !PalaceData->Weapons[0].bPlaceholder;
+		for (int32 WeaponIndex = 0; PalaceData != nullptr && WeaponIndex < PalaceData->Weapons.Num(); ++WeaponIndex)
+		{
+			bWeaponsRight &= FMath::IsNearlyEqual(PalaceData->Weapons[WeaponIndex].KillBonusSeconds, 1.0f - 0.15f * WeaponIndex, 0.001f);
+			Bonuses += FString::Printf(TEXT("%s%.2f"), WeaponIndex > 0 ? TEXT(" ") : TEXT(""), PalaceData->Weapons[WeaponIndex].KillBonusSeconds);
+		}
+		Check(TEXT("AGENTE"), TEXT("six weapons, the pistol designed, the kill bonus from 1 s to 0.25 s"), bWeaponsRight,
+			FString::Printf(TEXT("%d weapon(s), bonus %s, pistol %.0f damage at %.1f/s"), PalaceData != nullptr ? PalaceData->Weapons.Num() : 0, *Bonuses,
+				PalaceData != nullptr && PalaceData->Weapons.Num() > 0 ? PalaceData->Weapons[0].Damage : 0.0f,
+				PalaceData != nullptr && PalaceData->Weapons.Num() > 0 ? PalaceData->Weapons[0].FireRate : 0.0f));
+
+		if (Agent != nullptr)
+		{
+			// A kill puts the pistol's second back; the bar runs out and he heads home.
+			const float Before = Agent->GetPatrolRemaining();
+			Agent->NotifyKill();
+			const float Earned = Agent->GetPatrolRemaining() - Before;
+			const bool bKicked = Agent->Kick();
+			Agent->DebugSetPatrolRemaining(0.0f);
+			const EBDAgentState AfterDrain = Agent->GetState();
+			Check(TEXT("AGENTE"), TEXT("a kill adds 1 s, the kick plays, an empty bar sends him home"),
+				FMath::IsNearlyEqual(Earned, 1.0f, 0.001f) && bKicked
+					&& (AfterDrain == EBDAgentState::Returning || AfterDrain == EBDAgentState::Sleeping),
+				FString::Printf(TEXT("+%.2fs, kick %s, then %s"), Earned, bKicked ? TEXT("on") : TEXT("refused"),
+					*StaticEnum<EBDAgentState>()->GetNameStringByValue(static_cast<int64>(AfterDrain))));
+		}
+
 		Placement->SetHoveredCellDirect(PalaceCell);
 		const bool bSold = Placement->TryRemoveAtHovered();
+		Check(TEXT("AGENTE"), TEXT("selling the palace takes the Agent with it"), Agent != nullptr && !AgentRef.IsValid(),
+			AgentRef.IsValid() ? TEXT("still on the board") : TEXT("gone"));
 		int32 Freed = 0;
 		for (int32 DY = 0; DY < 2; ++DY)
 		{
