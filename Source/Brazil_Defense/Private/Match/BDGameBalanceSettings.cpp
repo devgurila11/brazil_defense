@@ -75,18 +75,8 @@ int32 UBDGameBalanceSettings::GetCreepsPerSpawnPoint(const int32 Wave) const
 
 int32 UBDGameBalanceSettings::GetUpgradeCost(const int32 UpgradeCostBase, const int32 Level) const
 {
-	return FMath::RoundToInt(FMath::Max(0, UpgradeCostBase) * FMath::Pow(FMath::Max(1.0f, UpgradeCostGrowth), static_cast<float>(FMath::Max(1, Level) - 1)));
-}
-
-int32 UBDGameBalanceSettings::GetUpgradeCostOnWave(const int32 UpgradeCostBase, const int32 Level, const int32 Wave) const
-{
-	const int32 AtWaveOne = GetUpgradeCost(UpgradeCostBase, Level);
-	return AtWaveOne <= 0 ? 0 : FMath::Max(1, FMath::RoundToInt(AtWaveOne * GetPriceScale(Wave)));
-}
-
-float UBDGameBalanceSettings::GetPriceScale(const int32 Wave) const
-{
-	return GetHealthScale(FMath::Max(1, Wave)) / FMath::Max(KINDA_SMALL_NUMBER, GetHealthScale(1));
+	// Level 2 is the base; every level after it UpgradeCostGrowth times the one before.
+	return FMath::RoundToInt(FMath::Max(0, UpgradeCostBase) * FMath::Pow(FMath::Max(1.0f, UpgradeCostGrowth), static_cast<float>(FMath::Max(2, Level) - 2)));
 }
 
 float UBDGameBalanceSettings::GetUpgradeDamageScale(const int32 Level) const
@@ -126,16 +116,15 @@ int32 UBDGameBalanceSettings::GetCandidateFunds(const float CreepHealth, const i
 	return BribeForHealth(GetCandidateHealth(CreepHealth, Wave));
 }
 
-int32 UBDGameBalanceSettings::GetReplacementCost(const int32 BaseCost, const float CreepHealth, const int32 Wave) const
+int32 UBDGameBalanceSettings::GetPieceCost(const int32 BaseCost) const
 {
 	if (BaseCost <= 0)
 	{
 		return 0;
 	}
 
-	const double Candidate = GetCandidateFunds(CreepHealth, Wave);
 	const double Share = static_cast<double>(BaseCost) / FMath::Max(1, ReplacementReferenceCost);
-	return FMath::Max(1, FMath::RoundToInt(Candidate * FMath::Max(0.0f, ReplacementCostRatio) * Share));
+	return FMath::Max(1, FMath::RoundToInt(FMath::Max(0, ReferencePiecePrice) * FMath::Max(0.0f, ReplacementCostRatio) * Share));
 }
 
 int32 UBDGameBalanceSettings::GetEvolutionRefund(const int32 EvolutionSpent) const
@@ -169,9 +158,7 @@ const UBDDifficultyData* UBDGameBalanceSettings::FindDifficultyData(const EBDDif
 
 int32 UBDGameBalanceSettings::GetPalaceBaseCost() const
 {
-	// Priced through the same formula as every piece, which multiplies by the ratio:
-	// divided out here, so the palace stays PalaceCostInCandidates candidates whatever
-	// the ratio does to the rest.
-	const float Ratio = FMath::Max(KINDA_SMALL_NUMBER, ReplacementCostRatio);
-	return FMath::Max(1, FMath::RoundToInt(FMath::Max(0.0f, PalaceCostInCandidates) / Ratio * FMath::Max(1, ReplacementReferenceCost)));
+	// Only for the reports, which talk in base costs: the price is PalaceCost outright.
+	const double PerBase = FMath::Max(KINDA_SMALL_NUMBER, ReferencePiecePrice * ReplacementCostRatio / FMath::Max(1, ReplacementReferenceCost));
+	return FMath::Max(1, FMath::RoundToInt(FMath::Max(0, PalaceCost) / PerBase));
 }

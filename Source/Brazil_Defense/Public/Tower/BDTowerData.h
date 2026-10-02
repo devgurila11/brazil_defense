@@ -115,7 +115,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tower", meta = (ClampMin = "0", UIMin = "0"))
 	int32 UnlockWave = 0;
 
-	/** Base of the upgrade curve: level N costs UpgradeCostBase x UpgradeCostGrowth ^ (N - 1) in public money. */
+	/** Base of the upgrade curve: level 2 costs UpgradeCostBase, level N UpgradeCostBase x UpgradeCostGrowth ^ (N - 2), in public money, on any wave. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Tower", meta = (ClampMin = "0", UIMin = "0"))
 	int32 UpgradeCostBase = 50;
 

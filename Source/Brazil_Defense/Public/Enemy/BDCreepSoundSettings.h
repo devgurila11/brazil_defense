@@ -107,7 +107,7 @@ public:
 	int32 FootstepMaxConcurrent = 12;
 
 	UPROPERTY(config, EditAnywhere, Category = "Hooves", meta = (ClampMin = "0.0", ClampMax = "4.0", UIMin = "0.0", UIMax = "4.0"))
-	float FootstepVolume = 1.0f;
+	float FootstepVolume = 0.5f;
 
 	/**
 	 * Inside this radius from the camera a step plays at full volume. Covers the camera at

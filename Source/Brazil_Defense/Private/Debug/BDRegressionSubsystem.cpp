@@ -568,28 +568,45 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		}
 		const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
 		const int32 PalacePrice = Match->GetBuildPrice(PalacePiece);
-		const int32 Funds = Match->GetCandidateFunds(Match->GetPriceWave());
-		const int32 Expected = FMath::RoundToInt(Funds * Balance.PalaceCostInCandidates);
 		int32 DearestOther = 0;
+		FString PriceList;
+		bool bPricesFixed = true;
 		for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
 		{
 			const UBDPlaceableData* Other = Entry.LoadSynchronous();
 			if (Other != nullptr && Other != PalacePiece)
 			{
-				DearestOther = FMath::Max(DearestOther, Match->GetBuildPrice(Other));
+				const int32 Price = Match->GetBuildPrice(Other);
+				DearestOther = FMath::Max(DearestOther, Price);
+				// The golden rule: building is the base cost on the fixed scale, nothing of the wave in it.
+				const int32 Fixed = Other->GetPieceKind() == EBDPieceKind::Divider ? 0 : Balance.GetPieceCost(Other->GetBuildCost());
+				bPricesFixed &= Price == Fixed;
+				PriceList += FString::Printf(TEXT(" %s %d"), *Other->GetName(), Price);
 			}
 		}
-		Check(TEXT("PALACIO"), TEXT("the palace costs PalaceCostInCandidates candidates and more than any other piece"),
-			FMath::Abs(PalacePrice - Expected) <= 1 && PalacePrice > DearestOther,
-			FString::Printf(TEXT("price %d, %.1f x candidate %d = %d, dearest other %d"), PalacePrice, Balance.PalaceCostInCandidates, Funds, Expected, DearestOther));
+		Check(TEXT("PALACIO"), TEXT("the palace costs PalaceCost on any wave, more than any other piece"),
+			PalacePrice == Balance.PalaceCost && PalacePrice > DearestOther,
+			FString::Printf(TEXT("price %d, PalaceCost %d, dearest other %d"), PalacePrice, Balance.PalaceCost, DearestOther));
+		Check(TEXT("ECONOMIA"), TEXT("every piece is priced off its base cost alone, never the wave"), bPricesFixed,
+			FString::Printf(TEXT("wave %d:%s"), Match->GetCurrentWave(), *PriceList));
+
+		// Evolution climbs by level only: 1x, 3x, 9x, 27x of the base with the growth at 3.
+		const int32 LadderBase = 40;
+		const int32 L2 = Balance.GetUpgradeCost(LadderBase, 2), L3 = Balance.GetUpgradeCost(LadderBase, 3);
+		const int32 L4 = Balance.GetUpgradeCost(LadderBase, 4), L5 = Balance.GetUpgradeCost(LadderBase, 5);
+		const float Growth = Balance.UpgradeCostGrowth;
+		Check(TEXT("EVOLUCAO"), TEXT("each level costs UpgradeCostGrowth times the last, level 2 the base"),
+			L2 == LadderBase && L3 == FMath::RoundToInt(LadderBase * Growth) && L4 == FMath::RoundToInt(LadderBase * Growth * Growth)
+				&& L5 == FMath::RoundToInt(LadderBase * Growth * Growth * Growth),
+			FString::Printf(TEXT("base %d, growth %.1f: %d, %d, %d, %d"), LadderBase, Growth, L2, L3, L4, L5));
 
 		// What a player who spends nothing has by the third candidate, against the price then.
 		const int32 Interval = FMath::Max(1, Balance.CandidateInterval);
 		const int32 Start = Match->GetDifficultyData() != nullptr ? Match->GetDifficultyData()->StartingFunds : 0;
 		const int32 ThirdWave = Interval * 3;
 		const int32 ByThird = Start + Match->GetCandidateFunds(Interval) + Match->GetCandidateFunds(Interval * 2) + Match->GetCandidateFunds(ThirdWave);
-		UE_LOG(LogBDDebug, Log, TEXT("REGRESSION palace calibration: price %d on wave %d, %d on wave %d; saved by the third candidate %d (start %d + bribes of waves %d, %d, %d)."),
-			PalacePrice, Match->GetPriceWave(), Match->GetBuildPriceOnWave(PalacePiece, ThirdWave), ThirdWave, ByThird, Start, Interval, Interval * 2, ThirdWave);
+		UE_LOG(LogBDDebug, Log, TEXT("REGRESSION palace calibration: price %d on every wave; saved by the third candidate %d (start %d + bribes of waves %d, %d, %d)."),
+			PalacePrice, ByThird, Start, Interval, Interval * 2, ThirdWave);
 
 		TArray<ABDPalace*> PalacesBefore;
 		for (TActorIterator<ABDPalace> It(World); It; ++It) { PalacesBefore.Add(*It); }

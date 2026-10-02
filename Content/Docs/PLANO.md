@@ -263,6 +263,36 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (regra de ouro) — (commit)** (desde 6a16985):
+  - Briefing 2026-10-01 16:30. **Construir tem preço fixo; só a
+    evolução sobe (por nível); só a renda sobe com a onda.**
+  - Antes, toda peça custava "propinas do candidato da onda" (preço
+    subia ~2,9× até a onda 50 e ~8,6× até a 100) e a evolução também
+    escalava com a onda. Viraram fixas (preço da onda 1): Palanque 160,
+    Caminhão 400, Arquibancada 320, Torre 400, Personagem 160, Palácio
+    **1800** (era 6,4 candidatos: 2560 na onda 1, 3469 na 15).
+    Separador já era 0.
+  - Fórmula: `ReferencePiecePrice` 400 × `ReplacementCostRatio` ×
+    base / `ReplacementReferenceCost`; palácio por `PalaceCost` 1800.
+    Sai `PalaceCostInCandidates`, `GetPriceScale`,
+    `GetUpgradeCostOnWave`, `GetBuildPriceOnWave`.
+  - Evolução: nível 2 = base, cada nível seguinte ×`UpgradeCostGrowth`
+    = 3,0 (era 1,35 e subia com a onda). Base 40: 40 / 120 / 360 /
+    1080, 1600 até o nível 5 (antes 358 na onda 1).
+  - Passos da horda −50%: `FootstepVolume` 1,0 → 0,5.
+  - **Diagnóstico da onda 11** (partida 2026-10-02 16:11, Normal):
+    não passou candidato. O candidato 2 saiu na onda 10 e foi morto na
+    11 (log `CANDIDATE 2 killed on wave 11`, `CandidateArrived` 0). O
+    vermelho da onda 11 (+324, 305 → 629) são 27 militantes na urna a
+    12 votos cada. Game over por candidato na urna funciona: a
+    regressão força um até a urna e dá Defeat.
+  - Regressão 46/46 (novo: preço fixo de todas as peças, escada de
+    evolução 1×/3×/9×/27×; palácio = `PalaceCost`).
+  - **Onde paramos:** no Normal o jogador começa com 2000, então o
+    palácio a 1800 já dá pra comprar antes da onda 1. Decisão dele.
+    A taxa de mover peça ainda sobe com a onda (`MoveTaxStep`);
+    não é preço de construir, ficou como está.
+
 - **2026-10-02 (fatia 2) — 9700a2f** (desde dfeaa05):
   - **Palácio, fatia 2 de 4: o Agente ("Mito")** (briefing 2026-10-01
     15:00). `ABDAgent`, um por palácio: nasce em `InitializePalace` numa

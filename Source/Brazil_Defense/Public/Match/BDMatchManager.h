@@ -377,8 +377,8 @@ public:
 	int32 GetUpgradeCost(const ABDTowerBase* Tower) const;
 
 	//~ Prices ------------------------------------------------------------------
-	// A piece costs about what a scheduled candidate of the current wave drops, so the
-	// price climbs with the bosses: see UBDGameBalanceSettings, "Price".
+	// A piece costs the same on every wave; only the income climbs with the waves and
+	// only evolution by level: see UBDGameBalanceSettings, "Price".
 
 	/** The wave prices are read on: the current one, and wave 1 before any has gone out. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
@@ -388,12 +388,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetCandidateFunds(int32 Wave) const;
 
-	/** Public money a piece costs to build right now. */
+	/** Public money a piece costs to build, on any wave. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetBuildPrice(const UBDPlaceableData* Piece) const;
-
-	/** The same, on any wave: for the reports. */
-	int32 GetBuildPriceOnWave(const UBDPlaceableData* Piece, int32 Wave) const;
 
 	/** The wave after which a piece can be built. 0 is from the start. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")

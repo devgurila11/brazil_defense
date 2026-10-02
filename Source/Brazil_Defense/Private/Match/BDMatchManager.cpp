@@ -1003,7 +1003,7 @@ int32 ABDMatchManager::GetCandidateFunds(const int32 Wave) const
 	return UBDGameBalanceSettings::Get().GetCandidateFunds(Creep != nullptr ? Creep->MaxHealth : 0.0f, Wave);
 }
 
-int32 ABDMatchManager::GetBuildPriceOnWave(const UBDPlaceableData* Piece, const int32 Wave) const
+int32 ABDMatchManager::GetBuildPrice(const UBDPlaceableData* Piece) const
 {
 	if (Piece == nullptr)
 	{
@@ -1017,13 +1017,13 @@ int32 ABDMatchManager::GetBuildPriceOnWave(const UBDPlaceableData* Piece, const 
 		return 0;
 	}
 
-	const UBDEnemyData* Creep = UBDWaveSettings::Get().ResolveWaveEnemy();
-	return UBDGameBalanceSettings::Get().GetReplacementCost(Piece->GetBuildCost(), Creep != nullptr ? Creep->MaxHealth : 0.0f, FMath::Max(1, Wave));
-}
-
-int32 ABDMatchManager::GetBuildPrice(const UBDPlaceableData* Piece) const
-{
-	return GetBuildPriceOnWave(Piece, GetPriceWave());
+	// Fixed whatever the wave: the player always knows what a piece costs.
+	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	if (Piece->GetPieceKind() == EBDPieceKind::Palace)
+	{
+		return FMath::Max(0, Balance.PalaceCost);
+	}
+	return Balance.GetPieceCost(Piece->GetBuildCost());
 }
 
 int32 ABDMatchManager::GetUnlockWave(const UBDPlaceableData* Piece)

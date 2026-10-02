@@ -274,9 +274,9 @@ public:
 	float ReferenceEngagementEfficiency = 0.5f;
 
 	//~ Upgrades ---------------------------------------------------------------
-	// Cost of level N = UpgradeCostBase x UpgradeCostGrowth ^ (N - 1), at wave 1 prices;
-	// on a later wave it climbs with the price scale, like a piece does, so a level keeps
-	// its weight against what a boss drops all match long. Damage at level N =
+	// Cost of level N = UpgradeCostBase x UpgradeCostGrowth ^ (N - 2): level 2 costs the
+	// base, each one after it UpgradeCostGrowth times the last (3 makes 1x, 3x, 9x, 27x).
+	// The same on every wave: evolution climbs by level, never by wave. Damage at level N =
 	// Damage x (1 + DamageGrowthPerLevel x (N - 1)), range the same with RangeGrowthPerLevel,
 	// kept light: reach decides which cells a defender covers at all, so a large step would
 	// redraw the board on every level. Exponential cost against linear damage
@@ -285,7 +285,7 @@ public:
 	// player buys. UBDTowerData::MaxLevels caps the ladder at five.
 
 	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "1.0", UIMin = "1.0"))
-	float UpgradeCostGrowth = 1.35f;
+	float UpgradeCostGrowth = 3.0f;
 
 	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float DamageGrowthPerLevel = 0.60f;
@@ -293,11 +293,8 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float RangeGrowthPerLevel = 0.10f;
 
-	/** Public money it costs to bring a defender of this upgrade cost base to a level (2 and up), at wave 1 prices. */
+	/** Public money it costs to bring a defender of this upgrade cost base to a level (2 and up). Any wave. */
 	int32 GetUpgradeCost(int32 UpgradeCostBase, int32 Level) const;
-
-	/** The same, bought on a given wave. */
-	int32 GetUpgradeCostOnWave(int32 UpgradeCostBase, int32 Level, int32 Wave) const;
 
 	/** Damage multiplier of a level, 1.0 at level 1. */
 	float GetUpgradeDamageScale(int32 Level) const;
@@ -305,7 +302,7 @@ public:
 	/** Range multiplier of a level, 1.0 at level 1. */
 	float GetUpgradeRangeScale(int32 Level) const;
 
-	/** Everything a defender of this upgrade cost base costs to reach a level, at wave 1 prices: levels 2 to Level. 0 at level 1. */
+	/** Everything a defender of this upgrade cost base costs to reach a level: levels 2 to Level. 0 at level 1. */
 	int32 GetEvolutionSpent(int32 UpgradeCostBase, int32 Level) const;
 
 	//~ The bribe -----------------------------------------------------------------
@@ -336,49 +333,44 @@ public:
 	int32 GetEvolutionRefund(int32 EvolutionSpent) const;
 
 	//~ The price of a piece --------------------------------------------------------
-	// A piece costs about what a candidate of the current wave drops: each boss killed
-	// pays for roughly one new defense or one evolution, never both, and the price
-	// climbs with the bosses, so a piece on wave 80 costs what the bosses of wave 80 pay.
+	// Building is priced once and for all: the same on wave 1 and on wave 100, so the
+	// player always knows what a piece costs and can save towards it. Only the income
+	// (the bribe of the candidates) climbs with the waves, and only evolution climbs by
+	// level (UpgradeCostGrowth).
 	//
-	//   price = candidate funds of the wave x ReplacementCostRatio x BaseCost / ReplacementReferenceCost
+	//   price = ReferencePiecePrice x ReplacementCostRatio x BaseCost / ReplacementReferenceCost
 	//
 	// BaseCost is the piece's own number (BuildCost of a defender's tower data, Cost of
-	// anything else) and says only how it compares to the others: a piece whose base is
-	// the reference costs one candidate, a divider a fraction of one. Placeholders, like
-	// every number here, until there is a cast to calibrate against.
+	// anything else) and says only how it compares to the others. The palace has a price
+	// of its own, PalaceCost.
 
-	/** Candidates a reference piece costs. 1 makes a boss pay for one of them. */
+	/** What a piece of the reference base cost costs, in public money: what the first candidate drops. */
+	UPROPERTY(config, EditAnywhere, Category = "Price", meta = (ClampMin = "0", UIMin = "0"))
+	int32 ReferencePiecePrice = 400;
+
+	/** Reference pieces a piece of the reference base costs. 1 makes it ReferencePiecePrice. */
 	UPROPERTY(config, EditAnywhere, Category = "Price", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float ReplacementCostRatio = 1.0f;
 
-	/** Base cost that is priced at ReplacementCostRatio candidates; every other base is priced in proportion. */
+	/** Base cost that is priced at ReplacementCostRatio reference pieces; every other base is priced in proportion. */
 	UPROPERTY(config, EditAnywhere, Category = "Price", meta = (ClampMin = "1", UIMin = "1"))
 	int32 ReplacementReferenceCost = 100;
 
 	/**
-	 * What the Palácio do Governo costs, in candidates' bribes of the wave it is bought
-	 * on. 6.4 is what lets a player who spent nothing - the opening funds of Normal plus
-	 * the bribes of the first three candidates - put it down around the third candidate
-	 * killed, on wave 15. Placeholder, like the rest.
+	 * What the Palácio do Governo costs, in public money, on any wave. 1800 is about what
+	 * a player who spent nothing holds by the third candidate on Normal.
 	 */
-	UPROPERTY(config, EditAnywhere, Category = "Price", meta = (ClampMin = "0.0", UIMin = "0.0"))
-	float PalaceCostInCandidates = 6.4f;
+	UPROPERTY(config, EditAnywhere, Category = "Price", meta = (ClampMin = "0", UIMin = "0"))
+	int32 PalaceCost = 1800;
 
-	/** The palace's base cost on the reference scale: PalaceCostInCandidates candidates once priced. */
+	/** The palace's base cost on the reference scale, for the reports: PalaceCost once priced. */
 	int32 GetPalaceBaseCost() const;
 
 	/** Public money a scheduled candidate on this wave drops, for a wave creep of this base health. */
 	int32 GetCandidateFunds(float CreepHealth, int32 Wave) const;
 
-	/** Public money a piece of this base cost costs on this wave. 0 for a free piece; at least 1 otherwise. */
-	int32 GetReplacementCost(int32 BaseCost, float CreepHealth, int32 Wave) const;
-
-	/**
-	 * How much dearer everything is on a wave than on wave 1: the growth of the bosses'
-	 * health, which is the growth of what they drop. Levels are priced with it, so a
-	 * level on wave 80 weighs against a boss of wave 80 what one on wave 5 did.
-	 */
-	float GetPriceScale(int32 Wave) const;
+	/** Public money a piece of this base cost costs, on any wave. 0 for a free piece; at least 1 otherwise. */
+	int32 GetPieceCost(int32 BaseCost) const;
 
 	//~ Moving pieces between waves -------------------------------------------
 	// Rate = Min(MoveTaxMax, MoveTaxInitial + MoveTaxStep * Wave), charged on the price

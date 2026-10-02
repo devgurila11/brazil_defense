@@ -177,9 +177,8 @@ int32 ABDTowerBase::GetUpgradeCost() const
 		return 0;
 	}
 
-	// Priced on the wave, like a piece: a level keeps its weight against a boss all match.
-	const ABDMatchManager* Match = ABDMatchManager::Get(this);
-	return UBDGameBalanceSettings::Get().GetUpgradeCostOnWave(Data->UpgradeCostBase, Level + 1, Match != nullptr ? Match->GetPriceWave() : 1);
+	// By level only: the same on every wave.
+	return UBDGameBalanceSettings::Get().GetUpgradeCost(Data->UpgradeCostBase, Level + 1);
 }
 
 float ABDTowerBase::GetDamageAtNextLevel() const

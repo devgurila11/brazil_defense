@@ -888,10 +888,9 @@ int32 UBDPlacementComponent::RestoreBoard(const TArray<FBDSavedPiece>& Pieces)
 			continue;
 		}
 
-		// A save from before prices were kept has none: it takes the opening price, which
-		// is what a restored match would charge for it on its first building phase.
+		// A save from before prices were kept has none: it takes the price, which no longer moves.
 		const ABDMatchManager* Match = GetMatch();
-		RestoringPaidCost = Saved.PaidCost >= 0 ? Saved.PaidCost : (Match != nullptr ? Match->GetBuildPriceOnWave(Data, 1) : 0);
+		RestoringPaidCost = Saved.PaidCost >= 0 ? Saved.PaidCost : (Match != nullptr ? Match->GetBuildPrice(Data) : 0);
 
 		if (Saved.IsOnSlot())
 		{
