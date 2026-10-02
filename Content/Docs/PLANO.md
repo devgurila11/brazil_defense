@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 (Agente, falas, alcance on-click) — (commit)** (desde 3057f6f):
+- **2026-10-02 (Agente, falas, alcance on-click) — de373a7** (desde 3057f6f):
   - Briefing 2026-10-02 15:00.
   - **Voto por corpo** (`bVotesByBody`, padrão ligado): militante morto
     +1 azul, militante na urna +1 vermelho, candidato nada. Nulo também
