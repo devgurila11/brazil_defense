@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 (placar 0 a 0, mira das torres) — (commit)** (desde c28c53a):
+- **2026-10-02 (placar 0 a 0, mira das torres) — 9dcd8ef** (desde c28c53a):
   - Briefing 2026-10-02 16:30.
   - **Placar começa 0 a 0** nas três dificuldades: saiu `StartingVotes`
     do `DA_Difficulty` e também os votos do bônus encadeado
