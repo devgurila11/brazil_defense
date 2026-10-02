@@ -16,6 +16,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
+#include "Placement/BDInspection.h"
 #include "Platform/BDPlatformComponent.h"
 #include "Tower/BDProjectileBase.h"
 #include "Tower/BDTowerData.h"
@@ -24,22 +25,21 @@
 
 namespace BDTowerPrivate
 {
-	// On while defenders of different reach are being tuned: the sphere is how short and
-	// long range read against the horde, and how much a level adds.
+	// The reach of a defender shows when it, or the platform it stands on, is the piece
+	// selected (UBDInspectionSubsystem): drawn for every one it would cover the board.
 	static int32 GShowRange = 1;
-	// On for now: the line from a defender to its creep is how the player sees who is shooting.
 	static int32 GShowTarget = 1;
 
 	static FAutoConsoleVariableRef CVarShowRange(
 		TEXT("BD.Tower.ShowRange"),
 		GShowRange,
-		TEXT("1 draws the effective range of every tower as a sphere on the ground, its level and range above it, and the next level's range when it reaches further. 0 to hide."),
+		TEXT("1 (default) draws the range of the defender selected, or of everyone on the platform selected, its level above it and the next level's range when it reaches further; 2 for every defender; 0 never."),
 		ECVF_Cheat);
 
 	static FAutoConsoleVariableRef CVarShowTarget(
 		TEXT("BD.Tower.ShowTarget"),
 		GShowTarget,
-		TEXT("1 draws a line from every tower to the creep it is tracking. 0 to hide."),
+		TEXT("1 (default) draws a line from the defender selected to the creep it is tracking; 2 for every defender; 0 never."),
 		ECVF_Cheat);
 }
 
@@ -397,12 +397,12 @@ ABDEnemyBase* ABDTowerBase::AcquireTarget(const float RangeSquared) const
 		return nullptr;
 	}
 
-	// Only First today: the creep furthest along its route is the one about to score,
-	// so it is the one worth the shot. The other priorities fall back to it until they
-	// are written, rather than silently doing nothing. The candidate outranks every
-	// priority: in range, it is the target, whatever else is there.
+	// With the dynamic aim the nearest creep; without it the one furthest along its route,
+	// about to score. The candidate outranks either: in range, it is the target, whatever
+	// else is there.
+	const bool bNearest = UBDTowerSettings::Get().bDynamicAim;
 	ABDEnemyBase* Best = nullptr;
-	int32 BestProgress = -1;
+	float BestScore = -MAX_flt;
 
 	for (ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
 	{
@@ -416,11 +416,13 @@ ABDEnemyBase* ABDTowerBase::AcquireTarget(const float RangeSquared) const
 			return Enemy;
 		}
 
-		const int32 Progress = Enemy->GetCurrentPathIndex();
-		if (Progress > BestProgress)
+		const float Score = bNearest
+			? -FVector::DistSquared2D(Enemy->GetActorLocation(), GetActorLocation())
+			: static_cast<float>(Enemy->GetCurrentPathIndex());
+		if (Score > BestScore)
 		{
 			Best = Enemy;
-			BestProgress = Progress;
+			BestScore = Score;
 		}
 	}
 
@@ -526,6 +528,24 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 	{
 		AcquisitionRemaining = FMath::Max(0.0f, AcquisitionRemaining - DeltaSeconds);
 		return;
+	}
+
+	// Before a shot, a look again: the nearest creep now, taken over the one held only
+	// when it is clearly nearer, so the weapon does not stutter between two.
+	if (FireCooldown <= 0.0f && !IsReloading() && !Target->IsCandidate() && UBDTowerSettings::Get().bDynamicAim)
+	{
+		ABDEnemyBase* Nearest = AcquireTarget(RangeSquared);
+		if (Nearest != nullptr && Nearest != Target)
+		{
+			const float HeldDistance = FVector::Dist2D(Target->GetActorLocation(), GetActorLocation());
+			const float NewDistance = FVector::Dist2D(Nearest->GetActorLocation(), GetActorLocation());
+			if (Nearest->IsCandidate() || NewDistance < HeldDistance * (1.0f - UBDTowerSettings::Get().AimSwitchMargin))
+			{
+				UE_LOG(LogBDTower, Verbose, TEXT("%s switches from %s to %s, nearer."), *GetName(), *Target->GetName(), *Nearest->GetName());
+				Target = Nearest;
+				CurrentTarget = Target;
+			}
+		}
 	}
 
 	// 3. Align the weapon. 4. Only then fire, at the rate of the level, while the
@@ -657,8 +677,10 @@ void ABDTowerBase::DrawDebug() const
 	}
 
 	const UBDTowerSettings& Settings = UBDTowerSettings::Get();
+	const UBDPlatformComponent* StandsOn = GetPlatform();
+	const AActor* PlatformActor = StandsOn != nullptr ? StandsOn->GetOwner() : nullptr;
 
-	if (BDTowerPrivate::GShowRange != 0)
+	if (UBDInspectionSubsystem::ShouldDrawReach(BDTowerPrivate::GShowRange, this, PlatformActor))
 	{
 		const UBDGridSubsystem* Grid = World->GetSubsystem<UBDGridSubsystem>();
 		const float PlaneZ = Grid != nullptr ? Grid->GetOrigin().Z : GetActorLocation().Z;
@@ -694,7 +716,7 @@ void ABDTowerBase::DrawDebug() const
 	}
 
 	const ABDEnemyBase* Target = CurrentTarget.Get();
-	if (BDTowerPrivate::GShowTarget != 0 && Target != nullptr)
+	if (Target != nullptr && UBDInspectionSubsystem::ShouldDrawReach(BDTowerPrivate::GShowTarget, this, PlatformActor))
 	{
 		DrawDebugLine(World, GetMuzzleLocation(), Target->GetActorLocation(), Settings.TargetLineColor,
 			BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority,

@@ -211,10 +211,6 @@ void ABDMatchHUD::DrawAgentBars()
 	for (TActorIterator<ABDAgent> It(World); It; ++It)
 	{
 		const ABDAgent* Agent = *It;
-		if (Agent->IsAsleep())
-		{
-			continue;
-		}
 
 		// Projected ends, as the creep bars: the zoom sizes it, and always facing the camera.
 		const FVector Center = Agent->GetBarAnchor();
@@ -234,6 +230,6 @@ void ABDMatchHUD::DrawAgentBars()
 		const float Y = Left.Y - Height * 0.5f;
 
 		DrawRect(FLinearColor(0.0f, 0.0f, 0.0f, 0.6f), X - 1.0f, Y - 1.0f, Width + 2.0f, Height + 2.0f);
-		DrawRect(Settings.AgentBarColor, X, Y, Width * Agent->GetPatrolFraction(), Height);
+		DrawRect(Agent->IsAsleep() ? Settings.AgentRestBarColor : Settings.AgentBarColor, X, Y, Width * Agent->GetBarFraction(), Height);
 	}
 }

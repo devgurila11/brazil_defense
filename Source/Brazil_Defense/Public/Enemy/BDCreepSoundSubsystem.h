@@ -75,6 +75,10 @@ public:
 	int32 GetVoicesRequested() const { return VoicesRequested; }
 	int32 GetVoicesInRange() const { return VoicesInRange; }
 	int32 GetVoicesStarted() const { return VoicesStarted; }
+
+	/** Sentences kept quiet by the speech rule: a full budget, or the side already talking. */
+	int32 GetSpeechHeldBack() const { return SpeechHeldBack; }
+	int32 GetPeakSentences() const { return PeakSentences; }
 	int32 GetStepsRequested() const { return StepsRequested; }
 	int32 GetStepsPlayed() const { return StepsPlayed; }
 	int32 GetDeathsRequested() const { return DeathsRequested; }
@@ -106,6 +110,20 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<USoundAttenuation> VoiceAttenuation;
 
+	/** The words: the voice falloff, panned hard by side. */
+	UPROPERTY(Transient)
+	TObjectPtr<USoundAttenuation> SpeechAttenuation;
+
+	/**
+	 * Whether a sentence at Where may start now under the speech rule. When the budget is
+	 * full and it is nearer the camera than the farthest sentence, that one is handed back
+	 * in OutReplace to be stopped.
+	 */
+	bool CanSpeak(const FVector& Where, TWeakObjectPtr<UAudioComponent>& OutReplace);
+
+	/** Sentences started and possibly still sounding. Also counted among Voices. */
+	TArray<TWeakObjectPtr<UAudioComponent>> Sentences;
+
 	UPROPERTY(Transient)
 	TObjectPtr<USoundAttenuation> FootstepAttenuation;
 
@@ -118,6 +136,8 @@ private:
 	int32 VoicesRequested = 0;
 	int32 VoicesInRange = 0;
 	int32 VoicesStarted = 0;
+	int32 SpeechHeldBack = 0;
+	int32 PeakSentences = 0;
 	int32 StepsRequested = 0;
 	int32 StepsPlayed = 0;
 	int32 DeathsRequested = 0;

@@ -111,14 +111,18 @@ public:
 	float CreepBarMinPixels = 14.0f;
 
 	//~ Agent bar -----------------------------------------------------------------
-	// Drawn by ABDMatchHUD over the palace's Agent: his patrol time left, as the creep bars,
-	// a fixed width in the world over his head. Hidden while he sleeps.
+	// Drawn by ABDMatchHUD over the palace's Agent, as the creep bars, a fixed width in the
+	// world over his head: his patrol time emptying while awake, his rest filling while he
+	// sleeps, in a colour of its own.
 
 	UPROPERTY(config, EditAnywhere, Category = "Agent Bar", meta = (ClampMin = "10.0", UIMin = "10.0", ForceUnits = "cm"))
 	float AgentBarWorldWidth = 360.0f;
 
 	UPROPERTY(config, EditAnywhere, Category = "Agent Bar")
 	FLinearColor AgentBarColor = FLinearColor(0.15f, 0.55f, 1.0f, 1.0f);
+
+	UPROPERTY(config, EditAnywhere, Category = "Agent Bar")
+	FLinearColor AgentRestBarColor = FLinearColor(0.62f, 0.55f, 0.85f, 1.0f);
 
 	//~ Palace stars --------------------------------------------------------------
 	// Drawn by ABDMatchHUD over every palace: five stars facing the camera, as many filled

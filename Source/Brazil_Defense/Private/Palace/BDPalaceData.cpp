@@ -28,6 +28,11 @@ UBDPalaceData::UBDPalaceData()
 	}
 }
 
+float UBDPalaceData::GetRestTime(const int32 KillsOnPatrol) const
+{
+	return FMath::Max(RestTimeMin, RestTimeBase - FMath::Max(0, KillsOnPatrol) * RestReductionPerKill);
+}
+
 const FBDAgentWeapon* UBDPalaceData::GetWeapon(const int32 PalaceLevel) const
 {
 	return Weapons.Num() > 0 ? &Weapons[FMath::Clamp(PalaceLevel, 0, Weapons.Num() - 1)] : nullptr;

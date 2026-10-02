@@ -11,9 +11,10 @@
  * other half, what a given creep says and how often, lives on its UBDEnemyData, so a new
  * vocal NPC is a data asset and never a line of code here.
  *
- * Budgets kept apart on purpose. Voices (speech and animal calls alike) share one
- * small budget over the whole board: fifty creeps each wanting to speak every few seconds
- * are a wall of words, three or four at a time are a crowd murmuring. Hooves are steps,
+ * Budgets kept apart on purpose. The animal calls share one small budget over the whole
+ * board: fifty creeps each wanting to bray every few seconds are a wall, three or four at
+ * a time are a crowd. The words have a stricter rule of their own (see Speech): two at
+ * most, one on each side of the camera, so each can be understood. Hooves are steps,
  * not voices, and get a budget of their own so a dense wave running never silences the
  * one creep talking. Death cries and the thuds of the bodies have budgets of their own,
  * so a wave cleared at once is a few screams and a few thuds, not a hundred of each.
@@ -72,6 +73,29 @@ public:
 
 	UPROPERTY(config, EditAnywhere, Category = "Voices", meta = (ClampMin = "-90.0", ClampMax = "0.0", UIMin = "-90.0", UIMax = "0.0"))
 	float VoiceAttenuationAtMax = -48.0f;
+
+	//~ Speech -----------------------------------------------------------------
+	// The words have a rule of their own, and stay out of the voice budget, which then holds
+	// only the animal calls: words on top of words are not understood. At most
+	// SpeechMaxConcurrent at once, and two only when they come from different sides of the
+	// camera - one left, one right, at least SpeechMinSeparation apart - so each ear gets its
+	// own sentence. A creep that would speak on the side already talking stays quiet this
+	// time; when the budget is full the nearest to the camera win.
+
+	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "1", ClampMax = "4", UIMin = "1", UIMax = "4"))
+	int32 SpeechMaxConcurrent = 2;
+
+	/** Degrees, seen from the camera, that two sentences must be apart, on opposite sides of the middle of the screen. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", ClampMax = "180.0", UIMin = "0.0", UIMax = "180.0"))
+	float SpeechMinSeparation = 30.0f;
+
+	/**
+	 * Width of the sentence's stereo image, in centimetres (the attenuation's stereo
+	 * spread). The words are panned fully by where the creep stands; this spreads them
+	 * further apart when the line itself is stereo.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float SpeechStereoSpread = 2000.0f;
 
 	//~ Death ------------------------------------------------------------------
 

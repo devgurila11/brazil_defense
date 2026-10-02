@@ -7,6 +7,7 @@
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
 #include "Placement/BDPlaceableData.h"
+#include "Placement/BDInspection.h"
 #include "Placement/BDPlacementComponent.h"
 #include "Tower/BDTowerBase.h"
 #include "Platform/BDPlatformComponent.h"
@@ -250,13 +251,29 @@ namespace BDPlacementDebug
 		const FBDCellCoord Coord(FCString::Atoi(*Args[0]), FCString::Atoi(*Args[1]));
 		Placement->SetHoveredCellDirect(Coord);
 		Placement->DebugClick();
-		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.Click %s: selected %s."), *Coord.ToString(), *GetNameSafe(Placement->GetSelectedDefender()));
+		const UBDInspectionSubsystem* Inspection = UBDInspectionSubsystem::Get(World);
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Place.Click %s: selected %s, reach shown for %s."), *Coord.ToString(), *GetNameSafe(Placement->GetSelectedDefender()),
+			*GetNameSafe(Inspection != nullptr ? Inspection->GetInspected() : nullptr));
 	}
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdTake(
 		TEXT("BD.Place.Take"),
 		TEXT("BD.Place.Take <asset path or name>: takes a piece into the hand the way the build bar and the palette keys do, refused when the bar would grey it."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecTake));
+
+	static void ExecEmptyHand(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDPlacementComponent* Placement = FindPlacementComponent(World))
+		{
+			Placement->CancelSelection();
+			UE_LOG(LogBDGrid, Log, TEXT("BD.Place.EmptyHand: nothing in hand."));
+		}
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdEmptyHand(
+		TEXT("BD.Place.EmptyHand"),
+		TEXT("BD.Place.EmptyHand: puts back whatever piece is in hand, as Escape does, so a click selects instead of building."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecEmptyHand));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdClick(
 		TEXT("BD.Place.Click"),

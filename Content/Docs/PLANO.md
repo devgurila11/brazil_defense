@@ -263,6 +263,49 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (Agente, falas, alcance on-click) — (commit)** (desde 3057f6f):
+  - Briefing 2026-10-02 15:00.
+  - **Voto por corpo** (`bVotesByBody`, padrão ligado): militante morto
+    +1 azul, militante na urna +1 vermelho, candidato nada. Nulo também
+    em corpos: 1 nulo por "um creep de HP" de dano desperdiçado. A
+    regra por HP continua lá desligada. **Depende disso:** os
+    `StartingVotes` dos `DA_Difficulty` (Normal começa com 1600 azul,
+    que era escala de HP e agora vale ~30 ondas de abates) — decisão
+    dele.
+  - **Agente:**
+    - Persegue o candidato: com um em campo larga a patrulha, corre
+      atrás (`ChaseSpeedScale` 1,5) e só para pro candidato, quando ele
+      está a 75% do raio (`ChaseCloseIn`; segue atirando enquanto ele
+      estiver no raio inteiro — sem isso oscilava na borda e não
+      atirava). Militante: para e atira, sem perseguir.
+    - Atira até deitar: na volta pra casa para e atira em quem entra no
+      raio (teste: 11 tiros e 5 abates no caminho).
+    - Descanso por tempo: `RestTimeBase` 45 s − `RestReductionPerKill`
+      0,5 s por abate da patrulha, mínimo `RestTimeMin` 10 s; acorda
+      sozinho no meio da onda. A barra enche durante o sono (violeta,
+      `AgentRestBarColor`). Sai `SleepWaves`.
+    - Mira dinâmica: a cada tiro reavalia o mais próximo e só troca se
+      o novo estiver 15% mais perto (`AimSwitchMargin`); candidato no
+      raio sempre ganha. `EBDAimMode` por arma (Dynamic; Locked fica
+      pro laser). As **torres também** passaram a mirar o mais próximo
+      com a mesma trava (`bDynamicAim`, `AimSwitchMargin` em Tower
+      Settings) — antes miravam o mais adiantado na rota.
+    - Tiro amarrado ao gesto: `UBDAnimNotify_Shot` no `Shooting` em
+      0,21 s (onde o pulso dá o tranco, achado pelos ossos), e o loop
+      toca a `FireRate` × duração (1,75×) = um gesto por tiro.
+  - **Falas:** teto 2 (`SpeechMaxConcurrent`), só de lados opostos da
+    câmera com 30° de separação (`SpeechMinSeparation`); cheio, a mais
+    próxima substitui a mais distante. Pan total por posição. Relincho
+    fica no teto antigo de 4; casco e o resto sem mudança.
+  - **Alcance on-click:** sem esferas permanentes. Clicar em torre
+    mostra o alcance dela; em plataforma, o de quem está nela; no
+    palácio ou no Agente, o raio do Agente; no vazio ou Esc, some
+    (`UBDInspectionSubsystem`). `BD.Tower.ShowRange`/`ShowTarget` e
+    `BD.Agent.ShowRange`: 1 = selecionado, 2 = todos, 0 = nada. Piscadas
+    de tiro seguem em `BD.Agent.ShowShots`. Novo `BD.Place.EmptyHand`.
+  - Regressão 51/51 (novo: notify no Shooting, descanso, alcance por
+    seleção, voto por corpo). Capturas renderizadas conferidas.
+
 - **2026-10-02 (ajustes do Agente) — 4ae5bf0** (desde 91b1832):
   - Briefing 2026-10-02 10:30.
   - **Palácio 3000** (`PalaceCost`, fixo): acima dos 2000 iniciais do

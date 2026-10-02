@@ -159,6 +159,14 @@ void UBDCreepSoundSubsystem::EnsureObjects()
 	VoiceAttenuation->Attenuation = BDCreepSoundPrivate::MakeAttenuation(
 		Settings.VoiceInnerRadius, Settings.VoiceFalloffDistance, Settings.VoiceAttenuationAtMax);
 
+	// The words pan all the way by where the creep stands, with no blend towards the middle
+	// near the listener: the point is one sentence in each ear.
+	SpeechAttenuation = NewObject<USoundAttenuation>(this, TEXT("CreepSpeechAttenuation"));
+	SpeechAttenuation->Attenuation = VoiceAttenuation->Attenuation;
+	SpeechAttenuation->Attenuation.StereoSpread = Settings.SpeechStereoSpread;
+	SpeechAttenuation->Attenuation.NonSpatializedRadiusStart = 0.0f;
+	SpeechAttenuation->Attenuation.NonSpatializedRadiusEnd = 0.0f;
+
 	FootstepAttenuation = NewObject<USoundAttenuation>(this, TEXT("CreepFootstepAttenuation"));
 	FootstepAttenuation->Attenuation = BDCreepSoundPrivate::MakeAttenuation(
 		Settings.FootstepInnerRadius, Settings.FootstepFalloffDistance, Settings.FootstepAttenuationAtMax);
@@ -191,13 +199,26 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 	EnsureObjects();
 	++VoicesInRange;
 
+	// Words obey the speech rule; the calls only the voice budget.
+	TWeakObjectPtr<UAudioComponent> Replace;
+	if (bSpeak && !CanSpeak(Creep.GetActorLocation(), Replace))
+	{
+		++SpeechHeldBack;
+		return false;
+	}
+	if (UAudioComponent* Old = Replace.Get())
+	{
+		Old->Stop();
+	}
+
 	// Attached, so the sentence leaves with the donkey; left to finish if the creep dies
-	// mid word, or every kill would cut a voice off.
+	// mid word, or every kill would cut a voice off. The words carry no concurrency object:
+	// CanSpeak is their budget, and they stay out of the calls' one.
 	const float Pitch = bSpeak ? Data->VoicePitch : 1.0f;
 	const float Volume = bSpeak ? Settings.SpeechVolume : Settings.CallVolume;
 	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAttached(Sound, Creep.GetRootComponent(), NAME_None,
 		FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, /*bStopWhenAttachedToDestroyed*/ false,
-		Volume, Pitch, 0.0f, VoiceAttenuation, VoiceConcurrency, /*bAutoDestroy*/ true);
+		Volume, Pitch, 0.0f, bSpeak ? SpeechAttenuation.Get() : VoiceAttenuation.Get(), bSpeak ? nullptr : VoiceConcurrency.Get(), /*bAutoDestroy*/ true);
 	if (Audio == nullptr)
 	{
 		return false;
@@ -205,6 +226,11 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 
 	++VoicesStarted;
 	Voices.Add(Audio);
+	if (bSpeak)
+	{
+		Sentences.Add(Audio);
+		PeakSentences = FMath::Max(PeakSentences, Sentences.Num());
+	}
 	return true;
 }
 
@@ -282,6 +308,78 @@ bool UBDCreepSoundSubsystem::PlayBodyFall(const ABDCreepCorpse& Corpse)
 	return true;
 }
 
+bool UBDCreepSoundSubsystem::CanSpeak(const FVector& Where, TWeakObjectPtr<UAudioComponent>& OutReplace)
+{
+	Sentences.RemoveAll([](const TWeakObjectPtr<UAudioComponent>& Sentence)
+	{
+		return !Sentence.IsValid() || !Sentence->IsPlaying();
+	});
+
+	const UWorld* World = GetWorld();
+	const APlayerController* Player = World != nullptr ? World->GetFirstPlayerController() : nullptr;
+	if (Player == nullptr)
+	{
+		return Sentences.IsEmpty();
+	}
+	FVector Listener, Front, Right;
+	Player->GetAudioListenerPosition(Listener, Front, Right);
+
+	// Where a sound sits seen from the camera: degrees off the middle of the screen, right positive.
+	const auto Azimuth = [&](const FVector& Point)
+	{
+		const FVector To = Point - Listener;
+		return FMath::RadiansToDegrees(FMath::Atan2(FVector::DotProduct(To, Right), FVector::DotProduct(To, Front)));
+	};
+	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
+	const auto Apart = [&](const float A, const float B)
+	{
+		return FMath::Sign(A) != FMath::Sign(B) && FMath::Abs(A - B) >= Settings.SpeechMinSeparation;
+	};
+
+	const float New = Azimuth(Where);
+	const int32 Budget = FMath::Clamp(Settings.SpeechMaxConcurrent, 1, 4);
+	if (Sentences.Num() < Budget)
+	{
+		// Room left: every sentence already sounding must be on the other side.
+		for (const TWeakObjectPtr<UAudioComponent>& Sentence : Sentences)
+		{
+			if (!Apart(New, Azimuth(Sentence->GetComponentLocation())))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	// Full: the new one only takes the place of the farthest, when it is nearer than that
+	// one and still apart from the others. The nearest to the camera are the ones heard.
+	int32 Farthest = INDEX_NONE;
+	float FarthestDistance = -1.0f;
+	for (int32 Index = 0; Index < Sentences.Num(); ++Index)
+	{
+		const float Distance = FVector::DistSquared(Listener, Sentences[Index]->GetComponentLocation());
+		if (Distance > FarthestDistance)
+		{
+			FarthestDistance = Distance;
+			Farthest = Index;
+		}
+	}
+	if (Farthest == INDEX_NONE || FVector::DistSquared(Listener, Where) >= FarthestDistance)
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < Sentences.Num(); ++Index)
+	{
+		if (Index != Farthest && !Apart(New, Azimuth(Sentences[Index]->GetComponentLocation())))
+		{
+			return false;
+		}
+	}
+	OutReplace = Sentences[Farthest];
+	Sentences.RemoveAt(Farthest);
+	return true;
+}
+
 int32 UBDCreepSoundSubsystem::CountActiveVoices()
 {
 	Voices.RemoveAll([](const TWeakObjectPtr<UAudioComponent>& Voice)
@@ -298,6 +396,8 @@ void UBDCreepSoundSubsystem::ResetStats()
 	VoicesRequested = 0;
 	VoicesInRange = 0;
 	VoicesStarted = 0;
+	SpeechHeldBack = 0;
+	PeakSentences = 0;
 	StepsRequested = 0;
 	StepsPlayed = 0;
 	DeathsRequested = 0;

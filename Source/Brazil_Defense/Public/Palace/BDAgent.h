@@ -26,10 +26,13 @@ enum class EBDAgentState : uint8
 	/** Stopped, turned to a creep in reach, firing until none is left. */
 	Shooting,
 
-	/** Patrol time ran out: walking home to sleep, defending nothing. */
+	/** Running after a candidate on the board, until he is in reach. */
+	Chasing,
+
+	/** Patrol time ran out: walking home to sleep, still shooting whatever comes in reach. */
 	Returning,
 
-	/** Lying in front of the palace until the wave after the bar ran out is over. */
+	/** Lying in front of the palace, the bar filling, defending nothing. */
 	Sleeping,
 };
 
@@ -41,14 +44,18 @@ enum class EBDAgentState : uint8
  * neither are the creeps: only a divider on the edge he would cross turns him, and the
  * permanent scenery, like any creep. Movement is by hand, as the creeps', no collision.
  *
- * A creep inside his detection radius stops him on the spot: he turns to it and shoots,
- * one creep at a time, the nearest, until none is left in reach; then he walks on. He
- * never chases. Shots are instant hits with a tracer; damage and rate are the weapon of
- * the palace's level (UBDPalaceData::Weapons).
+ * A militant inside his detection radius stops him on the spot: he turns to it and
+ * shoots, one creep at a time, until none is left in reach; then he walks on. He does not
+ * chase a militant. A candidate is another matter: while one is on the board he drops the
+ * patrol and runs after him, shooting once he is in reach, until the candidate dies or
+ * the bar runs out. Before every shot a shot-by-shot weapon looks again and takes a creep
+ * clearly nearer (EBDAimMode). The shot leaves on the gesture of the shooting animation
+ * (UBDAnimNotify_Shot); damage and rate are the weapon of the palace's level.
  *
  * His patrol time runs down always, waves or not. Each kill puts some back. At zero he
- * walks home, lies down in front of the palace and sleeps through the next wave, not
- * defending it, then gets up on a full bar.
+ * walks home - shooting on the way - lies down in front of the palace and rests: the bar
+ * fills over a rest that is shorter the more he killed (UBDPalaceData::GetRestTime), and
+ * he gets up on his own when it is full, mid wave or not.
  */
 UCLASS(meta = (DisplayName = "BD Agent"))
 class BRAZIL_DEFENSE_API ABDAgent : public AActor
@@ -70,8 +77,21 @@ public:
 	/** Seconds of patrol left. Above PatrolTime when kills came faster than the clock. */
 	float GetPatrolRemaining() const { return PatrolRemaining; }
 
-	/** The bar as drawn: patrol left over a full bar, clamped to 0..1. */
+	/** Patrol left over a full bar, clamped to 0..1. */
 	float GetPatrolFraction() const;
+
+	/** The bar as drawn: the patrol emptying while awake, the rest filling while asleep. */
+	float GetBarFraction() const;
+
+	/** Seconds this rest lasts, and how far into it he is. 0 while awake. */
+	float GetRestDuration() const { return RestDuration; }
+	float GetRestElapsed() const { return RestElapsed; }
+
+	/** Kills of the patrol under way, which shorten the rest after it. */
+	int32 GetKillsOnPatrol() const { return KillsOnPatrol; }
+
+	/** Called by UBDAnimNotify_Shot on the frame the gun goes off. */
+	void OnShotFrame();
 
 	bool IsAsleep() const { return State == EBDAgentState::Sleeping; }
 
@@ -158,14 +178,32 @@ private:
 	void WakeUp();
 
 	/** Walks the queued cells. @return true once the last one is reached. */
-	bool StepAlong(float DeltaSeconds);
+	bool StepAlong(float DeltaSeconds, float SpeedScale = 1.0f);
 
 	/** Turns the actor towards a yaw by the turn rate. @return true when within the tolerance. */
 	bool TurnTowards(float WantedYaw, float DeltaSeconds, float Tolerance);
 
 	/** A creep alive, walking, not already doomed, and inside the radius. */
 	bool IsValidTarget(const ABDEnemyBase* Enemy, float RadiusSquared) const;
+
+	/** The best creep in reach: a candidate first, then by the data's priority. Null when none. */
 	ABDEnemyBase* AcquireTarget(float RadiusSquared) const;
+
+	/**
+	 * The target for the next shot. A Dynamic weapon trades the one held for one clearly
+	 * nearer (UBDPalaceData::AimSwitchMargin), and anyone for a candidate in reach; a
+	 * Locked one keeps what it has while it lasts.
+	 */
+	ABDEnemyBase* ChooseShotTarget(float RadiusSquared);
+
+	/** The nearest candidate anywhere on the board, or null. */
+	ABDEnemyBase* FindCandidate() const;
+
+	/** Points the route at the candidate's cell, kept while he stays in it. */
+	void ChaseTowards(const ABDEnemyBase* Candidate);
+
+	/** Fires now when the shooting animation has no shot notify, by the weapon's rate. */
+	bool UsesShotTimer() const;
 
 	void Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon);
 
@@ -201,8 +239,20 @@ private:
 	float FireCooldown = 0.0f;
 	float KickRemaining = 0.0f;
 
-	/** Wave number when the bar ran out; he wakes once SleepWaves more have started and ended. */
-	int32 WaveAtSleep = 0;
+	/** Heading home on an empty bar: he shoots on the way, and lies down at the end of it. */
+	bool bGoingHome = false;
+
+	/** The current rest, in seconds, and how much of it has passed. */
+	float RestDuration = 0.0f;
+	float RestElapsed = 0.0f;
+
+	int32 KillsOnPatrol = 0;
+
+	/** Shots fired since the bar ran out, on the way home. */
+	int32 ShotsOnWayHome = 0;
+
+	/** The candidate's cell the chase route was planned to. */
+	FBDCellCoord ChaseGoal;
 
 	TWeakObjectPtr<ABDEnemyBase> CurrentTarget;
 

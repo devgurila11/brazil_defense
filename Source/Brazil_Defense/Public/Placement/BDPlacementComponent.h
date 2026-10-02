@@ -239,8 +239,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	ABDTowerBase* GetSelectedDefender() const { return SelectedDefender.Get(); }
 
-	/** Selects a defender and logs its upgrade deal. Null clears the selection. */
+	/**
+	 * Selects a defender and logs its upgrade deal. Null clears the selection. The piece
+	 * selected is also the one whose reach is drawn (UBDInspectionSubsystem).
+	 */
 	void SelectDefender(ABDTowerBase* Tower);
+
+	/**
+	 * Selects a piece that has no upgrade of its own - a platform, the palace, the Agent -
+	 * for its reach to show. Drops the defender selected for an upgrade.
+	 */
+	void InspectPiece(AActor* Piece);
 
 	/** Buys the next level of the selected defender. @return false when there is none or it cannot. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
@@ -472,6 +481,9 @@ private:
 
 	/** The piece under the cursor, preferring the fence when the cursor is nearer to it than to the cell center. */
 	const FBDPlacedPiece* FindPieceUnderHover() const;
+
+	/** The Agent standing under the cursor, within a third of a cell, or null. He is no placed piece. */
+	AActor* FindAgentUnderHover() const;
 
 	/** The placed piece one of whose actors this is, or null. */
 	const FBDPlacedPiece* FindPieceOfActor(const AActor* Actor) const;

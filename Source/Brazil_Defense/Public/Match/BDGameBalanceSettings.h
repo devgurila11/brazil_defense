@@ -197,14 +197,23 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Wave Scaling", meta = (ClampMin = "0", UIMin = "0"))
 	int32 MaxActiveSpawnPoints = 0;
 
-	//~ Votes by health ------------------------------------------------------------
-	// A vote is worth health: a creep that reaches the urn scores floor(MaxHealth / K)
+	//~ Votes ----------------------------------------------------------------------
+	// By body (bVotesByBody, the default): a militant killed is one blue vote, a militant
+	// at the urn one red, so the count matches the kills and has no fractions. Wasted
+	// damage is null votes in bodies too: one for every creep's health of it. The
+	// candidate scores nothing either way; he drops the bribe, or ends the match.
+	//
+	// Off, the older rule by health below: a creep that reaches the urn scores floor(MaxHealth / K)
 	// red, so a leak on wave 84 costs hundreds where one on wave 3 costs a few. Blue
 	// scores the same way for a kill, so both sides grow at the same pace and an early
 	// lead settles nothing. Wasted damage (overkill, lost shots) counts as null votes
 	// at the same rate: shown, never scored.
 
-	/** Health per vote, both sides. 1 makes a 10 hp creep worth 10 votes. */
+	/** One vote per body: per militant killed (blue), per militant at the urn (red). Off, votes by health. */
+	UPROPERTY(config, EditAnywhere, Category = "Votes")
+	bool bVotesByBody = true;
+
+	/** Health per vote, both sides, when not by body. 1 makes a 10 hp creep worth 10 votes. */
 	UPROPERTY(config, EditAnywhere, Category = "Votes", meta = (ClampMin = "0.01", UIMin = "0.01"))
 	float HealthPerVote = 1.0f;
 

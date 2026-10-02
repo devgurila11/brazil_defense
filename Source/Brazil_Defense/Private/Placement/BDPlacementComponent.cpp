@@ -9,6 +9,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "GameFramework/PlayerController.h"
@@ -21,7 +22,9 @@
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementPreview.h"
 #include "Placement/BDPlacementSettings.h"
+#include "Palace/BDAgent.h"
 #include "Palace/BDPalace.h"
+#include "Placement/BDInspection.h"
 #include "Palace/BDPalaceData.h"
 #include "Platform/BDPlatformComponent.h"
 #include "Objective/BDObjectiveSettings.h"
@@ -2274,6 +2277,13 @@ bool UBDPlacementComponent::TryBeginMoveAtHovered()
 		return false;
 	}
 
+	// The Agent walks over everything: when he is under the cursor, the click is his.
+	if (AActor* Agent = FindAgentUnderHover())
+	{
+		InspectPiece(Agent);
+		return false;
+	}
+
 	const FBDPlacedPiece* Found = FindPieceUnderHover();
 	if (Found == nullptr || Found->Data == nullptr)
 	{
@@ -2509,16 +2519,22 @@ void UBDPlacementComponent::HandlePlaceReleased()
 	// the same one buys the level.
 	if (IsHoveringMoveOrigin())
 	{
-		ABDTowerBase* Clicked = MovingPiece.Actors.Num() > 0 ? Cast<ABDTowerBase>(MovingPiece.Actors[0]) : nullptr;
+		AActor* ClickedPiece = MovingPiece.Actors.Num() > 0 ? MovingPiece.Actors[0].Get() : nullptr;
+		ABDTowerBase* Clicked = Cast<ABDTowerBase>(ClickedPiece);
 		CancelMove();
 
 		if (Clicked != nullptr && Clicked == SelectedDefender.Get())
 		{
 			UpgradeSelectedDefender();
 		}
-		else
+		else if (Clicked != nullptr)
 		{
 			SelectDefender(Clicked);
+		}
+		else
+		{
+			// A platform or the palace: no deal to state, only its reach to show.
+			InspectPiece(ClickedPiece);
 		}
 		return;
 	}
@@ -2530,9 +2546,42 @@ void UBDPlacementComponent::HandlePlaceReleased()
 	}
 }
 
+void UBDPlacementComponent::InspectPiece(AActor* Piece)
+{
+	SelectedDefender.Reset();
+	if (UBDInspectionSubsystem* Inspection = UBDInspectionSubsystem::Get(this))
+	{
+		Inspection->SetInspected(Piece);
+	}
+	UE_CLOG(Piece != nullptr, LogBDGrid, Log, TEXT("Selected %s: its reach shows."), *Piece->GetName());
+}
+
+AActor* UBDPlacementComponent::FindAgentUnderHover() const
+{
+	const UBDGridSubsystem* Grid = GetGrid();
+	UWorld* World = GetWorld();
+	if (!bHoveringGrid || Grid == nullptr || World == nullptr)
+	{
+		return nullptr;
+	}
+	const float Reach = Grid->GetCellSize() / 3.0f;
+	for (TActorIterator<ABDAgent> It(World); It; ++It)
+	{
+		if (FVector::DistSquared2D(It->GetActorLocation(), HoverPoint) <= Reach * Reach)
+		{
+			return *It;
+		}
+	}
+	return nullptr;
+}
+
 void UBDPlacementComponent::SelectDefender(ABDTowerBase* Tower)
 {
 	SelectedDefender = Tower;
+	if (UBDInspectionSubsystem* Inspection = UBDInspectionSubsystem::Get(this))
+	{
+		Inspection->SetInspected(Tower);
+	}
 	if (Tower == nullptr)
 	{
 		return;
@@ -2549,13 +2598,25 @@ void UBDPlacementComponent::ClickDefenderAtHovered()
 		return;
 	}
 
-	// Only the defender itself: a click on the truck under a shooter, or on a fence,
-	// ends the selection like a click on empty ground does.
+	if (AActor* Agent = FindAgentUnderHover())
+	{
+		InspectPiece(Agent);
+		return;
+	}
+
+	// The defender itself is selected for an upgrade; a platform or the palace only shows
+	// its reach; a fence, or empty ground, ends the selection.
 	const FBDPlacedPiece* Found = FindPieceUnderHover();
-	ABDTowerBase* Clicked = Found != nullptr && Found->Actors.Num() > 0 ? Cast<ABDTowerBase>(Found->Actors[0]) : nullptr;
+	AActor* ClickedPiece = Found != nullptr && Found->Actors.Num() > 0 ? Found->Actors[0].Get() : nullptr;
+	ABDTowerBase* Clicked = Cast<ABDTowerBase>(ClickedPiece);
 	if (Clicked != nullptr && Clicked == SelectedDefender.Get())
 	{
 		UpgradeSelectedDefender();
+		return;
+	}
+	if (Clicked == nullptr && ClickedPiece != nullptr && Found->Data != nullptr && Found->Data->GetPieceKind() != EBDPieceKind::Divider)
+	{
+		InspectPiece(ClickedPiece);
 		return;
 	}
 	SelectDefender(Clicked);
@@ -2597,7 +2658,8 @@ void UBDPlacementComponent::HandleCancelInput()
 		return;
 	}
 
-	if (CurrentSelection != nullptr || SelectedDefender.IsValid())
+	const UBDInspectionSubsystem* Inspection = UBDInspectionSubsystem::Get(this);
+	if (CurrentSelection != nullptr || SelectedDefender.IsValid() || (Inspection != nullptr && Inspection->GetInspected() != nullptr))
 	{
 		CancelSelection();
 		SelectDefender(nullptr);

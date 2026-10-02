@@ -18,7 +18,9 @@
 #include "Match/BDMatchManager.h"
 #include "Match/BDMatchTypes.h"
 #include "Palace/BDPalace.h"
+#include "Palace/BDAnimNotify_Shot.h"
 #include "Palace/BDPalaceData.h"
+#include "Placement/BDInspection.h"
 #include "Tower/BDShotSound.h"
 #include "Wave/BDWaveSubsystem.h"
 
@@ -28,7 +30,7 @@ namespace BDAgentPrivate
 	static FAutoConsoleVariableRef CVarShowRange(
 		TEXT("BD.Agent.ShowRange"),
 		GShowRange,
-		TEXT("1 draws the Agent's detection radius on the board. 0 hides it."));
+		TEXT("1 (default) draws the Agent's detection radius when he or his palace is the piece selected; 2 always; 0 never."));
 
 	static int32 GShowShots = 1;
 	static FAutoConsoleVariableRef CVarShowShots(
@@ -98,6 +100,15 @@ float ABDAgent::GetPatrolFraction() const
 {
 	const UBDPalaceData* Data = GetData();
 	return Data != nullptr && Data->PatrolTime > 0.0f ? FMath::Clamp(PatrolRemaining / Data->PatrolTime, 0.0f, 1.0f) : 0.0f;
+}
+
+float ABDAgent::GetBarFraction() const
+{
+	if (State == EBDAgentState::Sleeping)
+	{
+		return RestDuration > 0.0f ? FMath::Clamp(RestElapsed / RestDuration, 0.0f, 1.0f) : 1.0f;
+	}
+	return GetPatrolFraction();
 }
 
 //~ Setup ------------------------------------------------------------------------
@@ -333,10 +344,9 @@ void ABDAgent::StartIdle()
 
 void ABDAgent::StartReturn()
 {
-	const ABDMatchManager* Match = ABDMatchManager::Get(this);
-	WaveAtSleep = Match != nullptr ? Match->GetCurrentWave() : 0;
-	CurrentTarget.Reset();
 	PatrolRemaining = 0.0f;
+	ShotsOnWayHome = 0;
+	bGoingHome = true;
 
 	// Halfway into a cell, that cell is finished first: the edge to it was already crossed.
 	const bool bMidStep = Route.Num() > 0;
@@ -346,7 +356,7 @@ void ABDAgent::StartReturn()
 	TArray<FBDCellCoord> Way = FindSleepCell(Home) ? FindWay(From, Home) : TArray<FBDCellCoord>();
 	if (Way.Num() == 0)
 	{
-		UE_LOG(LogBDTower, Warning, TEXT("%s: no way home from %s, sleeping where he stands."), *GetName(), *From.ToString());
+		UE_LOG(LogBDTower, Warning, TEXT("%s: no way home from %s, resting where he stands."), *GetName(), *From.ToString());
 		Route.Reset();
 		StartSleep();
 		return;
@@ -356,16 +366,20 @@ void ABDAgent::StartReturn()
 		Way.RemoveAt(0);
 	}
 
-	UE_LOG(LogBDTower, Log, TEXT("%s: patrol time over on wave %d, %d cell(s) home."), *GetName(), WaveAtSleep, Way.Num());
+	UE_LOG(LogBDTower, Log, TEXT("%s: patrol time over after %d kill(s), %d cell(s) home."), *GetName(), KillsOnPatrol, Way.Num());
 	Route = MoveTemp(Way);
-	State = EBDAgentState::Returning;
-	PlayStateAnimation();
+	if (State != EBDAgentState::Shooting)
+	{
+		State = EBDAgentState::Returning;
+		PlayStateAnimation();
+	}
 }
 
 void ABDAgent::StartSleep()
 {
 	Route.Reset();
 	CurrentTarget.Reset();
+	bGoingHome = false;
 	State = EBDAgentState::Sleeping;
 	FBDCellCoord Home;
 	if (FindSleepCell(Home) && Home == HeadingCell)
@@ -377,20 +391,28 @@ void ABDAgent::StartSleep()
 		// Lying along the palace's front, not into it.
 		SetActorRotation(FRotator(0.0f, Building->GetActorRotation().Yaw, 0.0f));
 	}
+
+	// The better the patrol, the shorter the rest.
+	const UBDPalaceData* Data = GetData();
+	RestDuration = Data != nullptr ? Data->GetRestTime(KillsOnPatrol) : 0.0f;
+	RestElapsed = 0.0f;
 	PlayStateAnimation();
-	UE_LOG(LogBDTower, Log, TEXT("%s asleep at %s until wave %d is over."), *GetName(), *HeadingCell.ToString(),
-		WaveAtSleep + (GetData() != nullptr ? GetData()->SleepWaves : 1));
+	UE_LOG(LogBDTower, Log, TEXT("%s lies down at %s: %d kill(s) on the patrol, %d shot(s) on the way home, %.1fs of rest."), *GetName(), *HeadingCell.ToString(), KillsOnPatrol, ShotsOnWayHome, RestDuration);
 }
 
 void ABDAgent::WakeUp()
 {
 	const UBDPalaceData* Data = GetData();
 	PatrolRemaining = Data != nullptr ? Data->PatrolTime : 0.0f;
-	UE_LOG(LogBDTower, Log, TEXT("%s awake: %.0fs of patrol."), *GetName(), PatrolRemaining);
+	KillsOnPatrol = 0;
+	bGoingHome = false;
+	RestDuration = 0.0f;
+	RestElapsed = 0.0f;
+	UE_LOG(LogBDTower, Log, TEXT("%s up: %.0fs of patrol."), *GetName(), PatrolRemaining);
 	StartWalk();
 }
 
-bool ABDAgent::StepAlong(const float DeltaSeconds)
+bool ABDAgent::StepAlong(const float DeltaSeconds, const float SpeedScale)
 {
 	const UBDPalaceData* Data = GetData();
 	const UBDGridSubsystem* Grid = GetGrid();
@@ -399,7 +421,7 @@ bool ABDAgent::StepAlong(const float DeltaSeconds)
 		return true;
 	}
 
-	float Budget = Data->WalkSpeed * Grid->GetCellSize() * DeltaSeconds;
+	float Budget = Data->WalkSpeed * SpeedScale * Grid->GetCellSize() * DeltaSeconds;
 	while (Route.Num() > 0)
 	{
 		const FVector Here = GetActorLocation();
@@ -453,22 +475,132 @@ ABDEnemyBase* ABDAgent::AcquireTarget(const float RadiusSquared) const
 
 	ABDEnemyBase* Best = nullptr;
 	float BestScore = -MAX_flt;
+	bool bBestIsCandidate = false;
 	for (ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
 	{
 		if (!IsValidTarget(Enemy, RadiusSquared))
 		{
 			continue;
 		}
+		// A candidate in reach outranks every militant.
+		const bool bCandidate = Enemy->IsCandidate();
+		if (bBestIsCandidate && !bCandidate)
+		{
+			continue;
+		}
 		const float Score = Data->bTargetFurthestAlong
 			? static_cast<float>(Enemy->GetCurrentPathIndex())
 			: -FVector::DistSquared2D(Enemy->GetActorLocation(), GetActorLocation());
-		if (Score > BestScore)
+		if (Score > BestScore || (bCandidate && !bBestIsCandidate))
 		{
 			Best = Enemy;
 			BestScore = Score;
+			bBestIsCandidate = bCandidate;
 		}
 	}
 	return Best;
+}
+
+ABDEnemyBase* ABDAgent::ChooseShotTarget(const float RadiusSquared)
+{
+	ABDEnemyBase* Held = CurrentTarget.Get();
+	if (!IsValidTarget(Held, RadiusSquared))
+	{
+		Held = nullptr;
+	}
+
+	ABDEnemyBase* Best = AcquireTarget(RadiusSquared);
+	const FBDAgentWeapon* Weapon = GetWeapon();
+	const UBDPalaceData* Data = GetData();
+	if (Held == nullptr || Best == nullptr || Best == Held)
+	{
+		return Held != nullptr ? Held : Best;
+	}
+
+	// A candidate coming into reach is taken whatever the weapon.
+	if (Best->IsCandidate() && !Held->IsCandidate())
+	{
+		return Best;
+	}
+	if (Weapon == nullptr || Weapon->AimMode == EBDAimMode::Locked || Data == nullptr || Data->bTargetFurthestAlong)
+	{
+		return Held;
+	}
+
+	// Shot by shot: the nearest now, but only when clearly nearer than the one held, or he
+	// would stutter between two creeps at almost the same distance.
+	const float HeldDistance = FVector::Dist2D(Held->GetActorLocation(), GetActorLocation());
+	const float BestDistance = FVector::Dist2D(Best->GetActorLocation(), GetActorLocation());
+	return BestDistance < HeldDistance * (1.0f - Data->AimSwitchMargin) ? Best : Held;
+}
+
+ABDEnemyBase* ABDAgent::FindCandidate() const
+{
+	const UWorld* World = GetWorld();
+	const UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+	if (Waves == nullptr)
+	{
+		return nullptr;
+	}
+
+	ABDEnemyBase* Nearest = nullptr;
+	float NearestDistance = MAX_flt;
+	for (ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
+	{
+		if (Enemy == nullptr || !IsValid(Enemy) || !Enemy->IsCandidate() || Enemy->HasArrived() || Enemy->GetCurrentHealth() <= 0.0f)
+		{
+			continue;
+		}
+		const float Distance = FVector::DistSquared2D(Enemy->GetActorLocation(), GetActorLocation());
+		if (Distance < NearestDistance)
+		{
+			Nearest = Enemy;
+			NearestDistance = Distance;
+		}
+	}
+	return Nearest;
+}
+
+void ABDAgent::ChaseTowards(const ABDEnemyBase* Candidate)
+{
+	const UBDGridSubsystem* Grid = GetGrid();
+	FBDCellCoord Goal;
+	if (Grid == nullptr || Candidate == nullptr || !Grid->WorldToCell(Candidate->GetActorLocation(), Goal))
+	{
+		return;
+	}
+
+	// Planned again only when he has moved to another cell, or the route ran out.
+	if (State == EBDAgentState::Chasing && Goal == ChaseGoal && Route.Num() > 0)
+	{
+		return;
+	}
+
+	const bool bMidStep = Route.Num() > 0;
+	const FBDCellCoord From = bMidStep ? Route[0] : HeadingCell;
+	TArray<FBDCellCoord> Way = FindWay(From, Goal);
+	if (!bMidStep && Way.Num() > 0)
+	{
+		Way.RemoveAt(0);
+	}
+	if (Way.Num() == 0 && bMidStep)
+	{
+		Way.Add(From);
+	}
+	ChaseGoal = Goal;
+	Route = MoveTemp(Way);
+	if (State != EBDAgentState::Chasing)
+	{
+		UE_LOG(LogBDTower, Log, TEXT("%s runs after %s, %d cell(s) away."), *GetName(), *Candidate->GetName(), Route.Num());
+		State = EBDAgentState::Chasing;
+		PlayStateAnimation();
+	}
+}
+
+bool ABDAgent::UsesShotTimer() const
+{
+	const UBDPalaceData* Data = GetData();
+	return Data == nullptr || !UBDAnimNotify_Shot::IsOn(Data->ShootAnimation.Get());
 }
 
 FVector ABDAgent::GetMuzzleLocation() const
@@ -478,9 +610,36 @@ FVector ABDAgent::GetMuzzleLocation() const
 	return GetActorLocation() + GetActorForwardVector() * 80.0f + FVector(0.0f, 0.0f, Height);
 }
 
+void ABDAgent::OnShotFrame()
+{
+	if (State != EBDAgentState::Shooting || KickRemaining > 0.0f)
+	{
+		return;
+	}
+
+	// Looked at again on every shot: the weapon decides whether the target may change.
+	const float Radius = GetDetectionRadius();
+	ABDEnemyBase* Target = ChooseShotTarget(Radius * Radius);
+	const FBDAgentWeapon* Weapon = GetWeapon();
+	if (Target == nullptr || Weapon == nullptr)
+	{
+		return;
+	}
+	if (Target != CurrentTarget.Get())
+	{
+		UE_LOG(LogBDTower, Verbose, TEXT("%s switches to %s."), *GetName(), *Target->GetName());
+		CurrentTarget = Target;
+	}
+
+	// The gesture is the shot: he faces the target at once, so the line leaves the gun.
+	SetActorRotation(FRotator(0.0f, (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal2D().ToOrientationRotator().Yaw, 0.0f));
+	Fire(Target, *Weapon);
+}
+
 void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 {
 	++ShotsFired;
+	ShotsOnWayHome += bGoingHome ? 1 : 0;
 	UWorld* World = GetWorld();
 	if (World != nullptr && BDAgentPrivate::GShowShots != 0)
 	{
@@ -488,7 +647,7 @@ void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 			BDAgentPrivate::ShotColor, /*bPersistent*/ false, BDAgentPrivate::ShotFlashLife, /*DepthPriority*/ 0, /*Thickness*/ 4.0f);
 	}
 
-	// The sound of the weapon, on the same instant as the flash and the cadence.
+	// The sound of the weapon, on the same instant as the flash and the gesture.
 	if (UBDShotSoundSubsystem* Shots = World != nullptr ? World->GetSubsystem<UBDShotSoundSubsystem>() : nullptr)
 	{
 		Shots->PlayShot(Weapon.FireSound.LoadSynchronous(), GetMuzzleLocation());
@@ -500,9 +659,11 @@ void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 void ABDAgent::NotifyKill()
 {
 	++Kills;
+	++KillsOnPatrol;
 	const FBDAgentWeapon* Weapon = GetWeapon();
-	if (Weapon == nullptr || State == EBDAgentState::Sleeping || State == EBDAgentState::Returning)
+	if (Weapon == nullptr || State == EBDAgentState::Sleeping || bGoingHome)
 	{
+		// On the way home the kill still shortens the rest; it does not refill the bar.
 		return;
 	}
 	PatrolRemaining += Weapon->KillBonusSeconds;
@@ -556,12 +717,23 @@ void ABDAgent::PlayStateAnimation()
 	case EBDAgentState::Returning:
 		PlayLoop(Data->WalkAnimation, Data->WalkAnimRate);
 		break;
+	case EBDAgentState::Chasing:
+		PlayLoop(Data->WalkAnimation, Data->WalkAnimRate * Data->ChaseSpeedScale);
+		break;
 	case EBDAgentState::Idle:
 		PlayLoop(Data->IdleAnimation);
 		break;
 	case EBDAgentState::Shooting:
-		PlayLoop(Data->ShootAnimation);
+	{
+		// One gesture per shot: the loop runs at the weapon's rate, and the notify on it fires.
+		UAnimSequenceBase* Shoot = Data->ShootAnimation.LoadSynchronous();
+		const FBDAgentWeapon* Weapon = GetWeapon();
+		const float Rate = Shoot != nullptr && Weapon != nullptr && !UsesShotTimer()
+			? FMath::Max(0.1f, Weapon->FireRate * Shoot->GetPlayLength())
+			: 1.0f;
+		PlayLoop(Data->ShootAnimation, Rate);
 		break;
+	}
 	case EBDAgentState::Sleeping:
 		PlayLoop(Data->SleepAnimation);
 		break;
@@ -589,13 +761,29 @@ void ABDAgent::Tick(const float DeltaSeconds)
 
 	FireCooldown = FMath::Max(0.0f, FireCooldown - DeltaSeconds);
 
-	// The clock runs always, waves or not, kick or not; only sleep stops it.
-	if (State != EBDAgentState::Sleeping && State != EBDAgentState::Returning)
+	// Asleep, the rest runs out on its own clock and the bar fills with it.
+	if (State == EBDAgentState::Sleeping)
+	{
+		RestElapsed += DeltaSeconds;
+		if (RestElapsed >= RestDuration)
+		{
+			WakeUp();
+		}
+		DrawDebug();
+		return;
+	}
+
+	// The patrol clock runs always while awake, kick or not, until it sends him home.
+	if (!bGoingHome)
 	{
 		PatrolRemaining -= DeltaSeconds;
 		if (PatrolRemaining <= 0.0f)
 		{
 			StartReturn();
+			if (State == EBDAgentState::Sleeping)
+			{
+				return;
+			}
 		}
 	}
 
@@ -611,88 +799,109 @@ void ABDAgent::Tick(const float DeltaSeconds)
 		return;
 	}
 
-	switch (State)
+	const float Radius = GetDetectionRadius();
+	const float RadiusSquared = Radius * Radius;
+
+	// A candidate on the board pulls him off the patrol; on the way home he only shoots.
+	ABDEnemyBase* Candidate = bGoingHome ? nullptr : FindCandidate();
+
+	// Who he shoots: the one held while it lasts, the best in reach otherwise. While a
+	// candidate is out he only stops for the candidate himself.
+	ABDEnemyBase* Target = CurrentTarget.Get();
+	if (!IsValidTarget(Target, RadiusSquared) || (Candidate != nullptr && !Target->IsCandidate()))
 	{
-	case EBDAgentState::Sleeping:
-	{
-		// Up once the wave after the bar ran out has been fought without him.
-		const ABDMatchManager* Match = ABDMatchManager::Get(this);
-		if (Match != nullptr && Match->GetPhase() != EBDMatchPhase::WaveActive
-			&& Match->GetCurrentWave() >= WaveAtSleep + FMath::Max(1, Data->SleepWaves))
+		Target = AcquireTarget(RadiusSquared);
+		if (Candidate != nullptr && Target != nullptr && !Target->IsCandidate())
 		{
-			WakeUp();
+			Target = nullptr;
 		}
-		break;
+		// A chased candidate is shot once well inside the reach, not on its very edge.
+		if (Target != nullptr && Target->IsCandidate() && State == EBDAgentState::Chasing
+			&& FVector::DistSquared2D(Target->GetActorLocation(), GetActorLocation()) > FMath::Square(Radius * Data->ChaseCloseIn))
+		{
+			Target = nullptr;
+		}
+		CurrentTarget = Target;
 	}
 
-	case EBDAgentState::Returning:
+	if (Target != nullptr)
+	{
+		if (State != EBDAgentState::Shooting)
+		{
+			State = EBDAgentState::Shooting;
+			PlayStateAnimation();
+		}
+		const float WantedYaw = (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal2D().ToOrientationRotator().Yaw;
+		const bool bAligned = TurnTowards(WantedYaw, DeltaSeconds, Data->AimTolerance);
+
+		// Without the shot notify on the animation, a timer at the weapon's rate stands in.
+		const FBDAgentWeapon* Weapon = GetWeapon();
+		if (UsesShotTimer() && bAligned && Weapon != nullptr && FireCooldown <= 0.0f)
+		{
+			OnShotFrame();
+			FireCooldown = 1.0f / FMath::Max(Weapon->FireRate, KINDA_SMALL_NUMBER);
+		}
+		DrawDebug();
+		return;
+	}
+
+	if (Candidate != nullptr)
+	{
+		ChaseTowards(Candidate);
+		StepAlong(DeltaSeconds, Data->ChaseSpeedScale);
+		DrawDebug();
+		return;
+	}
+
+	// Reach clear and nobody to run after: home if the bar is out, the patrol otherwise.
+	if (bGoingHome)
+	{
+		if (State != EBDAgentState::Returning)
+		{
+			State = EBDAgentState::Returning;
+			PlayStateAnimation();
+		}
 		if (StepAlong(DeltaSeconds))
 		{
 			StartSleep();
 		}
-		break;
-
-	default:
-	{
-		const float Radius = GetDetectionRadius();
-		const float RadiusSquared = Radius * Radius;
-
-		// One creep at a time: the one he has, while it lasts; otherwise the best in reach.
-		ABDEnemyBase* Target = CurrentTarget.Get();
-		if (!IsValidTarget(Target, RadiusSquared))
-		{
-			Target = AcquireTarget(RadiusSquared);
-			CurrentTarget = Target;
-		}
-
-		if (Target != nullptr)
-		{
-			if (State != EBDAgentState::Shooting)
-			{
-				State = EBDAgentState::Shooting;
-				PlayStateAnimation();
-			}
-			const float WantedYaw = (Target->GetActorLocation() - GetActorLocation()).GetSafeNormal2D().ToOrientationRotator().Yaw;
-			const FBDAgentWeapon* Weapon = GetWeapon();
-			if (TurnTowards(WantedYaw, DeltaSeconds, Data->AimTolerance) && Weapon != nullptr && FireCooldown <= 0.0f)
-			{
-				Fire(Target, *Weapon);
-				FireCooldown = 1.0f / FMath::Max(Weapon->FireRate, KINDA_SMALL_NUMBER);
-			}
-			break;
-		}
-
-		if (State == EBDAgentState::Shooting)
-		{
-			// Reach clear: back to the walk he was on, or a new decision.
-			if (Route.Num() > 0)
-			{
-				State = EBDAgentState::Walking;
-				PlayStateAnimation();
-			}
-			else
-			{
-				DecideNext();
-			}
-		}
-
-		if (State == EBDAgentState::Walking)
-		{
-			if (StepAlong(DeltaSeconds))
-			{
-				DecideNext();
-			}
-		}
-		else if (State == EBDAgentState::Idle)
-		{
-			IdleRemaining -= DeltaSeconds;
-			if (IdleRemaining <= 0.0f)
-			{
-				StartWalk();
-			}
-		}
-		break;
+		DrawDebug();
+		return;
 	}
+
+	if (State == EBDAgentState::Shooting || State == EBDAgentState::Chasing)
+	{
+		// Back to the walk he was on, or a new decision. A chase leaves only the cell he
+		// is stepping into.
+		if (State == EBDAgentState::Chasing && Route.Num() > 1)
+		{
+			Route.SetNum(1);
+		}
+		if (Route.Num() > 0)
+		{
+			State = EBDAgentState::Walking;
+			PlayStateAnimation();
+		}
+		else
+		{
+			DecideNext();
+		}
+	}
+
+	if (State == EBDAgentState::Walking)
+	{
+		if (StepAlong(DeltaSeconds))
+		{
+			DecideNext();
+		}
+	}
+	else if (State == EBDAgentState::Idle)
+	{
+		IdleRemaining -= DeltaSeconds;
+		if (IdleRemaining <= 0.0f)
+		{
+			StartWalk();
+		}
 	}
 
 	DrawDebug();
@@ -701,7 +910,8 @@ void ABDAgent::Tick(const float DeltaSeconds)
 void ABDAgent::DrawDebug() const
 {
 	UWorld* World = GetWorld();
-	if (World == nullptr || BDAgentPrivate::GShowRange == 0 || State == EBDAgentState::Sleeping || State == EBDAgentState::Returning)
+	if (World == nullptr || State == EBDAgentState::Sleeping
+		|| !UBDInspectionSubsystem::ShouldDrawReach(BDAgentPrivate::GShowRange, this, Palace.Get()))
 	{
 		return;
 	}
@@ -722,7 +932,7 @@ void ABDAgent::DrawDebug() const
 
 void ABDAgent::DebugSetPatrolRemaining(const float Seconds)
 {
-	if (State == EBDAgentState::Sleeping || State == EBDAgentState::Returning)
+	if (State == EBDAgentState::Sleeping || bGoingHome)
 	{
 		return;
 	}
@@ -736,9 +946,9 @@ void ABDAgent::DebugSetPatrolRemaining(const float Seconds)
 void ABDAgent::DebugWake()
 {
 	KickRemaining = 0.0f;
-	if (State == EBDAgentState::Returning)
+	if (bGoingHome)
 	{
-		Route.Reset();
+		Route.SetNum(FMath::Min(Route.Num(), 1));
 	}
 	WakeUp();
 }
@@ -746,11 +956,12 @@ void ABDAgent::DebugWake()
 FString ABDAgent::Describe() const
 {
 	const FBDAgentWeapon* Weapon = GetWeapon();
-	return FString::Printf(TEXT("%s of %s: %s at %s (cell %s), patrol %.1fs (%.0f%%), %s%s, %d shot(s), %d kill(s), +%.2fs earned, target %s"),
+	return FString::Printf(TEXT("%s of %s: %s%s at %s (cell %s), patrol %.1fs, bar %.0f%%, rest %.1f/%.1fs, %s%s, %d shot(s), %d kill(s) (%d this patrol), +%.2fs earned, target %s"),
 		*GetName(), *GetNameSafe(Palace.Get()), *StaticEnum<EBDAgentState>()->GetNameStringByValue(static_cast<int64>(State)),
-		*GetActorLocation().ToCompactString(), *HeadingCell.ToString(), PatrolRemaining, GetPatrolFraction() * 100.0f,
+		bGoingHome ? TEXT(" (going home)") : TEXT(""),
+		*GetActorLocation().ToCompactString(), *HeadingCell.ToString(), PatrolRemaining, GetBarFraction() * 100.0f, RestElapsed, RestDuration,
 		Weapon != nullptr ? *Weapon->Name.ToString() : TEXT("no weapon"), IsKicking() ? TEXT(", kicking") : TEXT(""),
-		ShotsFired, Kills, BonusEarned, *GetNameSafe(CurrentTarget.Get()));
+		ShotsFired, Kills, KillsOnPatrol, BonusEarned, *GetNameSafe(CurrentTarget.Get()));
 }
 
 namespace BDAgentDebug

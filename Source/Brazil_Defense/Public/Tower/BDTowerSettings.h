@@ -74,4 +74,18 @@ public:
 	/** Height above the grid plane the range circle is drawn at. */
 	UPROPERTY(config, EditAnywhere, Category = "Debug", meta = (ForceUnits = "cm"))
 	float RangeDrawHeightOffset = 20.0f;
+
+	//~ Aim ------------------------------------------------------------------------
+	// Every defender today fires shot by shot, and a shot-by-shot weapon looks again
+	// before each shot: the nearest creep in range then, switching from the one it held
+	// only for one clearly nearer. A continuous weapon (a laser, later) will hold its
+	// creep instead, since keeping it is what pays.
+
+	/** Re-picks the nearest creep before every shot. Off, a defender keeps its creep while it is in range, and picks the one furthest along. */
+	UPROPERTY(config, EditAnywhere, Category = "Aim")
+	bool bDynamicAim = true;
+
+	/** How much nearer another creep must be to be switched to: 0.15 is 15% nearer than the one held. */
+	UPROPERTY(config, EditAnywhere, Category = "Aim", meta = (ClampMin = "0.0", ClampMax = "0.9", EditCondition = "bDynamicAim"))
+	float AimSwitchMargin = 0.15f;
 };

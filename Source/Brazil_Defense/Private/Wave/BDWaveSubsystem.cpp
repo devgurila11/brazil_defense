@@ -1196,9 +1196,18 @@ void UBDWaveSubsystem::ReportWastedDamage(const float Damage, const bool bLostSh
 		++MatchTotals.LostShots;
 	}
 
-	// Null votes: the waste, at the same rate as the score, handed over in whole votes.
+	// Null votes: the waste, at the same rate as the score, handed over in whole votes. By
+	// body, the rate is one creep of the wave: a creep's health wasted is one null vote.
 	NullDamageOwed += FMath::Max(0.0f, Damage);
-	const float HealthPerVote = FMath::Max(0.01f, UBDGameBalanceSettings::Get().HealthPerVote);
+	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	float BodyHealth = 0.0f;
+	if (Balance.bVotesByBody)
+	{
+		const UBDEnemyData* Creep = UBDWaveSettings::Get().ResolveWaveEnemy();
+		const ABDMatchManager* Scale = GetMatch();
+		BodyHealth = Creep != nullptr ? Creep->MaxHealth * (Scale != nullptr ? Scale->GetHealthScale() : 1.0f) : 0.0f;
+	}
+	const float HealthPerVote = FMath::Max(0.01f, Balance.bVotesByBody && BodyHealth > 0.0f ? BodyHealth : Balance.HealthPerVote);
 	const int32 Whole = FMath::FloorToInt(NullDamageOwed / HealthPerVote);
 	if (Whole > 0)
 	{
@@ -1220,7 +1229,8 @@ void UBDWaveSubsystem::NotifyEnemyArrived(ABDEnemyBase* Enemy)
 	// Worth its health: the later the leak, the more it costs. A candidate is the defeat, not votes.
 	// The red side carries its own weight: an arrival is meant to land harder than a kill,
 	// so the count is still a contest once the defense starts to give.
-	const int32 Votes = Enemy->IsCandidate() ? 0 : UBDGameBalanceSettings::Get().RedVotesForHealth(Enemy->GetMaxHealth());
+	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	const int32 Votes = Enemy->IsCandidate() ? 0 : (Balance.bVotesByBody ? 1 : Balance.RedVotesForHealth(Enemy->GetMaxHealth()));
 
 	if (ABDMatchManager* Match = GetMatch())
 	{
@@ -1246,6 +1256,7 @@ void UBDWaveSubsystem::NotifyEnemyDied(ABDEnemyBase* Enemy)
 	const UBDEnemyData* Data = Enemy->GetData();
 	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
 	const int32 Votes = Enemy->IsCandidate() ? 0
+		: Balance.bVotesByBody ? 1
 		: (Balance.bBlueVotesByHealth ? Balance.VotesForHealth(Enemy->GetMaxHealth()) : (Data != nullptr ? Data->VotesOnDeath : 0));
 
 	if (ABDMatchManager* Match = GetMatch())

@@ -29,7 +29,10 @@
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
 #include "Objective/BDObjective.h"
+#include "Animation/AnimSequenceBase.h"
 #include "Palace/BDAgent.h"
+#include "Palace/BDAnimNotify_Shot.h"
+#include "Placement/BDInspection.h"
 #include "Palace/BDPalace.h"
 #include "Palace/BDPalaceData.h"
 #include "Components/StaticMeshComponent.h"
@@ -700,6 +703,64 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					&& (AfterDrain == EBDAgentState::Returning || AfterDrain == EBDAgentState::Sleeping),
 				FString::Printf(TEXT("+%.2fs, kick %s, then %s"), Earned, bKicked ? TEXT("on") : TEXT("refused"),
 					*StaticEnum<EBDAgentState>()->GetNameStringByValue(static_cast<int64>(AfterDrain))));
+		}
+
+		// The rest: shorter the more he killed, never under the floor; the shot leaves on the gesture.
+		if (PalaceData != nullptr)
+		{
+			const float RestNone = PalaceData->GetRestTime(0);
+			const float RestTwenty = PalaceData->GetRestTime(20);
+			const float RestMany = PalaceData->GetRestTime(1000);
+			Check(TEXT("AGENTE"), TEXT("the rest shrinks with the kills of the patrol, down to its floor"),
+				FMath::IsNearlyEqual(RestNone, PalaceData->RestTimeBase) && RestTwenty < RestNone
+					&& FMath::IsNearlyEqual(RestTwenty, PalaceData->RestTimeBase - 20 * PalaceData->RestReductionPerKill)
+					&& FMath::IsNearlyEqual(RestMany, PalaceData->RestTimeMin),
+				FString::Printf(TEXT("0 kills %.1fs, 20 kills %.1fs, 1000 kills %.1fs (floor %.1fs)"), RestNone, RestTwenty, RestMany, PalaceData->RestTimeMin));
+			const UAnimSequenceBase* Shoot = PalaceData->ShootAnimation.LoadSynchronous();
+			Check(TEXT("AGENTE"), TEXT("the shooting animation carries the shot notify"), UBDAnimNotify_Shot::IsOn(Shoot),
+				FString::Printf(TEXT("%s"), *GetNameSafe(Shoot)));
+		}
+
+		// The reach shows for the piece selected only: the palace shows its Agent's.
+		if (UBDInspectionSubsystem* Inspection = UBDInspectionSubsystem::Get(World))
+		{
+			ABDTowerBase* AnyTower = nullptr;
+			for (TActorIterator<ABDTowerBase> It(World); It && AnyTower == nullptr; ++It) { AnyTower = *It; }
+			Placement->SelectDefender(AnyTower);
+			const bool bTowerShown = AnyTower != nullptr && UBDInspectionSubsystem::ShouldDrawReach(1, AnyTower)
+				&& (Agent == nullptr || !UBDInspectionSubsystem::ShouldDrawReach(1, Agent, Palace));
+			Placement->InspectPiece(Palace);
+			const bool bAgentShown = Agent != nullptr && UBDInspectionSubsystem::ShouldDrawReach(1, Agent, Palace)
+				&& (AnyTower == nullptr || !UBDInspectionSubsystem::ShouldDrawReach(1, AnyTower));
+			Placement->SelectDefender(nullptr);
+			const bool bCleared = Inspection->GetInspected() == nullptr && (AnyTower == nullptr || !UBDInspectionSubsystem::ShouldDrawReach(1, AnyTower));
+			Check(TEXT("ALCANCE"), TEXT("a reach shows only for the piece selected, and clears with the selection"),
+				bTowerShown && bAgentShown && bCleared,
+				FString::Printf(TEXT("tower %s, palace shows the agent %s, cleared %s"), bTowerShown ? TEXT("yes") : TEXT("no"),
+					bAgentShown ? TEXT("yes") : TEXT("no"), bCleared ? TEXT("yes") : TEXT("no")));
+		}
+
+		// One vote per body: a militant killed is one blue, one at the urn one red.
+		if (UBDGameBalanceSettings::Get().bVotesByBody)
+		{
+			const UBDEnemyData* Militant = UBDWaveSettings::Get().ResolveWaveEnemy();
+			const int32 BlueBeforeBody = Match->GetVotesBlue();
+			const int32 RedBeforeBody = Match->GetVotesRed();
+			ABDEnemyBase* Killed = Militant != nullptr ? Waves->SpawnEnemy(Militant, 0) : nullptr;
+			if (Killed != nullptr)
+			{
+				Killed->Kill();
+			}
+			ABDEnemyBase* Leaked = Militant != nullptr ? Waves->SpawnEnemy(Militant, 0) : nullptr;
+			if (Leaked != nullptr)
+			{
+				Waves->NotifyEnemyArrived(Leaked);
+				Leaked->Destroy();
+			}
+			Check(TEXT("VOTOS"), TEXT("one vote per body: +1 blue for a militant killed, +1 red for one at the urn"),
+				Killed != nullptr && Leaked != nullptr && Match->GetVotesBlue() == BlueBeforeBody + 1 && Match->GetVotesRed() == RedBeforeBody + 1,
+				FString::Printf(TEXT("blue %d -> %d, red %d -> %d, creep of %.0f hp"), BlueBeforeBody, Match->GetVotesBlue(), RedBeforeBody, Match->GetVotesRed(),
+					Killed != nullptr ? Killed->GetMaxHealth() : 0.0f));
 		}
 
 		Placement->SetHoveredCellDirect(PalaceCell);
