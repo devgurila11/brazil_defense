@@ -402,9 +402,16 @@ public:
 
 	//~ Moving pieces between waves --------------------------------------------
 
-	/** Whether a placed piece may be picked up and put elsewhere right now: only while building. */
+	/**
+	 * Whether a placed piece may be picked up and put elsewhere right now: any time the
+	 * match is being played, waves out or not. The move tax is the brake.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
-	bool CanMove() const { return Phase == EBDMatchPhase::Building; }
+	bool CanMove() const { return IsBeingPlayed(); }
+
+	/** Building or a wave out: the player's resources are theirs to use. Not in setup, not once the match is over. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
+	bool IsBeingPlayed() const { return Phase == EBDMatchPhase::Building || Phase == EBDMatchPhase::WaveActive; }
 
 	/** Fraction of a piece's price a move costs on the current wave. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")

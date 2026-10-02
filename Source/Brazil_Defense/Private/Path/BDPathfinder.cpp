@@ -241,6 +241,98 @@ bool UBDPathfinder::WouldBlockPathEdges(const UBDGridSubsystem* Grid, const TArr
 	return CacheEdgeBlockResult(Grid, Candidate, AnySpawnCutOff(*Grid, Spawns, Goals, nullptr, &BlockedEdgeOverride));
 }
 
+bool UBDPathfinder::WouldCutOffCells(const UBDGridSubsystem* Grid, const TArray<FBDCellCoord>& Starts,
+	const TArray<FBDCellCoord>& BlockedCells, const TArray<FBDEdgeCoord>& BlockedEdges) const
+{
+	using namespace BDPathfinderPrivate;
+
+	if (Grid == nullptr || Starts.Num() == 0 || Grid->GetCellCount() <= 0)
+	{
+		return false;
+	}
+
+	TArray<FBDCellCoord> Goals;
+	GatherCellsWithState(*Grid, EBDCellState::Goal, Goals);
+	if (Goals.Num() == 0)
+	{
+		return false;
+	}
+
+	const int32 SizeX = Grid->GetSizeX();
+	const int32 CellCount = Grid->GetCellCount();
+	TBitArray<> Blocked;
+	Blocked.Init(false, CellCount);
+	for (const FBDCellCoord& Cell : BlockedCells)
+	{
+		if (Grid->IsValidCoord(Cell))
+		{
+			Blocked[Cell.Y * SizeX + Cell.X] = true;
+		}
+	}
+	TBitArray<> BlockedEdge;
+	BlockedEdge.Init(false, Grid->GetEdgeCount());
+	for (const FBDEdgeCoord& Edge : BlockedEdges)
+	{
+		const int32 Index = Grid->EdgeToIndex(Edge);
+		if (Index != INDEX_NONE && BlockedEdge.IsValidIndex(Index))
+		{
+			BlockedEdge[Index] = true;
+		}
+	}
+
+	// The same rules as the search: walkable cells, crossings neither fenced nor in the overlay.
+	const auto IsPassable = [&](const FBDCellCoord& Coord)
+	{
+		return Grid->IsValidCoord(Coord) && !Blocked[Coord.Y * SizeX + Coord.X] && Grid->IsWalkable(Coord);
+	};
+	const auto IsCrossable = [&](const FBDCellCoord& From, const FBDCellCoord& To)
+	{
+		bool bAdjacent = false;
+		const int32 Index = Grid->EdgeToIndex(FBDEdgeCoord::Between(From, To, bAdjacent));
+		if (Index != INDEX_NONE && BlockedEdge.IsValidIndex(Index) && BlockedEdge[Index])
+		{
+			return false;
+		}
+		return !Grid->IsEdgeBlocked(From, To);
+	};
+
+	// Flooded out from the urn: crossings are the same both ways, so what it reaches can reach it.
+	TBitArray<> Reached;
+	Reached.Init(false, CellCount);
+	TArray<FBDCellCoord> Frontier;
+	for (const FBDCellCoord& Goal : Goals)
+	{
+		if (IsPassable(Goal))
+		{
+			Reached[Goal.Y * SizeX + Goal.X] = true;
+			Frontier.Add(Goal);
+		}
+	}
+	for (int32 Head = 0; Head < Frontier.Num(); ++Head)
+	{
+		const FBDCellCoord Current = Frontier[Head];
+		for (int32 Neighbour = 0; Neighbour < NeighbourCount; ++Neighbour)
+		{
+			const FBDCellCoord Next(Current.X + NeighbourOffsetX[Neighbour], Current.Y + NeighbourOffsetY[Neighbour]);
+			if (!IsPassable(Next) || Reached[Next.Y * SizeX + Next.X] || !IsCrossable(Current, Next))
+			{
+				continue;
+			}
+			Reached[Next.Y * SizeX + Next.X] = true;
+			Frontier.Add(Next);
+		}
+	}
+
+	for (const FBDCellCoord& Start : Starts)
+	{
+		if (Grid->IsValidCoord(Start) && !Reached[Start.Y * SizeX + Start.X])
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 bool UBDPathfinder::CanEverySpawnReach(const UBDGridSubsystem* Grid, const FBDCellCoord Target) const
 {
 	if (Grid == nullptr || !Grid->IsValidCoord(Target) || !Grid->IsWalkable(Target))

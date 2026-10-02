@@ -1,71 +1,49 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-02 16:30**
+**Versão: 2026-10-02 17:15**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Placar 0 a 0 + regra de mira das torres
+# Liberar uso de recursos a qualquer momento
 
-## 1. Eleição começa 0 a 0 (remover StartingVotes)
+Mudança de filosofia (confirmada): os recursos são do jogador, ele usa
+QUANDO QUISER, a qualquer momento. O único limite é TER o recurso
+(dinheiro público / cota de separador / slot livre). Nunca a fase.
 
-O voto inicial azul (StartingVotes: 3000/1500/0 por dificuldade) é
-ilógico num jogo de votação — começar com votos sem ter feito nada. E
-com o voto agora por corpo, 1600 azuis "equivalem a 30 ondas de
-abates", o que não faz sentido.
+Motivo: travar construção durante a onda frustra o estrategista que
+tem recurso na mão e perde por estar TRAVADO, não por estratégia ruim
+(ex: voltou do banheiro, onda começou, tem dinheiro mas não pode
+agir). Perder por não planejar é justo; perder por o jogo não deixar
+agir com recurso na mão é raiva.
 
-- REMOVER o StartingVotes: o placar começa 0 AZUL x 0 VERMELHO nas
-  TRÊS dificuldades.
-- A diferença entre Easy/Normal/Hard NÃO vem mais de voto de brinde —
-  vem do resto (recursos, ondas, etc.). Sem handicap de placar.
+## O que liberar durante a onda (e em qualquer fase)
+- Construir qualquer peça: torre, plataforma, personagem, cerca,
+  palácio.
+- Posicionar personagem em slot.
+- Evoluir (já era livre — confirmar que segue).
+- Mover/reposicionar peça (com a taxa de movimentação que já existe).
+- Vender.
 
-### Consequência desejada (mecânica, confirmada): punir a inação
-- Com o placar 0 a 0, se o jogador NÃO posiciona defesa, os primeiros
-  militantes chegam na urna e o VERMELHO passa o azul já no começo.
-- O gatilho de candidato por VIRADA (vermelho > azul) já existe e deve
-  continuar ativo. Com 0 a 0, ele pode disparar CEDO se o jogador não
-  defender — o candidato sai antes da onda agendada dele, chega na
-  urna, e é game over precoce.
-- Resultado: quem não joga, perde rápido. É intencional.
-- Os DOIS gatilhos de candidato convivem:
-  - Agendado (a cada 5 ondas), e
-  - Virada (vermelho passa azul, a qualquer momento).
-  O que vier primeiro dispara.
-- O retorno dos caídos (vermelho passa azul em ondas futuras com
-  vários candidatos mortos → todos voltam juntos) NÃO muda, continua
-  como está.
+Tudo isso passa a ser permitido SEMPRE — montagem ou onda ativa — desde
+que haja recurso. Se não há recurso, recusa com o motivo que já existe
+(NoVotes / sem dinheiro / sem cota / sem slot), não "fase errada".
 
-## 2. Mira das torres de disparo — LOCAL à torre
+## O que NÃO muda
+- A URNA continua travada depois que a onda 1 começa (a urna fixa é
+  regra de design, não é "recurso" — fica como está).
+- Os CUSTOS não mudam (regra de ouro: construir é fixo, evoluir sobe).
+- Validações de posição continuam (WouldBlockPath, slot ocupado, etc.).
 
-O terminal mudou as torres para mirar "o mais próximo". Corrigir para a
-regra certa, que é LOCAL à própria torre:
-
-- Cada torre de disparo mira o inimigo MAIS ADIANTADO DENTRO DO
-  ALCANCE DELA — ou seja, entre os inimigos que a torre alcança, o que
-  está mais à frente no caminho (mais perto de SAIR do alcance dela
-  pelo lado da urna / o que já avançou mais no trecho que ela cobre).
-- Reavaliar A CADA DISPARO (disparo pausado, não contínuo): como a
-  horda se move de forma dinâmica e um militante passa na frente do
-  outro, se alguém ULTRAPASSA dentro do raio, o próximo tiro vai para
-  o que passou na frente.
-- NÃO mirar "o mais perto da urna" em termos globais — isso faria a
-  torre ignorar os que passam na cara dela para tentar atirar longe,
-  o que é feio e sem sentido. A referência é SEMPRE o alcance da
-  própria torre.
-- Cada torre defende o SEU trecho: atira em quem passa por ela,
-  priorizando quem está mais adiantado dentro do raio dela.
-
-### Resumo das miras por tipo (fixar como regra do projeto)
-- Torre de disparo (não-contínuo): mais adiantado no alcance da
-  própria torre, reavaliado a cada tiro.
-- Agente (disparo, patrulheiro): mais próximo DELE, com trava de 15%
-  (já implementado) — reage à ameaça perto enquanto patrulha.
-- Arma contínua (laser, FUTURO): mira grudada no alvo (dano crescente).
+## Ajustar o regression
+- Havia uma invariante "nenhuma construção aceita durante onda ativa".
+  Ela agora é INVÁLIDA. Trocar por "construção aceita durante a onda se
+  houver recurso" (o oposto), para o termômetro refletir a regra nova.
+- As outras invariantes de colocação seguem (recusa sem recurso,
+  sem slot, urna travada após onda 1).
 
 ## Entregável
-- StartingVotes removido; placar 0 a 0 nas três dificuldades.
-- Gatilho de virada ativo com 0 a 0 (candidato precoce se não defender);
-  dois gatilhos convivem; retorno dos caídos mantido.
-- Torres miram o mais adiantado no PRÓPRIO alcance, reavaliando a cada
-  disparo (reverter o "mais próximo" das torres; Agente continua
-  dinâmico).
-- BD.Test.Regression passa; compilar os dois alvos; commit.
+- Construir/posicionar/evoluir/mover/vender liberados em qualquer fase,
+  limitados só por recurso.
+- Urna segue travada após onda 1.
+- Invariante do regression trocada para a regra nova; passa tudo.
+- Compilar os dois alvos; commit.

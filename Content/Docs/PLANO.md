@@ -263,6 +263,25 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (recursos a qualquer momento) — (commit)** (desde e3fe06f):
+  - Briefing 2026-10-02 17:15. Construir (qualquer peça), pôr
+    personagem em slot, evoluir, mover (com a taxa) e vender passam a
+    valer em montagem **e** com onda ativa; só o recurso limita
+    (dinheiro, cota, slot). Fora de partida (setup, vitória, derrota)
+    continua travado. A peça na mão não é mais descartada quando a onda
+    começa. O clique numa peça durante a onda passa pelo mesmo gesto de
+    sempre (clique seleciona, arrasto move).
+  - **Urna** segue travada depois que a onda 1 começa.
+  - **Proteção nova:** com militantes andando, uma peça que bloqueia
+    (plataforma, palácio, cerca) é recusada como `WouldBlockPath` se
+    cair na célula para onde um militante vai ou se fechar a rota de
+    algum militante até a urna — senão ele ficava parado para sempre e
+    a onda não acabava. Uma inundação a partir da urna checa todos de
+    uma vez (`UBDPathfinder::WouldCutOffCells`).
+  - Regressão 53/53: a invariante "nada se constrói com onda ativa"
+    virou "constrói com onda ativa se houver recurso, urna travada";
+    novo: plataforma na célula de um militante andando é recusada.
+
 - **2026-10-02 (placar 0 a 0, mira das torres) — 9dcd8ef** (desde c28c53a):
   - Briefing 2026-10-02 16:30.
   - **Placar começa 0 a 0** nas três dificuldades: saiu `StartingVotes`

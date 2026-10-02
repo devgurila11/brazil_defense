@@ -482,6 +482,13 @@ private:
 	/** The piece under the cursor, preferring the fence when the cursor is nearer to it than to the cell center. */
 	const FBDPlacedPiece* FindPieceUnderHover() const;
 
+	/**
+	 * Whether blocking these cells or edges would fence a creep walking right now off the
+	 * urn, or land on the cell it is heading into. Building is allowed under a running
+	 * wave; this is what keeps it from trapping a creep for good.
+	 */
+	bool WouldFenceInCreeps(const TArray<FBDCellCoord>& Cells, const TArray<FBDEdgeCoord>& Edges) const;
+
 	/** The Agent standing under the cursor, within a third of a cell, or null. He is no placed piece. */
 	AActor* FindAgentUnderHover() const;
 

@@ -159,9 +159,8 @@ void UBDWaveSubsystem::MarkBoardChanged()
 
 	// Rerouted right here rather than on the next tick: the creeps tick before this
 	// subsystem does, and a creep must not get one frame of walking through a fence that
-	// is already on the board. Nothing blocking can be placed while a wave is out, so in
-	// play this only ever runs on an empty board and costs nothing; the console is the
-	// one thing that fences creeps in mid walk.
+	// is already on the board. The player may build under a running wave, so this runs
+	// with creeps walking; the placement refuses whatever would fence one of them in.
 	if (LivingEnemies.Num() > 0)
 	{
 		GetSpawnPoints();

@@ -84,6 +84,16 @@ public:
 	bool WouldBlockPathEdges(const UBDGridSubsystem* Grid, const TArray<FBDEdgeCoord>& Candidate) const;
 
 	/**
+	 * Whether blocking these cells and edges would leave any of Starts with no way to the
+	 * urn - or would land on one of them. What building under a running wave asks about
+	 * the creeps already walking: their heading cells must all keep a route, or a creep
+	 * would stand fenced in forever and the wave would never end. One flood from the urn
+	 * answers for every creep at once; nothing is written to the grid.
+	 */
+	bool WouldCutOffCells(const UBDGridSubsystem* Grid, const TArray<FBDCellCoord>& Starts,
+		const TArray<FBDCellCoord>& BlockedCells, const TArray<FBDEdgeCoord>& BlockedEdges) const;
+
+	/**
 	 * Whether every Spawn cell can walk to Target on the board as it is. What placing the
 	 * urn asks: a cell no spawn can reach is not a goal, it is a hole. Cached like the
 	 * blocking checks, since it runs every frame while the urn hovers.

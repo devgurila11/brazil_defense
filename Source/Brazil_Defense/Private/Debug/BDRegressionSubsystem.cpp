@@ -838,20 +838,27 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				FString::Printf(TEXT("closest pair %.2f cell(s) apart, %.1f needed"), MinGap, UBDWaveSettings::Get().MinBusGap));
 		}
 
-		// Under a wave nothing new goes down - no kind of piece, not through the bar and not
-		// through the gesture itself - but what stands can still be evolved. Confirmed rule
-		// (briefing 2026-09-23 23:00): building is the setup's decision, evolving the reaction.
+		// Under a wave the player's resources are still theirs (briefing 2026-10-02 17:15):
+		// anything they can pay for goes down, through the bar and through the gesture.
+		// Only the urn stays where the first wave found it.
 		FString Offered;
+		bool bUrnOffered = false;
+		bool bTowerOffered = false;
 		for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
 		{
 			const UBDPlaceableData* Piece = Entry.LoadSynchronous();
 			if (Piece != nullptr && Placement->GetHandRefusal(Piece) == EBDPlacementRefusal::None)
 			{
 				Offered += Offered.IsEmpty() ? Piece->GetName() : TEXT(", ") + Piece->GetName();
+				bUrnOffered |= Piece->GetPieceKind() == EBDPieceKind::Objective;
+				bTowerOffered |= Piece == Tower;
 			}
 		}
+		const UBDPlaceableData* UrnPiece = UBDObjectiveSettings::Get().ObjectivePlaceable.LoadSynchronous();
+		bUrnOffered |= UrnPiece != nullptr && Placement->GetHandRefusal(UrnPiece) == EBDPlacementRefusal::None;
 		const int32 BuiltBefore = Match->GetLedger().PiecesBuilt;
 		const int32 MoneyBefore = Match->GetPublicMoney();
+		const int32 TowerPrice = Match->GetBuildPrice(Tower);
 		Placement->SelectPlaceable(Tower);
 		FBDCellCoord Probe;
 		bool bSlipped = false;
@@ -863,10 +870,38 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		}
 		const EBDPlacementRefusal Gesture = Placement->GetCurrentRefusal();
 		Placement->CancelSelection();
-		Check(TEXT("COLOCACAO"), TEXT("no piece of any kind can be built while a wave is out"),
-			Offered.IsEmpty() && !bSlipped && Match->GetLedger().PiecesBuilt == BuiltBefore && Match->GetPublicMoney() == MoneyBefore,
-			FString::Printf(TEXT("offered by the bar: %s; a tower through the gesture: %s (%s)"), Offered.IsEmpty() ? TEXT("none") : *Offered,
-				bSlipped ? TEXT("PLACED") : TEXT("refused"), *RefusalName(Gesture)));
+		Check(TEXT("COLOCACAO"), TEXT("a piece the player can pay for is built while a wave is out; the urn stays locked"),
+			bTowerOffered && !bUrnOffered && bSlipped && Match->GetLedger().PiecesBuilt == BuiltBefore + 1 && Match->GetPublicMoney() == MoneyBefore - TowerPrice,
+			FString::Printf(TEXT("offered by the bar: %s; urn %s; a tower through the gesture: %s at %s (%s), money %d -> %d"), Offered.IsEmpty() ? TEXT("none") : *Offered,
+				bUrnOffered ? TEXT("OFFERED") : TEXT("locked"), bSlipped ? TEXT("placed") : TEXT("REFUSED"), *Probe.ToString(), *RefusalName(Gesture),
+				MoneyBefore, Match->GetPublicMoney()));
+
+		// What goes down under a wave must not fence a walking creep in: a platform on the
+		// cell a creep is heading into is refused, as blocking the path.
+		{
+			const ABDEnemyBase* Walker = nullptr;
+			for (const ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
+			{
+				if (Enemy != nullptr && !Enemy->IsOnFinalLeg() && !Enemy->HasArrived() && Grid->GetCellState(Enemy->GetHeadingCell()) == EBDCellState::Free)
+				{
+					Walker = Enemy;
+					break;
+				}
+			}
+			if (Walker != nullptr && Platform != nullptr)
+			{
+				const int32 BuiltBeforeTrap = Match->GetLedger().PiecesBuilt;
+				Placement->SelectPlaceable(Platform);
+				Placement->SetHoveredCellDirect(Walker->GetHeadingCell());
+				const bool bTrapped = Placement->TryPlaceAtHovered();
+				const EBDPlacementRefusal TrapRefusal = Placement->GetCurrentRefusal();
+				Placement->CancelSelection();
+				Check(TEXT("COLOCACAO"), TEXT("a piece that would fence a walking creep in is refused"),
+					!bTrapped && Match->GetLedger().PiecesBuilt == BuiltBeforeTrap,
+					FString::Printf(TEXT("%s heading into %s: %s (%s)"), *Walker->GetName(), *Walker->GetHeadingCell().ToString(),
+						bTrapped ? TEXT("PLACED") : TEXT("refused"), *RefusalName(TrapRefusal)));
+			}
+		}
 		const int32 LevelBefore = GroundTower.IsValid() ? GroundTower->GetTowerLevel() : 0;
 		Placement->SetHoveredCellDirect(TowerCell);
 		Placement->DebugClick();

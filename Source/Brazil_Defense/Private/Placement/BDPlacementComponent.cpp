@@ -13,6 +13,7 @@
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "GameFramework/PlayerController.h"
+#include "Enemy/BDEnemyBase.h"
 #include "Grid/BDGridSubsystem.h"
 #include "Objective/BDObjective.h"
 #include "Objective/BDObjectiveSubsystem.h"
@@ -31,6 +32,7 @@
 #include "Save/BDMatchSave.h"
 #include "Tower/BDTowerBase.h"
 #include "Tower/BDTowerData.h"
+#include "Wave/BDWaveSubsystem.h"
 #include "UI/BDUISubsystem.h"
 #include "Engine/GameInstance.h"
 #include "UObject/UObjectIterator.h"
@@ -92,12 +94,13 @@ void UBDPlacementComponent::EnsureMatchBinding()
 
 void UBDPlacementComponent::HandleMatchPhaseChanged(const EBDMatchPhase NewPhase)
 {
-	if (NewPhase == EBDMatchPhase::Building || CurrentSelection == nullptr)
+	// The hand stays through the waves: only the end of the match, or its setup, empties it.
+	if (NewPhase == EBDMatchPhase::Building || NewPhase == EBDMatchPhase::WaveActive || CurrentSelection == nullptr)
 	{
 		return;
 	}
 
-	UE_LOG(LogBDGrid, Log, TEXT("Selection of '%s' cleared: the match left the building phase (%s)."),
+	UE_LOG(LogBDGrid, Log, TEXT("Selection of '%s' cleared: the match is not being played (%s)."),
 		*GetNameSafe(CurrentSelection),
 		*StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(NewPhase)));
 
@@ -1065,6 +1068,29 @@ EBDPlacementRefusal UBDPlacementComponent::EvaluateObjectivePlacement() const
 	}
 }
 
+bool UBDPlacementComponent::WouldFenceInCreeps(const TArray<FBDCellCoord>& Cells, const TArray<FBDEdgeCoord>& Edges) const
+{
+	const UWorld* World = GetWorld();
+	const UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+	const UBDPathfinder* Pathfinder = GetPathfinder();
+	if (Waves == nullptr || Pathfinder == nullptr || Waves->GetLivingEnemiesRef().Num() == 0)
+	{
+		return false;
+	}
+
+	// Where each creep on the board is headed: the cell its route goes on from. Those on
+	// the last leg are already at the urn.
+	TArray<FBDCellCoord> Heading;
+	for (const ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
+	{
+		if (Enemy != nullptr && !Enemy->HasArrived() && !Enemy->IsOnFinalLeg())
+		{
+			Heading.AddUnique(Enemy->GetHeadingCell());
+		}
+	}
+	return Pathfinder->WouldCutOffCells(GetGrid(), Heading, Cells, Edges);
+}
+
 bool UBDPlacementComponent::CanSelectionStandOnGround() const
 {
 	const UBDTowerData* TowerData = IsTowerSelection() ? CurrentSelection->TowerData.LoadSynchronous() : nullptr;
@@ -1121,7 +1147,8 @@ EBDPlacementRefusal UBDPlacementComponent::EvaluateCellPlacement(const UBDGridSu
 	const UBDPathfinder* Pathfinder = GetPathfinder();
 	const bool bWouldBlock = CurrentSelection->BlocksMovement()
 		&& Pathfinder != nullptr
-		&& Pathfinder->WouldBlockPath(&Grid, HoveredCell, GetEffectiveFootprint());
+		&& (Pathfinder->WouldBlockPath(&Grid, HoveredCell, GetEffectiveFootprint())
+			|| WouldFenceInCreeps(FootprintCells, TArray<FBDEdgeCoord>()));
 
 	return bWouldBlock ? EBDPlacementRefusal::WouldBlockPath : EBDPlacementRefusal::None;
 }
@@ -1157,7 +1184,8 @@ EBDPlacementRefusal UBDPlacementComponent::EvaluateEdgePlacement(const UBDGridSu
 	}
 
 	const UBDPathfinder* Pathfinder = GetPathfinder();
-	const bool bWouldBlock = Pathfinder != nullptr && Pathfinder->WouldBlockPathEdges(&Grid, Edges);
+	const bool bWouldBlock = Pathfinder != nullptr
+		&& (Pathfinder->WouldBlockPathEdges(&Grid, Edges) || WouldFenceInCreeps(TArray<FBDCellCoord>(), Edges));
 	return bWouldBlock ? EBDPlacementRefusal::WouldBlockPath : EBDPlacementRefusal::None;
 }
 
@@ -2273,7 +2301,7 @@ bool UBDPlacementComponent::TryBeginMoveAtHovered()
 	const ABDMatchManager* Match = GetMatch();
 	if (Match != nullptr && !Match->CanMove())
 	{
-		UE_LOG(LogBDGrid, Log, TEXT("Nothing moves outside the building phase."));
+		UE_LOG(LogBDGrid, Log, TEXT("Nothing moves before the match starts or once it is over."));
 		return false;
 	}
 
@@ -2489,17 +2517,10 @@ void UBDPlacementComponent::CancelMove()
 
 void UBDPlacementComponent::HandlePlaceInput()
 {
-	// With nothing in hand a press on a placed piece picks it up; otherwise it places.
-	// While a wave is out nothing moves, but a defender can still be picked and evolved:
-	// that is the reaction the battle asks for, and the lift is not the way to it then.
+	// With nothing in hand a press on a placed piece picks it up - a click selects it on
+	// release, a drag moves it - whatever the phase; otherwise it places.
 	if (CurrentSelection == nullptr && !bMoving)
 	{
-		const ABDMatchManager* Match = GetMatch();
-		if (Match != nullptr && Match->GetPhase() == EBDMatchPhase::WaveActive)
-		{
-			ClickDefenderAtHovered();
-			return;
-		}
 		TryBeginMoveAtHovered();
 		return;
 	}

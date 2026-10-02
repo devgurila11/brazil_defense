@@ -1134,25 +1134,27 @@ bool ABDMatchManager::CanPlace(const EBDPieceKind Kind) const
 		return false;
 	}
 
+	// The player's resources are theirs to use whenever they like, waves out or not: the
+	// only limits are having them - money, the hand, a free slot - and the board itself.
+	// Losing for not planning is fair; losing because the game would not let a player
+	// with money in hand act is not.
+	if (!IsBeingPlayed())
+	{
+		return false;
+	}
+
 	if (Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character)
 	{
-		// New pieces go down between waves only, defenders like the rest: under a wave the
-		// player reacts by evolving what stands, not by dropping more on the board.
-		if (Phase != EBDMatchPhase::Building)
-		{
-			return false;
-		}
-
-		// And a character still needs somewhere to stand. Not a budget: a platform with
+		// A character still needs somewhere to stand. Not a budget: a platform with
 		// every slot taken is a board that has no room for one more, and saying so here
 		// is what keeps the button honest instead of letting the click find out.
 		return Kind != EBDPieceKind::Character || GetFreeCharacterSlots() > 0;
 	}
 
-	// The maze grows between waves, never under a running one: a fence dropped in front of
-	// a creep mid route is a different game. The urn alone stays where the first wave
-	// found it - everything was built around it.
-	return Phase == EBDMatchPhase::Building && (Kind != EBDPieceKind::Objective || !IsBuildLocked());
+	// The maze may grow under a running wave too; the placement refuses whatever would
+	// fence a walking creep in. The urn alone stays where the first wave found it -
+	// everything was built around it.
+	return Kind != EBDPieceKind::Objective || !IsBuildLocked();
 }
 
 bool ABDMatchManager::ConsumeBudget(const EBDPieceKind Kind)
