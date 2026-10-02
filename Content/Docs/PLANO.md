@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 (recursos a qualquer momento) — (commit)** (desde e3fe06f):
+- **2026-10-02 (recursos a qualquer momento) — 4c6aaa8** (desde e3fe06f):
   - Briefing 2026-10-02 17:15. Construir (qualquer peça), pôr
     personagem em slot, evoluir, mover (com a taxa) e vender passam a
     valer em montagem **e** com onda ativa; só o recurso limita
