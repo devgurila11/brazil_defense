@@ -396,7 +396,7 @@ private:
 	/** Recomputes HoveredPlatform and HoveredSlotIndex for the current selection and hover. */
 	void ResolveSlotHover();
 
-	/** The class actually spawned for the selection: ActorClass, or the tower class of its tower data. */
+	/** The class actually spawned for the selection: ActorClass, else ABDPalace for a palace or the tower class of its tower data. */
 	UClass* ResolveActorClass() const;
 
 	/** Projects the mouse onto the grid plane. @return false when it misses the board. */

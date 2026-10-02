@@ -355,6 +355,18 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Price", meta = (ClampMin = "1", UIMin = "1"))
 	int32 ReplacementReferenceCost = 100;
 
+	/**
+	 * What the Palácio do Governo costs, in candidates' bribes of the wave it is bought
+	 * on. 6.4 is what lets a player who spent nothing - the opening funds of Normal plus
+	 * the bribes of the first three candidates - put it down around the third candidate
+	 * killed, on wave 15. Placeholder, like the rest.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Price", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float PalaceCostInCandidates = 6.4f;
+
+	/** The palace's base cost on the reference scale: PalaceCostInCandidates candidates once priced. */
+	int32 GetPalaceBaseCost() const;
+
 	/** Public money a scheduled candidate on this wave drops, for a wave creep of this base health. */
 	int32 GetCandidateFunds(float CreepHealth, int32 Wave) const;
 

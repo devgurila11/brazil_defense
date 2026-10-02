@@ -110,6 +110,22 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Creep Bars", meta = (ClampMin = "1.0", UIMin = "1.0"))
 	float CreepBarMinPixels = 14.0f;
 
+	//~ Palace stars --------------------------------------------------------------
+	// Drawn by ABDMatchHUD over every palace: five stars facing the camera, as many filled
+	// as its level, the rest an outline. Sized by the screen, not the world, so they read
+	// the same at every zoom.
+
+	/** Height of one star, as a fraction of the viewport height. */
+	UPROPERTY(config, EditAnywhere, Category = "Palace Stars", meta = (ClampMin = "0.005", ClampMax = "0.1", UIMin = "0.005", UIMax = "0.1"))
+	float PalaceStarHeightFraction = 0.032f;
+
+	/** Gap between two stars, as a fraction of a star's height. */
+	UPROPERTY(config, EditAnywhere, Category = "Palace Stars", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float PalaceStarGap = 0.15f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Palace Stars")
+	FLinearColor PalaceStarColor = FLinearColor(1.0f, 0.78f, 0.1f, 1.0f);
+
 	/** Height of the ballot pictures, as a fraction of the viewport height; the urn is drawn a little larger. */
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.02", ClampMax = "0.2", UIMin = "0.02", UIMax = "0.2"))
 	float ScoreIconHeightFraction = 0.045f;

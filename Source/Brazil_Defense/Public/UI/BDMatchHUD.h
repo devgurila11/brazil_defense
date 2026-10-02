@@ -1,4 +1,4 @@
-// Brazil Defense. What is drawn straight on the screen over the board: the creeps' health.
+// Brazil Defense. What is drawn straight on the screen over the board: the creeps' health, the palaces' stars.
 
 #pragma once
 
@@ -12,6 +12,10 @@
  * damage; the bar is a fixed width in the world, so the camera's zoom sizes it, and it
  * is skipped once it would be thinner than a few pixels: the overview stays clean, the
  * close look reads every creep. The candidate keeps the bar of his own.
+ *
+ * Over every palace, five stars facing the camera: as many filled as its level, the
+ * rest only an outline. These are sized by the screen rather than the world, so the
+ * evolution reads at every zoom.
  */
 UCLASS()
 class BRAZIL_DEFENSE_API ABDMatchHUD : public AHUD
@@ -21,4 +25,11 @@ class BRAZIL_DEFENSE_API ABDMatchHUD : public AHUD
 public:
 	virtual void BeginPlay() override;
 	virtual void DrawHUD() override;
+
+private:
+	void DrawCreepBars();
+	void DrawPalaceStars();
+
+	/** One five-pointed star centered on a screen point, Radius from the center to a tip: filled, or only its outline. */
+	void DrawStar(const FVector2D& Center, float Radius, bool bFilled, const FLinearColor& Color);
 };

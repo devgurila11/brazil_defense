@@ -166,3 +166,12 @@ const UBDDifficultyData* UBDGameBalanceSettings::FindDifficultyData(const EBDDif
 	// waiting for the board to be built.
 	return Found->LoadSynchronous();
 }
+
+int32 UBDGameBalanceSettings::GetPalaceBaseCost() const
+{
+	// Priced through the same formula as every piece, which multiplies by the ratio:
+	// divided out here, so the palace stays PalaceCostInCandidates candidates whatever
+	// the ratio does to the rest.
+	const float Ratio = FMath::Max(KINDA_SMALL_NUMBER, ReplacementCostRatio);
+	return FMath::Max(1, FMath::RoundToInt(FMath::Max(0.0f, PalaceCostInCandidates) / Ratio * FMath::Max(1, ReplacementReferenceCost)));
+}

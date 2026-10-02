@@ -3,6 +3,8 @@
 #include "Placement/BDPlaceableData.h"
 
 #include "Grid/BDGridSubsystem.h"
+#include "Match/BDGameBalanceSettings.h"
+#include "Palace/BDPalaceData.h"
 #include "Tower/BDTowerData.h"
 
 const FPrimaryAssetType UBDPlaceableData::PlaceableAssetType = TEXT("BDPlaceable");
@@ -35,7 +37,7 @@ EBDPieceKind UBDPlaceableData::GetPieceKind() const
 		return EBDPieceKind::Objective;
 
 	default:
-		return EBDPieceKind::Platform;
+		return PalaceData.IsNull() ? EBDPieceKind::Platform : EBDPieceKind::Palace;
 	}
 }
 
@@ -53,6 +55,11 @@ int32 UBDPlaceableData::GetBuildCost() const
 		{
 			return Data->BuildCost;
 		}
+	}
+
+	if (GetPieceKind() == EBDPieceKind::Palace)
+	{
+		return UBDGameBalanceSettings::Get().GetPalaceBaseCost();
 	}
 
 	return Cost;

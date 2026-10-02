@@ -1085,14 +1085,15 @@ bool ABDMatchManager::IsPlaceableKind(const EBDPieceKind Kind)
 {
 	return Kind == EBDPieceKind::Divider || Kind == EBDPieceKind::Platform
 		|| Kind == EBDPieceKind::Tower || Kind == EBDPieceKind::Character
-		|| Kind == EBDPieceKind::Objective;
+		|| Kind == EBDPieceKind::Objective || Kind == EBDPieceKind::Palace;
 }
 
 bool ABDMatchManager::HasBudgetCeiling(const EBDPieceKind Kind)
 {
 	// The maze is a hand: so many dividers, so many platforms, and one urn. Defenders are
 	// not counted at all - a tower is stopped by the money and by the cells left, a
-	// character by the money and by a slot to stand on.
+	// character by the money and by a slot to stand on. The palace too: its price is
+	// what keeps it rare.
 	return Kind == EBDPieceKind::Divider || Kind == EBDPieceKind::Platform || Kind == EBDPieceKind::Objective;
 }
 

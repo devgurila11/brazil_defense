@@ -21,6 +21,8 @@
 #include "Placement/BDPlaceableData.h"
 #include "Placement/BDPlacementPreview.h"
 #include "Placement/BDPlacementSettings.h"
+#include "Palace/BDPalace.h"
+#include "Palace/BDPalaceData.h"
 #include "Platform/BDPlatformComponent.h"
 #include "Objective/BDObjectiveSettings.h"
 #include "Save/BDMatchSave.h"
@@ -353,6 +355,11 @@ UClass* UBDPlacementComponent::ResolveActorClass() const
 	if (UClass* ActorClass = CurrentSelection->ActorClass.LoadSynchronous())
 	{
 		return ActorClass;
+	}
+
+	if (CurrentSelection->GetPieceKind() == EBDPieceKind::Palace)
+	{
+		return ABDPalace::StaticClass();
 	}
 
 	if (IsTowerSelection())
@@ -1552,6 +1559,16 @@ void UBDPlacementComponent::SpawnPieceActors(const TArray<FTransform>& Transform
 		if (ABDTowerBase* Tower = Cast<ABDTowerBase>(Spawned))
 		{
 			Tower->InitializeTower(TowerData);
+		}
+
+		// A palace is fitted to the cells it covers, the footprint as authored: the yaw
+		// it was spawned with turns it the rest of the way.
+		if (ABDPalace* Palace = Cast<ABDPalace>(Spawned))
+		{
+			const UBDGridSubsystem* Grid = GetGrid();
+			const float CellSize = Grid != nullptr ? Grid->GetCellSize() : 100.0f;
+			Palace->InitializePalace(CurrentSelection->PalaceData.LoadSynchronous(),
+				FVector2D(CurrentSelection->Footprint.X * CellSize, CurrentSelection->Footprint.Y * CellSize));
 		}
 	}
 }

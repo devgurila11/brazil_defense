@@ -263,6 +263,34 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 — (este commit)** (desde a638189):
+  - **Palácio do Governo, fatia 1 de 4** (briefing 2026-10-01 10:00):
+    só a estrutura e o indicador. Novo `EBDPieceKind::Palace` (último do
+    enum): peça `DA_Palace` 2×2, segura as células como plataforma
+    (bloqueia o caminho, passa pela checagem de bloqueio), sem teto de
+    quantidade, só dinheiro público; vende inteiro de qualquer célula.
+    Na paleta depois do atirador; nome nos dois CSVs.
+  - **Preço** em propinas de candidato da onda:
+    `PalaceCostInCandidates` = 6.4 (Balanceamento > Price). 2560 na onda
+    1; 3469 na onda 15 contra 3464 juntados sem gastar nada até o 3º
+    candidato no Normal (2000 iniciais + propinas das ondas 5, 10, 15).
+  - **`DA_PalaceData`** (`UBDPalaceData`): slot `Mesh` (vazio = cubo do
+    motor como bloco provisório, ajustado ao 2×2 e apoiado no chão),
+    `MeshScale`, `Level` 0–5 (sem efeito de jogo ainda), `StarsLift`.
+    Ator `ABDPalace`: só o cursor o enxerga, unidades não colidem.
+  - **5 estrelas** sobre cada palácio, desenhadas no canvas pelo
+    `ABDMatchHUD`, sempre de frente para a câmera, tamanho por fração da
+    tela (`PalaceStarHeightFraction` em Interface). Cheias até o nível,
+    o resto só contorno; hoje todas vazias. `BD.Palace.SetLevel N` e
+    `BD.Palace.Status` para testar.
+  - `BD.Debug.Later <s> <comando>`: roda um comando N segundos depois,
+    para capturar a tela renderizada com o mundo já carregado.
+  - Regressão 39/39 (novo: preço e mais caro que tudo, 2×2 posto pelo
+    preço, mesh ajustado e estrelas no nível do dado, venda libera as 4).
+  - **Onde paramos:** fatia 1 vista em captura (blocos e estrelas cheias
+    × vazias); falta o usuário ver no jogo. Fatias 2–4 (Agente,
+    ministros, garrafa) não começadas.
+
 - **2026-09-29 (noite) — bb1fd63** (desde 7ef679b):
   - **Zoom de perto.** `CloseUpHeight` 1500 cm em Camera > Movement: a
     roda desce abaixo do `MinHeight` 3000 (≈4 cliques a mais, jumento com

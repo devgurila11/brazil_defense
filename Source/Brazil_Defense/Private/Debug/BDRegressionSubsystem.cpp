@@ -25,9 +25,13 @@
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformMisc.h"
+#include "Match/BDDifficultyData.h"
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
 #include "Objective/BDObjective.h"
+#include "Palace/BDPalace.h"
+#include "Palace/BDPalaceData.h"
+#include "Components/StaticMeshComponent.h"
 #include "Objective/BDObjectiveSettings.h"
 #include "Objective/BDObjectiveSubsystem.h"
 #include "Placement/BDPlaceableData.h"
@@ -550,6 +554,89 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			}
 		}
 		Check(TEXT("PLATAFORMA"), TEXT("the shooters ride up with their slots"), WorstGap <= 5.0f, FString::Printf(TEXT("worst gap %.1f cm"), WorstGap));
+
+		// The palace: 2x2, bought with public money at its share of candidates, holding its
+		// cells like a platform, five empty stars over it. Sold again at the end, so the
+		// rest of the script plays on the board it always had.
+		UBDPlaceableData* PalacePiece = FindPiece(EBDPieceKind::Palace);
+		if (PalacePiece == nullptr)
+		{
+			Check(TEXT("PALACIO"), TEXT("the palace is in the palette from the start"), false, TEXT("no Palace piece open on wave 0"));
+			break;
+		}
+		const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+		const int32 PalacePrice = Match->GetBuildPrice(PalacePiece);
+		const int32 Funds = Match->GetCandidateFunds(Match->GetPriceWave());
+		const int32 Expected = FMath::RoundToInt(Funds * Balance.PalaceCostInCandidates);
+		int32 DearestOther = 0;
+		for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Palette)
+		{
+			const UBDPlaceableData* Other = Entry.LoadSynchronous();
+			if (Other != nullptr && Other != PalacePiece)
+			{
+				DearestOther = FMath::Max(DearestOther, Match->GetBuildPrice(Other));
+			}
+		}
+		Check(TEXT("PALACIO"), TEXT("the palace costs PalaceCostInCandidates candidates and more than any other piece"),
+			FMath::Abs(PalacePrice - Expected) <= 1 && PalacePrice > DearestOther,
+			FString::Printf(TEXT("price %d, %.1f x candidate %d = %d, dearest other %d"), PalacePrice, Balance.PalaceCostInCandidates, Funds, Expected, DearestOther));
+
+		// What a player who spends nothing has by the third candidate, against the price then.
+		const int32 Interval = FMath::Max(1, Balance.CandidateInterval);
+		const int32 Start = Match->GetDifficultyData() != nullptr ? Match->GetDifficultyData()->StartingFunds : 0;
+		const int32 ThirdWave = Interval * 3;
+		const int32 ByThird = Start + Match->GetCandidateFunds(Interval) + Match->GetCandidateFunds(Interval * 2) + Match->GetCandidateFunds(ThirdWave);
+		UE_LOG(LogBDDebug, Log, TEXT("REGRESSION palace calibration: price %d on wave %d, %d on wave %d; saved by the third candidate %d (start %d + bribes of waves %d, %d, %d)."),
+			PalacePrice, Match->GetPriceWave(), Match->GetBuildPriceOnWave(PalacePiece, ThirdWave), ThirdWave, ByThird, Start, Interval, Interval * 2, ThirdWave);
+
+		TArray<ABDPalace*> PalacesBefore;
+		for (TActorIterator<ABDPalace> It(World); It; ++It) { PalacesBefore.Add(*It); }
+		const int32 MoneyBefore = Match->GetPublicMoney();
+		FBDCellCoord PalaceCell;
+		const bool bPalace = PlaceNear(PalacePiece, UrnCell, 10, PalaceCell);
+		Placement->CancelSelection();
+		ABDPalace* Palace = nullptr;
+		for (TActorIterator<ABDPalace> It(World); It; ++It) { if (!PalacesBefore.Contains(*It)) { Palace = *It; } }
+		int32 Held = 0;
+		for (int32 DY = 0; DY < 2; ++DY)
+		{
+			for (int32 DX = 0; DX < 2; ++DX)
+			{
+				Held += Grid->GetCellState(FBDCellCoord(PalaceCell.X + DX, PalaceCell.Y + DY)) == EBDCellState::Platform ? 1 : 0;
+			}
+		}
+		Check(TEXT("PALACIO"), TEXT("the palace goes down on 2x2 cells held like a platform, for its price"),
+			bPalace && Palace != nullptr && Held == 4 && Match->GetPublicMoney() == MoneyBefore - PalacePrice,
+			FString::Printf(TEXT("%s at %s, %d of 4 cells held, money %d -> %d"), bPalace ? TEXT("placed") : TEXT("refused"),
+				*PalaceCell.ToString(), Held, MoneyBefore, Match->GetPublicMoney()));
+		if (Palace == nullptr)
+		{
+			break;
+		}
+
+		const UBDPalaceData* PalaceData = Palace->GetData();
+		const UStaticMeshComponent* PalaceMesh = Palace->GetMeshComponent();
+		const float RoofZ = PalaceMesh->Bounds.Origin.Z + PalaceMesh->Bounds.BoxExtent.Z;
+		const float Span = FMath::Max(PalaceMesh->Bounds.BoxExtent.X, PalaceMesh->Bounds.BoxExtent.Y) * 2.0f;
+		Check(TEXT("PALACIO"), TEXT("the palace wears a mesh fitted to its footprint, the stars over the roof at the data's level"),
+			PalaceData != nullptr && PalaceMesh->GetStaticMesh() != nullptr && Palace->GetPalaceLevel() == PalaceData->Level
+				&& Span <= Grid->GetCellSize() * 2.0f + 1.0f && Span >= Grid->GetCellSize() && Palace->GetStarsAnchor().Z > RoofZ,
+			FString::Printf(TEXT("mesh %s %.0f cm wide over %.0f cm, level %d (data %d), stars %.0f cm over the roof"),
+				*GetNameSafe(PalaceMesh->GetStaticMesh()), Span, Grid->GetCellSize() * 2.0f, Palace->GetPalaceLevel(),
+				PalaceData != nullptr ? PalaceData->Level : -1, Palace->GetStarsAnchor().Z - RoofZ));
+
+		Placement->SetHoveredCellDirect(PalaceCell);
+		const bool bSold = Placement->TryRemoveAtHovered();
+		int32 Freed = 0;
+		for (int32 DY = 0; DY < 2; ++DY)
+		{
+			for (int32 DX = 0; DX < 2; ++DX)
+			{
+				Freed += Grid->GetCellState(FBDCellCoord(PalaceCell.X + DX, PalaceCell.Y + DY)) == EBDCellState::Free ? 1 : 0;
+			}
+		}
+		Check(TEXT("PALACIO"), TEXT("the palace sells whole from any of its cells"), bSold && Freed == 4,
+			FString::Printf(TEXT("sold %s, %d of 4 cells free"), bSold ? TEXT("yes") : TEXT("no"), Freed));
 		break;
 	}
 

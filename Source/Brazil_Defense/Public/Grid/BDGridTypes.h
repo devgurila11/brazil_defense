@@ -50,7 +50,13 @@ enum class EBDPieceKind : uint8
 	Character UMETA(DisplayName = "Character"),
 
 	/** The urn. Placed by the player before anything else, exactly once; its cell becomes the Goal. */
-	Objective UMETA(DisplayName = "Objective")
+	Objective UMETA(DisplayName = "Objective"),
+
+	/**
+	 * The Palácio do Governo: a building over cells, held like a platform but bought with
+	 * public money alone, with no hand of its own. Kept last so saved kinds keep their values.
+	 */
+	Palace UMETA(DisplayName = "Palace")
 };
 
 /**

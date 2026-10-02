@@ -7,6 +7,7 @@
 #include "Grid/BDGridTypes.h"
 #include "BDPlaceableData.generated.h"
 
+class UBDPalaceData;
 class UBDTowerData;
 class UStaticMesh;
 
@@ -60,6 +61,15 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable", meta = (EditCondition = "!bOccupiesEdge && OccupiesAs == EBDCellState::Tower"))
 	TSoftObjectPtr<UBDTowerData> TowerData;
+
+	/**
+	 * Palace pieces only: the building this piece puts up. Set, the piece is a Palace for
+	 * the match - priced in candidates' bribes by the balance settings, not by Cost - and
+	 * the spawned ABDPalace is handed this data. OccupiesAs stays Platform: it holds its
+	 * cells the way a platform does.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable", meta = (EditCondition = "!bOccupiesEdge && OccupiesAs == EBDCellState::Platform"))
+	TSoftObjectPtr<UBDPalaceData> PalaceData;
 
 	/** Price of the piece. Stored only: nothing spends it yet. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Placeable", meta = (ClampMin = "0"))
@@ -117,7 +127,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Placeable")
 	bool IsDefender() const;
 
-	/** What this piece costs to build: the tower data's cost for a defender, Cost for everything else. Loads the tower data if needed. */
+	/**
+	 * What this piece costs to build: the tower data's cost for a defender, the palace's
+	 * share of the balance settings for a palace, Cost for everything else. Loads the
+	 * tower data if needed.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Placeable")
 	int32 GetBuildCost() const;
 
