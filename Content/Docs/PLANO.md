@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 (fatia 2) — (commit)** (desde dfeaa05):
+- **2026-10-02 (fatia 2) — 9700a2f** (desde dfeaa05):
   - **Palácio, fatia 2 de 4: o Agente ("Mito")** (briefing 2026-10-01
     15:00). `ABDAgent`, um por palácio: nasce em `InitializePalace` numa
     célula ao lado (frente primeiro, livre antes de ocupada) e é
