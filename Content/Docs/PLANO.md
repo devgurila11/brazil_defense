@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 — (este commit)** (desde a638189):
+- **2026-10-02 — 2f27fa6** (desde a638189):
   - **Palácio do Governo, fatia 1 de 4** (briefing 2026-10-01 10:00):
     só a estrutura e o indicador. Novo `EBDPieceKind::Palace` (último do
     enum): peça `DA_Palace` 2×2, segura as células como plataforma
