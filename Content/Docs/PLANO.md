@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 (fechamento: Esc e mais dia) — (commit)** (desde 034da7e):
+- **2026-10-02 (fechamento: Esc e mais dia) — 8eb9c98** (desde 034da7e):
   - Briefing 2026-10-02 18:45.
   - **Esc cancela a peça na mão:** o código já cancelava, mas os botões
     da HUD (sobretudo os itens da barra de construção) eram focáveis: ao
