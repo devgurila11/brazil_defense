@@ -263,6 +263,14 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (assets do usuário) — (commit)** (desde d9926df):
+  - Os assets que o usuário trabalhou no editor ao longo do dia:
+    modelo do Palácio (`Meshs/Building/Palacio`: `SM_Palacio` e
+    texturas, `MI_Palacio`) e o `DA_PalaceData` alterado no editor; STF
+    reorganizado na pasta `Meshs/Building/STF` (`SM_STF` e texturas,
+    `MI_STF`, as texturas soltas antigas removidas — nada referencia
+    mais o caminho antigo); normais das quatro skins do Jumento.
+
 - **2026-10-02 — fechamento do dia** (dfeaa05 → 7cd4ac0, 7 briefings):
   - Feito hoje: Agente (fatia 2 do palácio) com patrulha, tiro pelo
     gesto, perseguição ao candidato, descanso por tempo e barra; regra
