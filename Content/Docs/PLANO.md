@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 (regra de ouro) — (commit)** (desde 6a16985):
+- **2026-10-02 (regra de ouro) — df908b6** (desde 6a16985):
   - Briefing 2026-10-01 16:30. **Construir tem preço fixo; só a
     evolução sobe (por nível); só a renda sobe com a onda.**
   - Antes, toda peça custava "propinas do candidato da onda" (preço
