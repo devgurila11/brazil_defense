@@ -36,8 +36,11 @@ struct FBDCandidateRecord
  * beyond the first. Slow, out of a drawn mouth, the first thing every defender shoots.
  * Any candidate reaching the urn, on any wave, ends the match at once.
  *
- * The count decides the rest. When the red counter passes the blue, every candidate
- * killed so far comes back at the health he fell with, spread over the wave, and no
+ * The count decides the rest. When the red counter passes the blue before any candidate
+ * has fallen, the next one walks out at once, ahead of his scheduled wave, which then
+ * sends nobody: the count opens at 0 to 0, so a player who does not defend meets a
+ * candidate with the first leaks. With candidates fallen, every one of them comes back
+ * at the health he fell with, spread over the wave, and no
  * ordinary creep walks while they do: the wave is their parade. Kill them all and the
  * count is levelled downwards, blue brought to red - nothing won, only the bleeding
  * stopped - so throwing the count on purpose buys nothing. One of them at the urn is the
@@ -161,6 +164,9 @@ private:
 
 	/** A scheduled candidate whose wave came while another was still walking: sent with the next wave. */
 	bool bSchedulePending = false;
+
+	/** The scheduled wave whose candidate the count sent early: it sends nobody when it comes. 0 for none. */
+	int32 EarlyScheduleWave = 0;
 
 	/** Seconds the scheduled candidate still waits for the buses, and why he is sent, for the log. */
 	float AwaitingBusRemaining = 0.0f;

@@ -107,12 +107,6 @@ void ABDMatchManager::BeginPlay()
 		Chosen.IsSet() ? TEXT(" (chosen in the menu)") : TEXT(""), *BDBuildInfo::GetLabel(),
 		GetWavesToWin(), DividersRemaining, PlatformsRemaining, SavesRemaining);
 
-	// The vote part of the bonus is the one thing a budget reset must not hand out
-	// again, so it stays here, at the one start a match has: a head start on the count.
-	if (bChainBonusApplied && DifficultyData->ChainBonus.Votes > 0)
-	{
-		VotesBlue += DifficultyData->ChainBonus.Votes;
-	}
 	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
 	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
 	UE_LOG(LogBDMatch, Log, TEXT("Opening capital: %d public money to build with; %d blue vote(s) on the count, which are never spent."),
@@ -202,11 +196,12 @@ void ABDMatchManager::ApplyStartingBudgets()
 	ObjectivesRemaining = 1;
 	SavesRemaining = DifficultyData->SaveBudget;
 
-	// The opening capital, in public money, and the head start on the count. Set rather
-	// than added: starting budgets are what a match opens with, and a rewind has to land
-	// on the same numbers as a fresh start.
+	// The opening capital, in public money. Set rather than added: starting budgets are
+	// what a match opens with, and a rewind has to land on the same numbers as a fresh
+	// start. The count opens at 0 to 0 on every difficulty: an election starts with no
+	// votes, and a player who does not defend sees red pass blue with the first leak.
 	PublicMoney = DifficultyData->StartingFunds;
-	VotesBlue = DifficultyData->StartingVotes;
+	VotesBlue = 0;
 
 	const EBDDifficulty Below = GetDifficultyBelow(Difficulty);
 	const FBDChainBonus& Bonus = DifficultyData->ChainBonus;
@@ -221,9 +216,9 @@ void ABDMatchManager::ApplyStartingBudgets()
 	SavesRemaining += Bonus.Saves;
 	PublicMoney += Bonus.Funds;
 
-	UE_LOG(LogBDMatch, Log, TEXT("Chain bonus for having won %s: +%d public money, +%d votes, +%d dividers, +%d platforms, +%d saves."),
+	UE_LOG(LogBDMatch, Log, TEXT("Chain bonus for having won %s: +%d public money, +%d dividers, +%d platforms, +%d saves."),
 		*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Below)),
-		Bonus.Funds, Bonus.Votes, Bonus.Dividers, Bonus.Platforms, Bonus.Saves);
+		Bonus.Funds, Bonus.Dividers, Bonus.Platforms, Bonus.Saves);
 }
 
 UBDPlacementComponent* ABDMatchManager::GetPlacement() const

@@ -132,6 +132,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	FBDCellCoord GetHeadingCell() const;
 
+	/**
+	 * How far this creep still walks along its own line before it leaves a circle on the
+	 * board: the reach of a defender. The smaller, the further it has come through that
+	 * reach - a defender's measure of who is ahead on the stretch it covers, rather than
+	 * who is nearest the urn over the whole board. The rest of its line when it never leaves.
+	 */
+	float GetPathLeftWithin(const FVector& Center, float Radius) const;
+
 	/** Whether the route has been walked to its end: the last cell and the objective beyond it. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	bool HasArrived() const { return Waypoints.Num() > 0 && CurrentWaypoint >= Waypoints.Num(); }

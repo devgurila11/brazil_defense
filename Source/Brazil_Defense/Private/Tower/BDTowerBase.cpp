@@ -397,10 +397,12 @@ ABDEnemyBase* ABDTowerBase::AcquireTarget(const float RangeSquared) const
 		return nullptr;
 	}
 
-	// With the dynamic aim the nearest creep; without it the one furthest along its route,
-	// about to score. The candidate outranks either: in range, it is the target, whatever
-	// else is there.
-	const bool bNearest = UBDTowerSettings::Get().bDynamicAim;
+	// The creep furthest ahead on the stretch this defender covers: the one with the least
+	// of its line left inside the range, about to walk out of it towards the urn. Local to
+	// the defender on purpose: the creep nearest the urn over the whole board may be the
+	// one walking right past it. The candidate outranks it: in range, it is the target,
+	// whatever else is there.
+	const float Range = FMath::Sqrt(RangeSquared);
 	ABDEnemyBase* Best = nullptr;
 	float BestScore = -MAX_flt;
 
@@ -416,9 +418,7 @@ ABDEnemyBase* ABDTowerBase::AcquireTarget(const float RangeSquared) const
 			return Enemy;
 		}
 
-		const float Score = bNearest
-			? -FVector::DistSquared2D(Enemy->GetActorLocation(), GetActorLocation())
-			: static_cast<float>(Enemy->GetCurrentPathIndex());
+		const float Score = -Enemy->GetPathLeftWithin(GetActorLocation(), Range);
 		if (Score > BestScore)
 		{
 			Best = Enemy;
@@ -530,21 +530,19 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 		return;
 	}
 
-	// Before a shot, a look again: the nearest creep now, taken over the one held only
-	// when it is clearly nearer, so the weapon does not stutter between two.
-	if (FireCooldown <= 0.0f && !IsReloading() && !Target->IsCandidate() && UBDTowerSettings::Get().bDynamicAim)
+	// Before every shot, a look again: the horde overtakes itself, and a creep that got
+	// ahead of the one held inside the range takes the next shot. Fire comes in single
+	// shots, so the weapon has nothing to lose by changing; a continuous one (a laser,
+	// later) will hold its creep instead.
+	if (FireCooldown <= 0.0f && !IsReloading() && !Target->IsCandidate())
 	{
-		ABDEnemyBase* Nearest = AcquireTarget(RangeSquared);
-		if (Nearest != nullptr && Nearest != Target)
+		ABDEnemyBase* Ahead = AcquireTarget(RangeSquared);
+		if (Ahead != nullptr && Ahead != Target
+			&& (Ahead->IsCandidate() || Ahead->GetPathLeftWithin(GetActorLocation(), Range) + 1.0f < Target->GetPathLeftWithin(GetActorLocation(), Range)))
 		{
-			const float HeldDistance = FVector::Dist2D(Target->GetActorLocation(), GetActorLocation());
-			const float NewDistance = FVector::Dist2D(Nearest->GetActorLocation(), GetActorLocation());
-			if (Nearest->IsCandidate() || NewDistance < HeldDistance * (1.0f - UBDTowerSettings::Get().AimSwitchMargin))
-			{
-				UE_LOG(LogBDTower, Verbose, TEXT("%s switches from %s to %s, nearer."), *GetName(), *Target->GetName(), *Nearest->GetName());
-				Target = Nearest;
-				CurrentTarget = Target;
-			}
+			UE_LOG(LogBDTower, Verbose, TEXT("%s switches from %s to %s, further ahead in range."), *GetName(), *Target->GetName(), *Ahead->GetName());
+			Target = Ahead;
+			CurrentTarget = Target;
 		}
 	}
 

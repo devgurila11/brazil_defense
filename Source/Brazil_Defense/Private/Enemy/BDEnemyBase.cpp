@@ -688,6 +688,33 @@ void ABDEnemyBase::Arrive()
 	Destroy();
 }
 
+float ABDEnemyBase::GetPathLeftWithin(const FVector& Center, const float Radius) const
+{
+	const float RadiusSquared = Radius * Radius;
+	FVector From = GetActorLocation();
+	float Left = 0.0f;
+	for (int32 Index = CurrentWaypoint; Index < Waypoints.Num(); ++Index)
+	{
+		const FVector To = Waypoints[Index];
+		const FVector2D Start(From.X - Center.X, From.Y - Center.Y);
+		const FVector2D Step(To.X - From.X, To.Y - From.Y);
+		const float Length = Step.Size();
+		if (FVector2D(To.X - Center.X, To.Y - Center.Y).SizeSquared() > RadiusSquared && Length > KINDA_SMALL_NUMBER)
+		{
+			// This leg crosses the edge: the part of it still inside, where |Start + t Step| = Radius.
+			const float A = Step.SizeSquared();
+			const float B = 2.0f * FVector2D::DotProduct(Start, Step);
+			const float C = Start.SizeSquared() - RadiusSquared;
+			const float Root = FMath::Sqrt(FMath::Max(0.0f, B * B - 4.0f * A * C));
+			const float T = FMath::Clamp((-B + Root) / (2.0f * A), 0.0f, 1.0f);
+			return Left + T * Length;
+		}
+		Left += Length;
+		From = To;
+	}
+	return Left;
+}
+
 void ABDEnemyBase::ApplyDamage(const float Damage, AActor* Source)
 {
 	if (bFinished || Damage <= 0.0f)

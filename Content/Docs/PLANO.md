@@ -263,6 +263,29 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (placar 0 a 0, mira das torres) — (commit)** (desde c28c53a):
+  - Briefing 2026-10-02 16:30.
+  - **Placar começa 0 a 0** nas três dificuldades: saiu `StartingVotes`
+    do `DA_Difficulty` e também os votos do bônus encadeado
+    (`ChainBonus.Votes`, que dava +100 azul); o bônus segue com
+    dinheiro, separadores, plataformas e saves.
+  - **Gatilho de virada:** antes, vermelho passar azul só trazia de volta
+    os caídos — sem caídos, não fazia nada. Agora, sem caídos, solta o
+    próximo candidato na hora, e ele conta como o da agenda: a onda
+    agendada dele não manda outro (log "already walked out"). Com
+    caídos, o retorno segue igual. Teste sem defesa: primeiro militante
+    na urna (0×1) soltou o candidato da onda 5 na onda 1; derrota na 2.
+  - **Mira das torres local:** volta a ser o mais adiantado, mas medido
+    no alcance da própria torre — quem tem menos caminho pela frente
+    até sair do raio dela (`ABDEnemyBase::GetPathLeftWithin`), não o
+    mais perto da urna no mapa. Reavaliado a cada tiro: quem ultrapassa
+    dentro do raio leva o próximo. Candidato no raio continua primeiro.
+    Saíram `bDynamicAim`/`AimSwitchMargin` das torres. O Agente segue
+    no mais próximo dele com trava de 15%. Regra do projeto: torre de
+    disparo = mais adiantado no próprio alcance; Agente = mais próximo
+    dele; arma contínua (futuro) = grudada.
+  - Regressão 52/52 (novo: placar abre 0 a 0).
+
 - **2026-10-02 (Agente, falas, alcance on-click) — de373a7** (desde 3057f6f):
   - Briefing 2026-10-02 15:00.
   - **Voto por corpo** (`bVotesByBody`, padrão ligado): militante morto

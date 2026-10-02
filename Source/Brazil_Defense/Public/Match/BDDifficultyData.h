@@ -17,10 +17,6 @@ struct FBDChainBonus
 {
 	GENERATED_BODY()
 
-	/** Blue votes the match opens with: a head start on the count. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
-	int32 Votes = 100;
-
 	/** Public money on top of the starting funds: a head start on the board. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
 	int32 Funds = 400;
@@ -34,7 +30,7 @@ struct FBDChainBonus
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Chain Bonus", meta = (ClampMin = "0", UIMin = "0"))
 	int32 Saves = 1;
 
-	bool IsEmpty() const { return Votes == 0 && Funds == 0 && Dividers == 0 && Platforms == 0 && Saves == 0; }
+	bool IsEmpty() const { return Funds == 0 && Dividers == 0 && Platforms == 0 && Saves == 0; }
 };
 
 /**
@@ -101,13 +97,6 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
 	int32 StartingFunds = 2000;
-
-	/**
-	 * Blue votes on the count before the first kill: a head start in the election, and
-	 * nothing more. Votes are never spent, so this is not something to build with.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
-	int32 StartingVotes = 3000;
 
 	/** Permanent obstacles scattered on the board before the player sees it. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Board", meta = (ClampMin = "0", UIMin = "0"))

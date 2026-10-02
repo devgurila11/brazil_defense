@@ -184,18 +184,46 @@ void UBDCandidateSubsystem::Tick(const float DeltaTime)
 
 void UBDCandidateSubsystem::HandleVotesChanged(const int32 Blue, const int32 Red)
 {
-	// The count turning red is what brings the fallen back; while they are back, or with
-	// none fallen, nothing happens here.
-	if (!bReturnActive && Fallen.Num() > 0 && IsScoreboardInverted())
+	// The count turning red: with candidates fallen, they all come back; with none yet,
+	// the next candidate walks out now instead of on his scheduled wave. Whichever of the
+	// two triggers comes first sends him. While one is out, or the fallen are back,
+	// nothing more happens here.
+	if (bReturnActive || !IsScoreboardInverted())
+	{
+		return;
+	}
+	if (Fallen.Num() > 0)
 	{
 		BeginReturn(TEXT("red passed blue"));
+		return;
 	}
+
+	const ABDMatchManager* Match = GetMatch();
+	if (Match == nullptr || Match->IsMatchOver() || Match->GetPhase() == EBDMatchPhase::Setup || HasCandidateOnBoard() || IsAwaitingBus())
+	{
+		return;
+	}
+
+	// He is the one the schedule had for its next due wave: that wave sends nobody.
+	const int32 Interval = FMath::Max(1, UBDGameBalanceSettings::Get().CandidateInterval);
+	EarlyScheduleWave = (Match->GetCurrentWave() / Interval + 1) * Interval;
+	bSchedulePending = false;
+	UE_LOG(LogBDCandidate, Log, TEXT("Red passed blue on wave %d (%d / %d): the candidate of wave %d walks out now."),
+		Match->GetCurrentWave(), Blue, Red, EarlyScheduleWave);
+	SpawnCandidateGroup(TEXT("red passed blue"));
 }
 
 void UBDCandidateSubsystem::HandleWaveDealt(const int32 Wave)
 {
 	const int32 Interval = FMath::Max(0, UBDGameBalanceSettings::Get().CandidateInterval);
 	const bool bDue = Interval > 0 && Wave % Interval == 0;
+	if (bDue && Wave == EarlyScheduleWave)
+	{
+		// The count already sent this wave's candidate, earlier.
+		UE_LOG(LogBDCandidate, Log, TEXT("Wave %d's candidate already walked out when red passed blue."), Wave);
+		EarlyScheduleWave = 0;
+		return;
+	}
 	if (!bDue && !bSchedulePending)
 	{
 		return;
@@ -260,6 +288,7 @@ void UBDCandidateSubsystem::ResetForNewMatch()
 	ReturnQueue.Reset();
 	bReturnActive = false;
 	bSchedulePending = false;
+	EarlyScheduleWave = 0;
 	ReturnAlive = 0;
 	ReturnsStarted = 0;
 	ArrivedOrdinal = 0;

@@ -332,6 +332,10 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 	{
 	case 0:
 	{
+		// An election opens with no votes, on every difficulty.
+		Check(TEXT("VOTOS"), TEXT("the count opens at 0 to 0"), Match->GetVotesBlue() == 0 && Match->GetVotesRed() == 0,
+			FString::Printf(TEXT("%d blue / %d red on %s"), Match->GetVotesBlue(), Match->GetVotesRed(), *UEnum::GetValueAsString(Match->Difficulty)));
+
 		// Money enough for everything the script buys: the checks are about where it goes.
 		Match->AddPublicMoney(200000, TEXT("BD.Test.Regression"));
 
