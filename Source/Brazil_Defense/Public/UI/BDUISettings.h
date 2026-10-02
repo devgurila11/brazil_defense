@@ -126,6 +126,20 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Palace Stars")
 	FLinearColor PalaceStarColor = FLinearColor(1.0f, 0.78f, 0.1f, 1.0f);
 
+	/**
+	 * The stars fade with the camera's distance to the palace: whole up to FadeStart,
+	 * gone from FadeEnd, a smooth fade between. Close enough to decide on that palace,
+	 * they read; in the overview they are not there. The overview sits at some 33000 cm.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Palace Stars", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float PalaceStarFadeStart = 10000.0f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Palace Stars", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float PalaceStarFadeEnd = 18000.0f;
+
+	/** Opacity of the stars for a camera this far from the palace: 1 up to the fade start, 0 from its end. */
+	float GetPalaceStarOpacity(float CameraDistance) const;
+
 	/** Height of the ballot pictures, as a fraction of the viewport height; the urn is drawn a little larger. */
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.02", ClampMax = "0.2", UIMin = "0.02", UIMax = "0.2"))
 	float ScoreIconHeightFraction = 0.045f;

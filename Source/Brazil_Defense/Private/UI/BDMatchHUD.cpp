@@ -106,6 +106,10 @@ void ABDMatchHUD::DrawPalaceStars()
 	const float Step = StarHeight * (1.0f + Settings.PalaceStarGap);
 	const int32 Count = UBDPalaceData::MaxLevel;
 
+	const FVector CameraLocation = PlayerOwner != nullptr && PlayerOwner->PlayerCameraManager != nullptr
+		? PlayerOwner->PlayerCameraManager->GetCameraLocation()
+		: FVector::ZeroVector;
+
 	for (TActorIterator<ABDPalace> It(World); It; ++It)
 	{
 		const ABDPalace* Palace = *It;
@@ -114,6 +118,16 @@ void ABDMatchHUD::DrawPalaceStars()
 			// Lifted and travelling with the cursor: the stars come back with it.
 			continue;
 		}
+
+		// Far from the camera the row fades out: in the overview two palaces' stars would
+		// run into each other, and nothing there is decided palace by palace.
+		const float Opacity = Settings.GetPalaceStarOpacity(FVector::Dist(CameraLocation, Palace->GetStarsAnchor()));
+		if (Opacity <= KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+		FLinearColor Color = Settings.PalaceStarColor;
+		Color.A *= Opacity;
 
 		// Projected, so the row always faces the camera; behind it, nothing.
 		const FVector Screen = Canvas->Project(Palace->GetStarsAnchor());
@@ -126,7 +140,7 @@ void ABDMatchHUD::DrawPalaceStars()
 		const float FirstX = Screen.X - Step * (Count - 1) * 0.5f;
 		for (int32 Star = 0; Star < Count; ++Star)
 		{
-			DrawStar(FVector2D(FirstX + Step * Star, Screen.Y), Radius, Star < Filled, Settings.PalaceStarColor);
+			DrawStar(FVector2D(FirstX + Step * Star, Screen.Y), Radius, Star < Filled, Color);
 		}
 	}
 }
@@ -163,17 +177,19 @@ void ABDMatchHUD::DrawStar(const FVector2D& Center, const float Radius, const bo
 	// A dark edge under the colour, so an empty star reads on grass and on concrete alike.
 	// Thin next to the star, or an outline closes over the inside and an empty star reads full.
 	const float Thickness = FMath::Clamp(Radius * 0.08f, 1.0f, 2.5f);
-	const FLinearColor Shadow(0.0f, 0.0f, 0.0f, 0.7f);
-	for (int32 Corner = 0; Corner < 10; ++Corner)
+	// Lines drawn translucent, so the fade reaches the outline as well as the fill.
+	const FLinearColor Shadow(0.0f, 0.0f, 0.0f, 0.7f * Color.A);
+	const auto DrawOutline = [this, &Corners](const FLinearColor& LineColor, const float LineThickness)
 	{
-		const FVector2D& From = Corners[Corner];
-		const FVector2D& To = Corners[(Corner + 1) % 10];
-		DrawLine(From.X, From.Y, To.X, To.Y, Shadow, Thickness + 1.5f);
-	}
-	for (int32 Corner = 0; Corner < 10; ++Corner)
-	{
-		const FVector2D& From = Corners[Corner];
-		const FVector2D& To = Corners[(Corner + 1) % 10];
-		DrawLine(From.X, From.Y, To.X, To.Y, Color, Thickness);
-	}
+		for (int32 Corner = 0; Corner < 10; ++Corner)
+		{
+			FCanvasLineItem Line(Corners[Corner], Corners[(Corner + 1) % 10]);
+			Line.SetColor(LineColor);
+			Line.LineThickness = LineThickness;
+			Line.BlendMode = SE_BLEND_Translucent;
+			Canvas->DrawItem(Line);
+		}
+	};
+	DrawOutline(Shadow, Thickness + 1.5f);
+	DrawOutline(Color, Thickness);
 }

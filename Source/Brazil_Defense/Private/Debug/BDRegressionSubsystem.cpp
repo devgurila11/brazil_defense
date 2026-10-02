@@ -32,6 +32,7 @@
 #include "Palace/BDPalace.h"
 #include "Palace/BDPalaceData.h"
 #include "Components/StaticMeshComponent.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Objective/BDObjectiveSettings.h"
 #include "Objective/BDObjectiveSubsystem.h"
 #include "Placement/BDPlaceableData.h"
@@ -624,6 +625,21 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			FString::Printf(TEXT("mesh %s %.0f cm wide over %.0f cm, level %d (data %d), stars %.0f cm over the roof"),
 				*GetNameSafe(PalaceMesh->GetStaticMesh()), Span, Grid->GetCellSize() * 2.0f, Palace->GetPalaceLevel(),
 				PalaceData != nullptr ? PalaceData->Level : -1, Palace->GetStarsAnchor().Z - RoofZ));
+
+		// The stars fade with the camera's distance: whole close, gone in the overview the
+		// match opens on, eased in between rather than cut.
+		const UBDUISettings& UI = UBDUISettings::Get();
+		const float Near = UI.GetPalaceStarOpacity(UI.PalaceStarFadeStart);
+		const float Middle = UI.GetPalaceStarOpacity((UI.PalaceStarFadeStart + UI.PalaceStarFadeEnd) * 0.5f);
+		const float Far = UI.GetPalaceStarOpacity(UI.PalaceStarFadeEnd);
+		const APlayerController* Viewer = World->GetFirstPlayerController();
+		const float Overview = Viewer != nullptr && Viewer->PlayerCameraManager != nullptr
+			? FVector::Dist(Viewer->PlayerCameraManager->GetCameraLocation(), Palace->GetStarsAnchor()) : -1.0f;
+		Check(TEXT("PALACIO"), TEXT("the stars fade out with the camera's distance, gone in the opening overview"),
+			FMath::IsNearlyEqual(Near, 1.0f) && FMath::IsNearlyEqual(Far, 0.0f) && Middle > 0.1f && Middle < 0.9f
+				&& Overview > 0.0f && UI.GetPalaceStarOpacity(Overview) <= KINDA_SMALL_NUMBER,
+			FString::Printf(TEXT("opacity %.2f at %.0f cm, %.2f halfway, %.2f at %.0f cm; overview camera %.0f cm away, %.2f"),
+				Near, UI.PalaceStarFadeStart, Middle, Far, UI.PalaceStarFadeEnd, Overview, Overview > 0.0f ? UI.GetPalaceStarOpacity(Overview) : -1.0f));
 
 		Placement->SetHoveredCellDirect(PalaceCell);
 		const bool bSold = Placement->TryRemoveAtHovered();

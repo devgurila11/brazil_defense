@@ -263,6 +263,21 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-02 (fecho da fatia 1) — (este commit)** (desde 82033a6):
+  - Briefing 2026-10-01 11:00. Preço 6.4 já tinha subido em 2f27fa6.
+  - **Estrelas com fade por distância.** Opacidade cai suave (smoothstep)
+    com a distância da câmera ao palácio: inteira até
+    `PalaceStarFadeStart` 10000 cm, zero a partir de
+    `PalaceStarFadeEnd` 18000 cm (Interface > Palace Stars). Visão geral
+    (~33400 cm) limpa; contorno, sombra e preenchimento somem juntos.
+    Visto em captura nas alturas 5000/11000/28000 e
+    7000/12000/16000 (com 9000–15000 sumiam cedo demais; com
+    14000–24000 as fileiras de palácios vizinhos ainda encostavam).
+  - Regressão 40/40 (novo: curva 1 → 0,5 → 0 e estrelas sumidas na
+    câmera com que a partida abre).
+  - **Onde paramos:** fatia 1 fechada; falta o usuário ver no jogo.
+    Próxima: fatia 2 (o Agente).
+
 - **2026-10-02 — 2f27fa6** (desde a638189):
   - **Palácio do Governo, fatia 1 de 4** (briefing 2026-10-01 10:00):
     só a estrutura e o indicador. Novo `EBDPieceKind::Palace` (último do

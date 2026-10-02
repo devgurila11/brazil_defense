@@ -15,7 +15,8 @@
  *
  * Over every palace, five stars facing the camera: as many filled as its level, the
  * rest only an outline. These are sized by the screen rather than the world, so the
- * evolution reads at every zoom.
+ * evolution reads the same at every zoom they are shown at. They fade out as the
+ * camera pulls back, and are gone in the overview (UBDUISettings::PalaceStarFade*).
  */
 UCLASS()
 class BRAZIL_DEFENSE_API ABDMatchHUD : public AHUD
