@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 (ajustes do Agente) — (commit)** (desde 91b1832):
+- **2026-10-02 (ajustes do Agente) — 4ae5bf0** (desde 91b1832):
   - Briefing 2026-10-02 10:30.
   - **Palácio 3000** (`PalaceCost`, fixo): acima dos 2000 iniciais do
     Normal, o Agente vira conquista de alguns candidatos.
