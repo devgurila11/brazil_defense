@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-02 (fecho da fatia 1) — (este commit)** (desde 82033a6):
+- **2026-10-02 (fecho da fatia 1) — 2ffdfa0** (desde 82033a6):
   - Briefing 2026-10-01 11:00. Preço 6.4 já tinha subido em 2f27fa6.
   - **Estrelas com fade por distância.** Opacidade cai suave (smoothstep)
     com a distância da câmera ao palácio: inteira até
