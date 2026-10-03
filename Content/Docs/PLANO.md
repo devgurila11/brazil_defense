@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-03 (bugs, áudio, estrelas, HUD limpo, coice) — COMMIT** (desde 07fb616):
+- **2026-10-03 (bugs, áudio, estrelas, HUD limpo, coice) — f6c9ed5** (desde 07fb616):
   - Briefing 2026-10-03 10:30.
   - **Áudios renomeados** (script em lote): 10 músicas →
     `MUS_Battle_01..10` (ordem de geração); efeitos em 5 grupos de 4:
