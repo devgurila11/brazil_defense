@@ -154,6 +154,18 @@ public:
 	/** Opacity of the stars for a camera this far from the palace: 1 up to the fade start, 0 from its end. */
 	float GetPalaceStarOpacity(float CameraDistance) const;
 
+	/**
+	 * The same row over every piece that evolves: ground towers by their level, platforms by
+	 * the level of their block (0 until every slot is manned). Smaller than the palace's, so
+	 * the palace still reads first. Colour and fade are the palace's.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Palace Stars", meta = (ClampMin = "0.1", ClampMax = "1.0", UIMin = "0.1", UIMax = "1.0"))
+	float PieceStarScale = 0.7f;
+
+	/** Centimetres over the top of the piece the row floats at. */
+	UPROPERTY(config, EditAnywhere, Category = "Palace Stars", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float PieceStarLift = 60.0f;
+
 	/** Height of the ballot pictures, as a fraction of the viewport height; the urn is drawn a little larger. */
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.02", ClampMax = "0.2", UIMin = "0.02", UIMax = "0.2"))
 	float ScoreIconHeightFraction = 0.045f;

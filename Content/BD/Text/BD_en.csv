@@ -136,6 +136,7 @@
 "Refusal.NoFunds","Not enough public funds"
 "Refusal.NoFreeSlot","No platform with a free slot"
 "Refusal.NotUnlocked","Not unlocked yet"
+"Refusal.PalaceAlreadyBuilt","A palace already stands"
 "HUD.Menu","Menu"
 "Pause.Title","Paused"
 "Pause.Continue","Continue"

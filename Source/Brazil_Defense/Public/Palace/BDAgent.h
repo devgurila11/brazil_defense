@@ -139,6 +139,13 @@ public:
 	/** One line on his state, for the console and the regression. */
 	FString Describe() const;
 
+	/**
+	 * Where his feet are against the floor under him, in centimetres: the lowest bone of the
+	 * pose playing now minus the ground traced at his location. Near zero when he stands on
+	 * it, negative when he sinks into it. @return false with no mesh or no ground found.
+	 */
+	bool MeasureFeet(float& OutLowestBoneOverGround, float& OutRootOverGround) const;
+
 private:
 	UBDGridSubsystem* GetGrid() const;
 	const UBDPalaceData* GetData() const;
@@ -162,8 +169,14 @@ private:
 	 */
 	TArray<FBDCellCoord> FindWay(const FBDCellCoord& From, const FBDCellCoord& To) const;
 
-	/** World point of a cell center on the board plane. */
+	/** World point of a cell center on the floor under it (the board plane when no floor is hit). */
 	FVector CellPoint(const FBDCellCoord& Coord) const;
+
+	/**
+	 * The floor under a point, traced as the creeps trace theirs (UBDWaveSettings channel
+	 * and distance), ignoring him and his palace. @return false when nothing is hit.
+	 */
+	bool TraceGround(const FVector& Point, float& OutGroundZ) const;
 
 	/** Picks what to do next after a walk or a stop: another walk, or a stop first. */
 	void DecideNext();
@@ -222,6 +235,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Agent")
 	TObjectPtr<USkeletalMeshComponent> Body;
+
+	/** The body's height over the root with the feet on the floor; SleepLift goes on top. */
+	float BodyBaseZ = 0.0f;
 
 	/** Weak: the palace takes him down with it, but never the other way round. */
 	TWeakObjectPtr<ABDPalace> Palace;

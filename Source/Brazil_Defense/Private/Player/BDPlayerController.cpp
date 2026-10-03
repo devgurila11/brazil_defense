@@ -308,6 +308,17 @@ void ABDPlayerController::HandleZoomOut()
 	ClampCameraTarget();
 }
 
+void ABDPlayerController::HandleToggleCleanView()
+{
+	if (const UGameInstance* Instance = GetGameInstance())
+	{
+		if (UBDUISubsystem* UI = Instance->GetSubsystem<UBDUISubsystem>())
+		{
+			UI->ToggleCleanView();
+		}
+	}
+}
+
 void ABDPlayerController::HandleResetCamera()
 {
 	ResetCamera();
@@ -376,6 +387,7 @@ void ABDPlayerController::SetupInputComponent()
 	InputComponent->BindKey(EKeys::MouseScrollUp, IE_Pressed, this, &ABDPlayerController::HandleZoomIn);
 	InputComponent->BindKey(EKeys::MouseScrollDown, IE_Pressed, this, &ABDPlayerController::HandleZoomOut);
 	InputComponent->BindKey(EKeys::Home, IE_Pressed, this, &ABDPlayerController::HandleResetCamera);
+	InputComponent->BindKey(EKeys::H, IE_Pressed, this, &ABDPlayerController::HandleToggleCleanView);
 	InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ABDPlayerController::HandleRotatePiece);
 	InputComponent->BindKey(EKeys::MiddleMouseButton, IE_Pressed, this, &ABDPlayerController::HandleMiddlePressed);
 	InputComponent->BindKey(EKeys::MiddleMouseButton, IE_Released, this, &ABDPlayerController::HandleMiddleReleased);

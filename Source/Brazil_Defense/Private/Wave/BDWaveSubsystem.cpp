@@ -2,6 +2,7 @@
 
 #include "Wave/BDWaveSubsystem.h"
 
+#include "Audio/BDAudioSettings.h"
 #include "BDLog.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "DrawDebugHelpers.h"
@@ -272,6 +273,23 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 	if (Buses != nullptr && Buses->FollowMouths(GetSpawnPoints()) && WaveSpawnsRemaining > 0)
 	{
 		HoldWaveSpawns(UBDWaveSettings::Get().BusMoveSeconds, TEXT("the buses pull up to their mouths"));
+	}
+
+	// The engines of the mouths this wave opened start now, and the horde leaves a moment
+	// later on the horns: never both at once, even with the buses already in place.
+	HornedSpawnPoints.Reset();
+	if (Buses != nullptr && WaveSpawnsRemaining > 0)
+	{
+		const TArray<FBDSpawnPoint>& Points = GetSpawnPoints();
+		int32 Engines = 0;
+		for (const int32 Index : ActiveSpawnPoints)
+		{
+			Engines += Points.IsValidIndex(Index) && Buses->PlayEngine(Points[Index].AnchorExit) ? 1 : 0;
+		}
+		if (Engines > 0)
+		{
+			HoldWaveSpawns(UBDAudioSettings::Get().EngineLeadSeconds, TEXT("the buses start their engines"));
+		}
 	}
 
 	// Told after the mouths have moved and been drawn, and before anything is sent: the
@@ -579,6 +597,19 @@ void UBDWaveSubsystem::SpawnNextOfWave()
 			return false;
 		}
 
+		// The horn of the bus the first militant of the wave leaves, at the moment he does.
+		if (!HornedSpawnPoints.Contains(Index))
+		{
+			HornedSpawnPoints.Add(Index);
+			const UWorld* World = GetWorld();
+			UBDBusSubsystem* Buses = World != nullptr ? World->GetSubsystem<UBDBusSubsystem>() : nullptr;
+			const TArray<FBDSpawnPoint>& Points = GetSpawnPoints();
+			if (Buses != nullptr && Points.IsValidIndex(Index))
+			{
+				Buses->PlayHorn(Points[Index].AnchorExit);
+			}
+		}
+
 		--WaveSpawnsRemaining;
 		++WaveSpawnedTotal;
 		WavePeakAlive = FMath::Max(WavePeakAlive, LivingEnemies.Num());
@@ -630,7 +661,6 @@ void UBDWaveSubsystem::Tick(const float DeltaTime)
 	if (SpawnHoldRemaining > 0.0f)
 	{
 		SpawnHoldRemaining = FMath::Max(0.0f, SpawnHoldRemaining - DeltaTime);
-		// SOUND: the horde starts leaving the buses here, once the hold runs out.
 		UE_CLOG(SpawnHoldRemaining <= 0.0f && WaveSpawnsRemaining > 0, LogBDWave, Log,
 			TEXT("Wave %d: the lead is over, its %d creep(s) go out."), WaveNumber, WaveSpawnsRemaining);
 	}

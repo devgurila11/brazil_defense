@@ -340,6 +340,9 @@ private:
 	 */
 	TArray<int32> ActiveSpawnPoints;
 
+	/** Mouths whose bus already sounded its horn this wave: the first militant out is the one that gets it. */
+	TSet<int32> HornedSpawnPoints;
+
 	/** How many creeps have drawn a route cost map since the world began. Part of the per creep seed. */
 	int32 RouteCostDraws = 0;
 

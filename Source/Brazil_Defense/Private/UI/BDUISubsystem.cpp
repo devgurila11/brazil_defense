@@ -1,6 +1,8 @@
 // Brazil Defense. Which screen is up, and how one gives way to the next.
 
 #include "UI/BDUISubsystem.h"
+#include "GameFramework/HUD.h"
+#include "Components/LineBatchComponent.h"
 
 #include "BDLog.h"
 #include "Blueprint/UserWidget.h"
@@ -121,7 +123,61 @@ void UBDUISubsystem::SetScreen(const EBDScreen Screen)
 
 	ApplyInputMode(Screen);
 
+	// The clean view is a thing of the match: the menus always show, and a new HUD hides
+	// again if the player had it hidden.
+	if (Screen != EBDScreen::HUD && bCleanView)
+	{
+		SetCleanView(false);
+	}
+	ApplyCleanView();
+
 	UE_LOG(LogBDUI, Log, TEXT("Screen: %s."), *StaticEnum<EBDScreen>()->GetNameStringByValue(static_cast<int64>(Screen)));
+}
+
+void UBDUISubsystem::SetCleanView(const bool bClean)
+{
+	if (bClean == bCleanView)
+	{
+		return;
+	}
+	if (bClean && GEngine != nullptr)
+	{
+		bScreenMessagesBefore = GEngine->bEnableOnScreenDebugMessages;
+	}
+	bCleanView = bClean;
+	ApplyCleanView();
+	UE_LOG(LogBDUI, Log, TEXT("Clean view %s."), bCleanView ? TEXT("on: only the game is drawn") : TEXT("off: the HUD is back"));
+}
+
+void UBDUISubsystem::ApplyCleanView()
+{
+	if (UBDHUDWidget* HUD = GetHUD())
+	{
+		HUD->SetVisibility(bCleanView ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
+	}
+
+	APlayerController* Controller = GetLocalController();
+	if (Controller != nullptr && Controller->GetHUD() != nullptr)
+	{
+		Controller->GetHUD()->bShowHUD = !bCleanView;
+	}
+
+	// Every debug line, whoever draws it, goes through these.
+	if (const UWorld* World = Controller != nullptr ? Controller->GetWorld() : nullptr)
+	{
+		for (int32 Type = 0; Type < static_cast<int32>(UWorld::ELineBatcherType::NUM); ++Type)
+		{
+			if (ULineBatchComponent* Lines = World->GetLineBatcher(static_cast<UWorld::ELineBatcherType>(Type)))
+			{
+				Lines->SetVisibility(!bCleanView);
+			}
+		}
+	}
+
+	if (GEngine != nullptr)
+	{
+		GEngine->bEnableOnScreenDebugMessages = bCleanView ? false : bScreenMessagesBefore;
+	}
 }
 
 void UBDUISubsystem::ApplyInputMode(const EBDScreen Screen)

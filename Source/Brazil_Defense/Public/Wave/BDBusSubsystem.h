@@ -8,6 +8,8 @@
 #include "BDBusSubsystem.generated.h"
 
 class AStaticMeshActor;
+class USoundAttenuation;
+class USoundBase;
 struct FBDSpawnPoint;
 
 /** One bus and the mouth it serves. */
@@ -90,6 +92,20 @@ public:
 	 */
 	void CountBuses(const TArray<FBDSpawnPoint>& Points, int32& OutBound, int32& OutAstray) const;
 
+	//~ Sound -------------------------------------------------------------------
+
+	/** The engine starting on the bus of a mouth (UBDAudioSettings::BusEngineSound). @return whether it played. */
+	bool PlayEngine(const FBDCellCoord& Anchor);
+
+	/** The horn on the bus of a mouth (UBDAudioSettings::BusHornSound). @return whether it played. */
+	bool PlayHorn(const FBDCellCoord& Anchor);
+
+	/** Engines and horns asked for, and how many of those played: a mouth with no bus, an empty slot or no audio device plays nothing. */
+	int32 GetEnginesAsked() const { return EnginesAsked; }
+	int32 GetEnginesPlayed() const { return EnginesPlayed; }
+	int32 GetHornsAsked() const { return HornsAsked; }
+	int32 GetHornsPlayed() const { return HornsPlayed; }
+
 private:
 	/** Finds the placed bus standing over an anchor, and records it. @return the bus, or null. */
 	FBDBus* Bind(const FBDCellCoord& Anchor);
@@ -111,4 +127,16 @@ private:
 
 	/** Seconds until anchors without a bus are looked for again. A streamed bus may turn up later. */
 	float RebindTimer = 0.0f;
+
+	/** Plays a sound on a bus, attached so it pulls up with it. */
+	bool PlayOnBus(const FBDCellCoord& Anchor, USoundBase* Sound, float Volume, const TCHAR* What);
+
+	/** The buses' falloff and reverb send, built from the audio settings on first use. */
+	UPROPERTY(Transient)
+	TObjectPtr<USoundAttenuation> BusAttenuation;
+
+	int32 EnginesAsked = 0;
+	int32 EnginesPlayed = 0;
+	int32 HornsAsked = 0;
+	int32 HornsPlayed = 0;
 };

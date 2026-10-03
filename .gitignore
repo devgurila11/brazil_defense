@@ -19,3 +19,6 @@ Saved/
 # OS
 Thumbs.db
 .DS_Store
+
+# Original music WAVs: 350 MB that repeat the source kept inside the imported .uasset files.
+SourceAudio/Musics/

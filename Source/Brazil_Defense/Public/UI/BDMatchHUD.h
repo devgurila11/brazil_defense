@@ -14,7 +14,8 @@
  * close look reads every creep. The candidate keeps the bar of his own.
  *
  * Over every palace, five stars facing the camera: as many filled as its level, the
- * rest only an outline. These are sized by the screen rather than the world, so the
+ * rest only an outline. A smaller row of the same over every ground tower (its level) and
+ * every platform (its block's level). These are sized by the screen rather than the world, so the
  * evolution reads the same at every zoom they are shown at. They fade out as the
  * camera pulls back, and are gone in the overview (UBDUISettings::PalaceStarFade*).
  *
@@ -33,6 +34,15 @@ public:
 private:
 	void DrawCreepBars();
 	void DrawPalaceStars();
+
+	/** The palace's row over the ground towers and the platforms, smaller. */
+	void DrawPieceStars();
+
+	/**
+	 * One row of stars at a world point, faded by the camera's distance, Filled of them full.
+	 * @return false when nothing was drawn: faded out, or behind the camera.
+	 */
+	bool DrawStarRow(const FVector& Anchor, int32 Filled, int32 Count, float Scale);
 
 	/** Over every Agent: the patrol emptying in blue while awake, the rest filling in violet while asleep. */
 	void DrawAgentBars();

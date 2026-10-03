@@ -2,7 +2,14 @@
 
 #include "Wave/BDBusSubsystem.h"
 
+#include "Audio/BDAudioSettings.h"
 #include "BDLog.h"
+#include "Components/AudioComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundAttenuation.h"
+#include "Sound/SoundBase.h"
+#include "Sound/SoundClass.h"
+#include "UI/BDUISettings.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
@@ -135,7 +142,6 @@ bool UBDBusSubsystem::FollowMouths(const TArray<FBDSpawnPoint>& Points)
 			continue;
 		}
 
-		// SOUND: the bus starts moving here - the engine, a horn before the wave.
 		Bus->From = Bus->Actor->GetActorLocation();
 		Bus->To = Spot;
 		Bus->Elapsed = 0.0f;
@@ -272,4 +278,80 @@ void UBDBusSubsystem::Tick(const float DeltaTime)
 			}
 		}
 	}
+}
+
+//~ Sound -------------------------------------------------------------------------
+
+bool UBDBusSubsystem::PlayEngine(const FBDCellCoord& Anchor)
+{
+	const UBDAudioSettings& Settings = UBDAudioSettings::Get();
+	++EnginesAsked;
+	const bool bPlayed = PlayOnBus(Anchor, Settings.BusEngineSound.LoadSynchronous(), Settings.BusEngineVolume, TEXT("engine"));
+	EnginesPlayed += bPlayed ? 1 : 0;
+	return bPlayed;
+}
+
+bool UBDBusSubsystem::PlayHorn(const FBDCellCoord& Anchor)
+{
+	const UBDAudioSettings& Settings = UBDAudioSettings::Get();
+	++HornsAsked;
+	const bool bPlayed = PlayOnBus(Anchor, Settings.BusHornSound.LoadSynchronous(), Settings.BusHornVolume, TEXT("horn"));
+	HornsPlayed += bPlayed ? 1 : 0;
+	return bPlayed;
+}
+
+bool UBDBusSubsystem::PlayOnBus(const FBDCellCoord& Anchor, USoundBase* Sound, const float Volume, const TCHAR* What)
+{
+	const FBDBus* Bus = FindOrBind(Anchor);
+	AStaticMeshActor* Actor = Bus != nullptr ? Bus->Actor.Get() : nullptr;
+	if (Sound == nullptr || Actor == nullptr)
+	{
+		UE_LOG(LogBDAudio, Verbose, TEXT("Bus %s of the mouth at %s: %s."), What, *Anchor.ToString(),
+			Sound == nullptr ? TEXT("empty slot") : TEXT("no bus"));
+		return false;
+	}
+
+	if (BusAttenuation == nullptr)
+	{
+		// Heard from the camera, as everything 3D is: full near the bus, gone across the
+		// map; part of it into the reverb, the open street.
+		const UBDAudioSettings& Settings = UBDAudioSettings::Get();
+		BusAttenuation = NewObject<USoundAttenuation>(this, TEXT("BusAttenuation"));
+		FSoundAttenuationSettings& Attenuation = BusAttenuation->Attenuation;
+		Attenuation.bAttenuate = true;
+		Attenuation.bSpatialize = true;
+		Attenuation.AttenuationShape = EAttenuationShape::Sphere;
+		Attenuation.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+		Attenuation.AttenuationShapeExtents = FVector(Settings.BusInnerRadius, 0.0f, 0.0f);
+		Attenuation.FalloffDistance = Settings.BusFalloffDistance;
+		Attenuation.dBAttenuationAtMax = -50.0f;
+		Attenuation.FalloffMode = ENaturalSoundFalloffMode::Silent;
+		Attenuation.StereoSpread = 400.0f;
+		Attenuation.bAttenuateWithLPF = true;
+		Attenuation.LPFRadiusMin = Settings.BusInnerRadius;
+		Attenuation.LPFRadiusMax = Settings.BusInnerRadius + Settings.BusFalloffDistance;
+		Attenuation.LPFFrequencyAtMax = 2500.0f;
+		Attenuation.bEnableReverbSend = true;
+		Attenuation.ReverbSendMethod = EReverbSendMethod::Linear;
+		Attenuation.ReverbWetLevelMin = Settings.BusReverbSend * 0.5f;
+		Attenuation.ReverbWetLevelMax = Settings.BusReverbSend;
+		Attenuation.ReverbDistanceMin = Settings.BusInnerRadius;
+		Attenuation.ReverbDistanceMax = Settings.BusInnerRadius + Settings.BusFalloffDistance;
+	}
+
+	// Attached, so the engine pulls up with the bus it starts.
+	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAttached(Sound, Actor->GetRootComponent(), NAME_None,
+		FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, /*bStopWhenAttachedToDestroyed*/ true,
+		Volume, 1.0f, 0.0f, BusAttenuation, nullptr, /*bAutoDestroy*/ true);
+	if (Audio == nullptr)
+	{
+		UE_LOG(LogBDAudio, Verbose, TEXT("Bus %s on %s: no audio device."), What, *Actor->GetName());
+		return false;
+	}
+	if (USoundClass* Effects = UBDUISettings::Get().EffectsSoundClass.LoadSynchronous())
+	{
+		Audio->SoundClassOverride = Effects;
+	}
+	UE_LOG(LogBDAudio, Verbose, TEXT("Bus %s on %s (mouth at %s)."), What, *Actor->GetName(), *Anchor.ToString());
+	return true;
 }

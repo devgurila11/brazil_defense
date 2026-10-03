@@ -250,6 +250,19 @@ bool UBDPlacementComponent::IsObjectiveSelection() const
 	return CurrentSelection != nullptr && CurrentSelection->GetPieceKind() == EBDPieceKind::Objective;
 }
 
+bool UBDPlacementComponent::IsPalaceOnBoard() const
+{
+	// The actors are the truth: a sale destroys the palace, a move only hides it.
+	for (TActorIterator<ABDPalace> It(GetWorld()); It; ++It)
+	{
+		if (!It->IsActorBeingDestroyed())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 bool UBDPlacementComponent::IsTowerSelection() const
 {
 	return CurrentSelection != nullptr && CurrentSelection->IsDefender();
@@ -415,6 +428,10 @@ EBDPlacementRefusal UBDPlacementComponent::GetHandRefusal(const UBDPlaceableData
 	if (Kind == EBDPieceKind::Character && Match->GetFreeCharacterSlots() <= 0)
 	{
 		return EBDPlacementRefusal::NoFreeSlot;
+	}
+	if (Kind == EBDPieceKind::Palace && IsPalaceOnBoard())
+	{
+		return EBDPlacementRefusal::PalaceAlreadyBuilt;
 	}
 	if (!Match->CanPlace(Kind))
 	{
@@ -1313,6 +1330,12 @@ void UBDPlacementComponent::EvaluatePlacement()
 		{
 			// Nor is a full board. The player needs another platform, not another phase.
 			CurrentRefusal = EBDPlacementRefusal::NoFreeSlot;
+		}
+		else if (!bMoving && CurrentSelection->GetPieceKind() == EBDPieceKind::Palace && IsPalaceOnBoard())
+		{
+			// One palace, one agent. Asked with or without a match: it is a rule of the
+			// board, not of the budget.
+			CurrentRefusal = EBDPlacementRefusal::PalaceAlreadyBuilt;
 		}
 		else if (!bMoving && Match != nullptr && !Match->CanPlace(CurrentSelection->GetPieceKind()))
 		{

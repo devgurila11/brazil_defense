@@ -58,6 +58,15 @@ namespace BDTowerDebug
 				Tower->GetEffectiveDamage(), Level != nullptr ? Level->FireRate : 0.0f,
 				*TargetText, *Magazine, *Reload,
 				Tower->GetShotsFired(), Tower->GetKills());
+
+			// With a creep in range: how long it shot, and how long it held and why.
+			using EHold = ABDTowerBase::EHold;
+			const float InRange = Tower->GetHoldSeconds(EHold::Engaged) + Tower->GetHoldSeconds(EHold::AllDoomed)
+				+ Tower->GetHoldSeconds(EHold::Acquiring) + Tower->GetHoldSeconds(EHold::Turning);
+			const auto Share = [InRange](const float Seconds) { return InRange > 0.0f ? Seconds / InRange * 100.0f : 0.0f; };
+			UE_LOG(LogBDTower, Log, TEXT("    creep in range %.1fs: engaged %.0f%%, all doomed %.0f%%, acquiring %.0f%%, turning %.0f%%."),
+				InRange, Share(Tower->GetHoldSeconds(EHold::Engaged)), Share(Tower->GetHoldSeconds(EHold::AllDoomed)),
+				Share(Tower->GetHoldSeconds(EHold::Acquiring)), Share(Tower->GetHoldSeconds(EHold::Turning)));
 			++Count;
 		}
 

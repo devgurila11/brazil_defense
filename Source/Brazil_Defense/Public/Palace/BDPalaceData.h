@@ -155,6 +155,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Animation")
 	TSoftObjectPtr<UAnimSequenceBase> SleepAnimation;
 
+	/**
+	 * Centimetres the body rises while he sleeps. The sleeping loop lies him on his side and
+	 * rolls him: with the feet on the floor, the arm under him went about 12 cm into it.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Animation", meta = (ClampMin = "0", Units = "cm"))
+	float SleepLift = 14.0f;
+
 	/** Played once by a kick. Nothing asks for one yet: the ministers it is for come later. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Animation")
 	TSoftObjectPtr<UAnimSequenceBase> KickAnimation;

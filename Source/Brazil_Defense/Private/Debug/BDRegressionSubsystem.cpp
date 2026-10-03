@@ -35,6 +35,8 @@
 #include "Components/Button.h"
 #include "UI/BDHUDWidget.h"
 #include "UObject/UObjectIterator.h"
+#include "Audio/BDAudioSettings.h"
+#include "Audio/BDSoundscapeSubsystem.h"
 #include "Palace/BDAgent.h"
 #include "Palace/BDAnimNotify_Shot.h"
 #include "Placement/BDInspection.h"
@@ -604,6 +606,20 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		}
 		Check(TEXT("PLATAFORMA"), TEXT("the shooters ride up with their slots"), WorstGap <= 5.0f, FString::Printf(TEXT("worst gap %.1f cm"), WorstGap));
 
+		// A shot kicks a character back and it settles again: firing reads apart from idling.
+		if (Crew.Num() > 0 && Crew[0].IsValid())
+		{
+			ABDEnemyBase* Dummy = Waves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), 0);
+			const bool bKicked = Dummy != nullptr && Crew[0]->DebugFireAt(Dummy) && Crew[0]->GetRecoilRemaining() > 0.0f;
+			const float Peak = Crew[0]->GetRecoilDistance();
+			if (Dummy != nullptr)
+			{
+				Dummy->Destroy();
+			}
+			Check(TEXT("PLATAFORMA"), TEXT("a character kicks back at every shot"), bKicked && Peak > 1.0f,
+				FString::Printf(TEXT("kick %s, %.0f cm back at its peak"), bKicked ? TEXT("playing") : TEXT("none"), Peak));
+		}
+
 		// The palace: 2x2, bought with public money at its share of candidates, holding its
 		// cells like a platform, five empty stars over it. Sold again at the end, so the
 		// rest of the script plays on the board it always had.
@@ -682,6 +698,22 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			break;
 		}
 
+		// One palace a match: a second is refused in the hand and on the board, and the
+		// reason names the palace even with the money short (it is asked before the money).
+		{
+			const EBDPlacementRefusal InHand = Placement->GetHandRefusal(PalacePiece);
+			const bool bTaken = Placement->TakeIntoHand(PalacePiece);
+			Placement->SelectPlaceable(PalacePiece);
+			Placement->SetHoveredCellDirect(FBDCellCoord(PalaceCell.X + 4, PalaceCell.Y));
+			const EBDPlacementRefusal OnBoard = Placement->GetCurrentRefusal();
+			Placement->CancelSelection();
+			int32 Palaces = 0;
+			for (TActorIterator<ABDPalace> It(World); It; ++It) { ++Palaces; }
+			Check(TEXT("PALACIO"), TEXT("only one palace is accepted: a second is refused with its reason"),
+				InHand == EBDPlacementRefusal::PalaceAlreadyBuilt && !bTaken && OnBoard == EBDPlacementRefusal::PalaceAlreadyBuilt && Palaces == 1,
+				FString::Printf(TEXT("hand %s, board %s, %d palace(s)"), *RefusalName(InHand), *RefusalName(OnBoard), Palaces));
+		}
+
 		const UBDPalaceData* PalaceData = Palace->GetData();
 		const UStaticMeshComponent* PalaceMesh = Palace->GetMeshComponent();
 		const float RoofZ = PalaceMesh->Bounds.Origin.Z + PalaceMesh->Bounds.BoxExtent.Z;
@@ -719,6 +751,15 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		Check(TEXT("AGENTE"), TEXT("the palace sends out one Agent, beside it, on a full bar"),
 			Agent != nullptr && bBeside && FMath::IsNearlyEqual(Agent->GetPatrolFraction(), 1.0f, 0.01f) && !Agent->IsAsleep(),
 			Agent != nullptr ? Agent->Describe() : FString(TEXT("no agent")));
+
+		// On the floor, not on the board plane under it: the street stands above the plane.
+		{
+			float FeetOver = 0.0f, RootOver = 0.0f;
+			const bool bMeasured = Agent != nullptr && Agent->MeasureFeet(FeetOver, RootOver);
+			Check(TEXT("AGENTE"), TEXT("the Agent stands on the traced floor, not sunk to the board plane"),
+				bMeasured && FMath::Abs(RootOver) <= 2.0f,
+				FString::Printf(TEXT("root %+.1f cm over the floor, lowest bone %+.1f cm%s"), RootOver, FeetOver, bMeasured ? TEXT("") : TEXT(" (not measured)")));
+		}
 
 		// One weapon a level, the pistol designed, the kill bonus 1 s down 0.15 s a star.
 		FString Bonuses;
@@ -839,6 +880,9 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		}
 		Check(TEXT("PALACIO"), TEXT("the palace sells whole from any of its cells"), bSold && Freed == 4,
 			FString::Printf(TEXT("sold %s, %d of 4 cells free"), bSold ? TEXT("yes") : TEXT("no"), Freed));
+		const EBDPlacementRefusal AfterSale = Placement->GetHandRefusal(PalacePiece);
+		Check(TEXT("PALACIO"), TEXT("once sold, a palace may be built again"), AfterSale != EBDPlacementRefusal::PalaceAlreadyBuilt,
+			RefusalName(AfterSale));
 		break;
 	}
 
@@ -851,6 +895,7 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		{
 			bCandidateWaveDealt = true;
 			SpawnedBeforeCandidate = Waves->GetMatchTotals().CreepsSpawned;
+			EnginesBeforeDeal = BusesAtDeal != nullptr ? BusesAtDeal->GetEnginesAsked() : 0;
 			Match->DebugSetWave(FMath::Max(0, UBDGameBalanceSettings::Get().CandidateInterval - 1));
 			Match->CallWaveEarly();
 			BusWaitAtDeal = BusesAtDeal != nullptr ? BusesAtDeal->GetParkRemaining() : 0.0f;
@@ -894,6 +939,13 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Check(TEXT("ONIBUS"), TEXT("no two buses stand closer than MinBusGap, same edge or across a corner"),
 				MinGap >= UBDWaveSettings::Get().MinBusGap,
 				FString::Printf(TEXT("closest pair %.2f cell(s) apart, %.1f needed"), MinGap, UBDWaveSettings::Get().MinBusGap));
+
+			// The wave's mouths start their engines as it is dealt, one each and only those.
+			const int32 Engines = Buses->GetEnginesAsked() - EnginesBeforeDeal;
+			Check(TEXT("ONIBUS"), TEXT("every mouth the wave opened starts its bus's engine, and no other"),
+				Engines == Waves->GetActiveSpawnPoints().Num(),
+				FString::Printf(TEXT("%d engine(s) for %d open mouth(s); %d played (slot set: %s)"), Engines, Waves->GetActiveSpawnPoints().Num(),
+					Buses->GetEnginesPlayed(), UBDAudioSettings::Get().BusEngineSound.IsNull() ? TEXT("no") : TEXT("yes")));
 		}
 
 		// Under a wave the player's resources are still theirs (briefing 2026-10-02 17:15):
@@ -1052,6 +1104,14 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 
 	case 6:
 	{
+		// A wave on: a battle track plays, and the ambience goes down under it.
+		if (const UBDSoundscapeSubsystem* Soundscape = UBDSoundscapeSubsystem::Get(World))
+		{
+			const bool bMusicSlots = UBDAudioSettings::Get().BattleMusic.Num() > 0;
+			Check(TEXT("AUDIO"), TEXT("a battle track plays while a wave is on"),
+				!bMusicSlots || Soundscape->GetMusic().IsPlaying(), Soundscape->Describe());
+		}
+
 		// The feet follow the route: the loop rate is the creep's speed over the speed the
 		// loop was made at, so it neither skates nor pedals. Then the creep goes.
 		if (ABDEnemyBase* Creep = AnimatedCreep.Get())

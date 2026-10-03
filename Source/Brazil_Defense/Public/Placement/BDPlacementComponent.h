@@ -111,7 +111,9 @@ enum class EBDPlacementRefusal : uint8
 	/** No platform on the board has a free slot: a character has nowhere to stand. */
 	NoFreeSlot,
 	/** The piece has not come into the hand yet: it unlocks on a later wave. */
-	NotUnlocked
+	NotUnlocked,
+	/** A palace already stands: one palace per match, one agent. Selling it frees the place. */
+	PalaceAlreadyBuilt
 };
 
 /** Broadcast whenever the hovered cell or its validity changes. */
@@ -404,6 +406,9 @@ private:
 	bool IsObjectiveSelection() const;
 	/** A defender of either kind, tower or character, is in hand. */
 	bool IsTowerSelection() const;
+
+	/** True while a palace stands on the board. The lifted one counts: it is only travelling. */
+	bool IsPalaceOnBoard() const;
 
 	/** Index of the slot of a platform nearest to a point on the board plane, or INDEX_NONE when it has no slots. */
 	static int32 FindNearestSlot(const UBDPlatformComponent& Platform, const FVector& Point);

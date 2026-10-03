@@ -115,7 +115,57 @@ void ABDTowerBase::ApplyMesh()
 	// the asset is, with the scale and the rotation the data asked for already applied.
 	const FBox Bounds = LoadedMesh->GetBoundingBox().TransformBy(
 		FTransform(Data->MeshRotation, FVector::ZeroVector, Data->MeshScale));
-	Mesh->SetRelativeLocation(FVector(0.0f, 0.0f, -Bounds.Min.Z));
+	MeshRest = FVector(0.0f, 0.0f, -Bounds.Min.Z);
+	Mesh->SetRelativeLocation(MeshRest);
+	RecoilDistance = FMath::Max(Bounds.GetSize().X, Bounds.GetSize().Y) * UBDTowerSettings::Get().RecoilDistanceShare;
+}
+
+void ABDTowerBase::UpdateRecoil(const float DeltaSeconds)
+{
+	// No mesh of the data's, no kick: a Blueprint mesh stays where its designer put it.
+	if (RecoilRemaining <= 0.0f || RecoilDistance <= 0.0f)
+	{
+		return;
+	}
+
+	RecoilRemaining = FMath::Max(0.0f, RecoilRemaining - DeltaSeconds);
+	const float Duration = FMath::Max(UBDTowerSettings::Get().RecoilDuration, KINDA_SMALL_NUMBER);
+	const float Played = 1.0f - RecoilRemaining / Duration;
+
+	// Snapped back in the first quarter, eased home over the rest.
+	const float Kick = Played < 0.25f
+		? FMath::InterpEaseOut(0.0f, 1.0f, Played / 0.25f, 2.0f)
+		: FMath::InterpEaseInOut(1.0f, 0.0f, (Played - 0.25f) / 0.75f, 2.0f);
+
+	// Backwards along the turret's facing, which is the weapon's, in the turret's own space.
+	Mesh->SetRelativeLocation(MeshRest - FVector::ForwardVector * (RecoilDistance * Kick));
+}
+
+ABDEnemyBase* ABDTowerBase::FindCreepToFollow(const float RangeSquared) const
+{
+	const UBDWaveSubsystem* Waves = GetWaves();
+	if (Waves == nullptr)
+	{
+		return nullptr;
+	}
+	const float Range = FMath::Sqrt(RangeSquared);
+	ABDEnemyBase* Best = nullptr;
+	float BestLeft = MAX_flt;
+	for (ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
+	{
+		if (Enemy == nullptr || !IsValid(Enemy) || Enemy->HasArrived()
+			|| FVector::DistSquared2D(Enemy->GetActorLocation(), GetActorLocation()) > RangeSquared)
+		{
+			continue;
+		}
+		const float Left = Enemy->GetPathLeftWithin(GetActorLocation(), Range);
+		if (Left < BestLeft)
+		{
+			Best = Enemy;
+			BestLeft = Left;
+		}
+	}
+	return Best;
 }
 
 float ABDTowerBase::GetReloadProgress() const
@@ -467,6 +517,7 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 	// DeltaSeconds already carries the global time dilation: 4x means four times the
 	// cooldown, the turn and the recognition per real second, with nothing to do here.
 	FireCooldown = FMath::Max(0.0f, FireCooldown - DeltaSeconds);
+	UpdateRecoil(DeltaSeconds);
 
 	// A reload runs its course whatever the creeps do; the magazine is full again at the end.
 	if (ReloadRemaining > 0.0f)
@@ -489,6 +540,10 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 
 	// 1. Hold the target while it stays in range and alive; otherwise look for one and
 	//    start the recognition over.
+	//    The recognition is owed only by a defender coming out of idle: in the middle of
+	//    a fight the next creep costs the turn and nothing more.
+	const bool bWasEngaged = SinceEngaged <= UBDTowerSettings::Get().ReacquireGrace;
+	SinceEngaged = SinceEngaged < TNumericLimits<float>::Max() ? SinceEngaged + DeltaSeconds : SinceEngaged;
 	ABDEnemyBase* Target = CurrentTarget.Get();
 	if (!IsValidTarget(Target, RangeSquared))
 	{
@@ -497,7 +552,7 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 		if (Target != nullptr)
 		{
 			CurrentTarget = Target;
-			AcquisitionRemaining = Data->AcquisitionDelay;
+			AcquisitionRemaining = bWasEngaged ? 0.0f : Data->AcquisitionDelay;
 		}
 	}
 	else if (!Target->IsCandidate())
@@ -512,7 +567,7 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 			DropTarget();
 			Target = Candidate;
 			CurrentTarget = Target;
-			AcquisitionRemaining = Data->AcquisitionDelay;
+			AcquisitionRemaining = bWasEngaged ? 0.0f : Data->AcquisitionDelay;
 		}
 	}
 
@@ -520,13 +575,24 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 
 	if (Target == nullptr)
 	{
+		// Nothing to shoot with a creep in range: the shots in the air already kill them all.
+		// The weapon stays on the one furthest ahead, so a defender holding fire still reads
+		// as watching the fight rather than standing idle while the horde walks past.
+		if (const ABDEnemyBase* Follow = FindCreepToFollow(RangeSquared))
+		{
+			TurnTowards(Follow, DeltaSeconds);
+			SinceEngaged = 0.0f;
+			HoldSeconds[static_cast<int32>(EHold::AllDoomed)] += DeltaSeconds;
+		}
 		return;
 	}
+	SinceEngaged = 0.0f;
 
 	// 2. Recognition: seeing is not yet shooting.
 	if (AcquisitionRemaining > 0.0f)
 	{
 		AcquisitionRemaining = FMath::Max(0.0f, AcquisitionRemaining - DeltaSeconds);
+		HoldSeconds[static_cast<int32>(EHold::Acquiring)] += DeltaSeconds;
 		return;
 	}
 
@@ -550,6 +616,7 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 	//    magazine lasts. The weapon keeps tracking through a reload.
 	const bool bWasAligned = bAligned;
 	bAligned = TurnTowards(Target, DeltaSeconds);
+	HoldSeconds[static_cast<int32>(bAligned ? EHold::Engaged : EHold::Turning)] += DeltaSeconds;
 	if (bAligned && !bWasAligned)
 	{
 		UE_LOG(LogBDTower, Verbose, TEXT("%s aligned on %s: weapon yaw %.1f, target yaw %.1f, error %.2f deg."),
@@ -618,12 +685,29 @@ void ABDTowerBase::Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats)
 	// Cells per second on the data, centimetres per second in the world.
 	Projectile->Launch(this, Target, GetEffectiveDamage(), LevelStats.ProjectileSpeed * Grid->GetCellSize());
 	++ShotsFired;
+
+	if (IsOnPlatform() || UBDTowerSettings::Get().bRecoilOnGround)
+	{
+		RecoilRemaining = UBDTowerSettings::Get().RecoilDuration;
+	}
 	if (UBDWaveSubsystem* Waves = GetWaves())
 	{
 		Waves->ReportShotFired();
 	}
 
 	UE_LOG(LogBDTower, Verbose, TEXT("%s fired shot %d at %s."), *GetName(), ShotsFired, *Target->GetName());
+}
+
+bool ABDTowerBase::DebugFireAt(ABDEnemyBase* Target)
+{
+	const FBDTowerLevel* LevelStats = GetCurrentLevel();
+	if (Target == nullptr || LevelStats == nullptr)
+	{
+		return false;
+	}
+	const int32 Before = ShotsFired;
+	Fire(Target, *LevelStats);
+	return ShotsFired > Before;
 }
 
 void ABDTowerBase::ApplyHit(ABDEnemyBase* HitTarget, const FVector& HitLocation, const float Damage)

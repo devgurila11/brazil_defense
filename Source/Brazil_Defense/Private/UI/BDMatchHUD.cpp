@@ -1,4 +1,4 @@
-// Brazil Defense. What is drawn straight on the screen over the board: the creeps' health, the palaces' stars.
+// Brazil Defense. What is drawn straight on the screen over the board: the creeps' health, the evolution stars.
 
 #include "UI/BDMatchHUD.h"
 
@@ -14,6 +14,10 @@
 #include "Palace/BDAgent.h"
 #include "Palace/BDPalace.h"
 #include "Palace/BDPalaceData.h"
+#include "Platform/BDPlatformComponent.h"
+#include "Tower/BDTowerBase.h"
+#include "Tower/BDTowerData.h"
+#include "UObject/UObjectIterator.h"
 #include "UI/BDUISettings.h"
 #include "Wave/BDWaveSubsystem.h"
 
@@ -28,6 +32,7 @@ void ABDMatchHUD::DrawHUD()
 	Super::DrawHUD();
 
 	DrawPalaceStars();
+	DrawPieceStars();
 	DrawAgentBars();
 	DrawCreepBars();
 }
@@ -102,16 +107,6 @@ void ABDMatchHUD::DrawPalaceStars()
 		return;
 	}
 
-	const UBDUISettings& Settings = UBDUISettings::Get();
-	const float StarHeight = FMath::Max(4.0f, Canvas->ClipY * Settings.PalaceStarHeightFraction);
-	const float Radius = StarHeight * 0.5f;
-	const float Step = StarHeight * (1.0f + Settings.PalaceStarGap);
-	const int32 Count = UBDPalaceData::MaxLevel;
-
-	const FVector CameraLocation = PlayerOwner != nullptr && PlayerOwner->PlayerCameraManager != nullptr
-		? PlayerOwner->PlayerCameraManager->GetCameraLocation()
-		: FVector::ZeroVector;
-
 	for (TActorIterator<ABDPalace> It(World); It; ++It)
 	{
 		const ABDPalace* Palace = *It;
@@ -120,31 +115,91 @@ void ABDMatchHUD::DrawPalaceStars()
 			// Lifted and travelling with the cursor: the stars come back with it.
 			continue;
 		}
-
-		// Far from the camera the row fades out: in the overview two palaces' stars would
-		// run into each other, and nothing there is decided palace by palace.
-		const float Opacity = Settings.GetPalaceStarOpacity(FVector::Dist(CameraLocation, Palace->GetStarsAnchor()));
-		if (Opacity <= KINDA_SMALL_NUMBER)
-		{
-			continue;
-		}
-		FLinearColor Color = Settings.PalaceStarColor;
-		Color.A *= Opacity;
-
-		// Projected, so the row always faces the camera; behind it, nothing.
-		const FVector Screen = Canvas->Project(Palace->GetStarsAnchor());
-		if (Screen.Z <= 0.0f)
-		{
-			continue;
-		}
-
-		const int32 Filled = FMath::Clamp(Palace->GetPalaceLevel(), 0, Count);
-		const float FirstX = Screen.X - Step * (Count - 1) * 0.5f;
-		for (int32 Star = 0; Star < Count; ++Star)
-		{
-			DrawStar(FVector2D(FirstX + Step * Star, Screen.Y), Radius, Star < Filled, Color);
-		}
+		DrawStarRow(Palace->GetStarsAnchor(), Palace->GetPalaceLevel(), UBDPalaceData::MaxLevel, 1.0f);
 	}
+}
+
+void ABDMatchHUD::DrawPieceStars()
+{
+	UWorld* World = GetWorld();
+	if (Canvas == nullptr || World == nullptr)
+	{
+		return;
+	}
+
+	const UBDUISettings& Settings = UBDUISettings::Get();
+	const auto TopOf = [](const AActor& Actor) { return Actor.GetComponentsBoundingBox(/*bNonColliding*/ true).Max.Z; };
+
+	// A tower on the ground by its own level. One on a platform evolves in step with the
+	// rest of the block, so the block's row speaks for it instead of one row a shooter.
+	for (TActorIterator<ABDTowerBase> It(World); It; ++It)
+	{
+		const ABDTowerBase* Tower = *It;
+		if (Tower->IsHidden() || Tower->IsOnPlatform())
+		{
+			continue;
+		}
+		const FVector Location = Tower->GetActorLocation();
+		DrawStarRow(FVector(Location.X, Location.Y, TopOf(*Tower) + Settings.PieceStarLift),
+			Tower->GetTowerLevel(), UBDTowerData::MaxLevels, Settings.PieceStarScale);
+	}
+
+	for (TObjectIterator<UBDPlatformComponent> It; It; ++It)
+	{
+		const UBDPlatformComponent* Platform = *It;
+		const AActor* Stand = Platform->GetOwner();
+		if (Stand == nullptr || Stand->GetWorld() != World || Stand->IsHidden() || Platform->Slots.Num() == 0)
+		{
+			continue;
+		}
+		// Over the highest of the deck and the shooters on it.
+		float Top = TopOf(*Stand);
+		for (int32 Slot = 0; Slot < Platform->Slots.Num(); ++Slot)
+		{
+			if (const ABDTowerBase* Occupant = Platform->GetSlotOccupant(Slot))
+			{
+				Top = FMath::Max(Top, TopOf(*Occupant));
+			}
+		}
+		const FVector Location = Stand->GetActorLocation();
+		DrawStarRow(FVector(Location.X, Location.Y, Top + Settings.PieceStarLift),
+			Platform->GetBlockLevel(), UBDTowerData::MaxLevels, Settings.PieceStarScale);
+	}
+}
+
+bool ABDMatchHUD::DrawStarRow(const FVector& Anchor, const int32 Filled, const int32 Count, const float Scale)
+{
+	const UBDUISettings& Settings = UBDUISettings::Get();
+	const FVector CameraLocation = PlayerOwner != nullptr && PlayerOwner->PlayerCameraManager != nullptr
+		? PlayerOwner->PlayerCameraManager->GetCameraLocation()
+		: FVector::ZeroVector;
+
+	// Far from the camera the row fades out: in the overview the rows would run into each
+	// other, and nothing there is decided piece by piece.
+	const float Opacity = Settings.GetPalaceStarOpacity(FVector::Dist(CameraLocation, Anchor));
+	if (Opacity <= KINDA_SMALL_NUMBER)
+	{
+		return false;
+	}
+	FLinearColor Color = Settings.PalaceStarColor;
+	Color.A *= Opacity;
+
+	// Projected, so the row always faces the camera; behind it, nothing.
+	const FVector Screen = Canvas->Project(Anchor);
+	if (Screen.Z <= 0.0f)
+	{
+		return false;
+	}
+
+	const float StarHeight = FMath::Max(4.0f, Canvas->ClipY * Settings.PalaceStarHeightFraction * Scale);
+	const float Step = StarHeight * (1.0f + Settings.PalaceStarGap);
+	const int32 Full = FMath::Clamp(Filled, 0, Count);
+	const float FirstX = Screen.X - Step * (Count - 1) * 0.5f;
+	for (int32 Star = 0; Star < Count; ++Star)
+	{
+		DrawStar(FVector2D(FirstX + Step * Star, Screen.Y), StarHeight * 0.5f, Star < Full, Color);
+	}
+	return true;
 }
 
 void ABDMatchHUD::DrawStar(const FVector2D& Center, const float Radius, const bool bFilled, const FLinearColor& Color)

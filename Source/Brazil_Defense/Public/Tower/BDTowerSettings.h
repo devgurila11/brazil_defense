@@ -34,6 +34,35 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Projectile", meta = (ClampMin = "0.1", UIMin = "0.1", ForceUnits = "s"))
 	float MaxLifetime = 10.0f;
 
+	//~ Engagement -----------------------------------------------------------
+
+	/**
+	 * Seconds without a creep after which a defender is idle again and owes the data's
+	 * AcquisitionDelay on the next one. Under it, a change of target (a kill, a creep
+	 * doomed by someone else's shot, one that got ahead) costs only the turn: measured,
+	 * the recognition restarted after every kill took 40-50% of the time a creep was in range.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Engagement", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float ReacquireGrace = 1.0f;
+
+	//~ Recoil ---------------------------------------------------------------
+
+	/**
+	 * A defender jumps back at every shot and settles again, so a defender firing reads
+	 * apart from one standing idle. As a share of the mesh's widest side, so a person and a
+	 * truck kick in proportion.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Recoil", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "0.5"))
+	float RecoilDistanceShare = 0.12f;
+
+	/** Seconds of the whole kick, back and forth: the way back is a quarter of it, the return the rest. */
+	UPROPERTY(config, EditAnywhere, Category = "Recoil", meta = (ClampMin = "0.01", UIMin = "0.01", ForceUnits = "s"))
+	float RecoilDuration = 0.14f;
+
+	/** Characters on platforms kick always; ground towers only with this on. */
+	UPROPERTY(config, EditAnywhere, Category = "Recoil")
+	bool bRecoilOnGround = false;
+
 	//~ Debug ----------------------------------------------------------------
 
 	/** Color of the range sphere and circle drawn by BD.Tower.ShowRange. */

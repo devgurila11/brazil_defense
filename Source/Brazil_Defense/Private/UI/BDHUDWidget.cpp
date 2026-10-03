@@ -93,7 +93,8 @@ namespace BDHUDPrivate
 		TEXT("Refusal.NoBudgetLeft"), TEXT("Refusal.OffGrid"), TEXT("Refusal.CellTaken"), TEXT("Refusal.EdgeOnBorder"),
 		TEXT("Refusal.EdgeTaken"), TEXT("Refusal.WouldBlockPath"), TEXT("Refusal.ObjectiveMissing"), TEXT("Refusal.ObjectiveOutOfZone"),
 		TEXT("Refusal.SlotTaken"), TEXT("Refusal.TowerCannotGoOnSlot"), TEXT("Refusal.CharacterNeedsPlatform"), TEXT("Refusal.CannotAffordMove"),
-		TEXT("Refusal.NoFunds"), TEXT("Refusal.NoFreeSlot"), TEXT("Refusal.NotUnlocked") };
+		TEXT("Refusal.NoFunds"), TEXT("Refusal.NoFreeSlot"), TEXT("Refusal.NotUnlocked"),
+		TEXT("Refusal.PalaceAlreadyBuilt") };
 }
 
 //~ Lookups -------------------------------------------------------------------------

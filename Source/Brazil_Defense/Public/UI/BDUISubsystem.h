@@ -123,6 +123,20 @@ public:
 	EBDScreen GetCurrentScreen() const { return CurrentScreen; }
 	UBDHUDWidget* GetHUD() const;
 
+	//~ Clean view ---------------------------------------------------------------
+
+	/**
+	 * Everything drawn over the game, hidden or back: the HUD widget, the canvas (stars,
+	 * bars), every debug line (reaches, grid, routes) and the on-screen messages. Only the
+	 * game is left. H toggles it; a new HUD or a return to the menu keeps or clears it.
+	 */
+	void SetCleanView(bool bClean);
+	void ToggleCleanView() { SetCleanView(!bCleanView); }
+	bool IsCleanView() const { return bCleanView; }
+
+	/** Puts the clean view's state on the world and widgets up now; called again whenever they are rebuilt. */
+	void ApplyCleanView();
+
 private:
 	APlayerController* GetLocalController() const;
 
@@ -173,6 +187,11 @@ private:
 
 	/** The level open is shared by Play and Continue. */
 	void OpenGameLevel();
+
+	bool bCleanView = false;
+
+	/** The on-screen messages' switch as it was before the clean view, put back after it. */
+	bool bScreenMessagesBefore = true;
 
 	/** Set once StartFrontEnd ran in this session. */
 	bool bFrontEndSeen = false;

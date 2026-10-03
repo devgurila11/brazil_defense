@@ -93,6 +93,9 @@ private:
 	/** The candidate's wave has been dealt; what was spawned and how long the buses had to go then. */
 	bool bCandidateWaveDealt = false;
 	int32 SpawnedBeforeCandidate = 0;
+
+	/** Engines the buses had started before the candidate's wave was dealt. */
+	int32 EnginesBeforeDeal = 0;
 	float BusWaitAtDeal = 0.0f;
 
 	/** A creep of the wave sent out to check its animated body, removed once measured. */

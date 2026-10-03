@@ -363,6 +363,30 @@ BD.HUD.Debug 0
 ```
 Desliga o debug.
 
+```
+BD.HUD.Clean [0|1]
+```
+Modo limpo (o mesmo da tecla **H**): esconde HUD, estrelas, barras,
+alcances e todo o debug; de novo traz tudo.
+
+```
+BD.Agent.Feet
+```
+Altura do osso mais baixo e da raiz do Agente sobre o chão (cm).
+
+```
+BD.Tower.Status
+```
+Além do de sempre, divide o tempo com militante no alcance: engajado,
+todos condenados, reconhecendo, girando.
+
+```
+BD.Audio.Status
+BD.Audio.Music [1|0|-1]
+```
+O que a música e cada camada de ambiência tocam, nível e quanto é
+noite; força a música ligada/desligada (-1 devolve à fase).
+
 ---
 
 ## Receita: testar desvio de obstáculo

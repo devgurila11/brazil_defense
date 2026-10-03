@@ -22,6 +22,7 @@
 #include "Palace/BDPalaceData.h"
 #include "Placement/BDInspection.h"
 #include "Tower/BDShotSound.h"
+#include "Wave/BDWaveSettings.h"
 #include "Wave/BDWaveSubsystem.h"
 
 namespace BDAgentPrivate
@@ -130,7 +131,8 @@ void ABDAgent::InitializeAgent(ABDPalace* InPalace)
 
 			// Feet on the floor, whatever the pivot.
 			const FBox Bounds = LoadedMesh->GetImportedBounds().GetBox();
-			Body->SetRelativeLocation(FVector(0.0f, 0.0f, -Bounds.Min.Z * Data->AgentMeshScale));
+			BodyBaseZ = -Bounds.Min.Z * Data->AgentMeshScale;
+			Body->SetRelativeLocation(FVector(0.0f, 0.0f, BodyBaseZ));
 		}
 		else
 		{
@@ -165,7 +167,45 @@ void ABDAgent::InitializeAgent(ABDPalace* InPalace)
 FVector ABDAgent::CellPoint(const FBDCellCoord& Coord) const
 {
 	const UBDGridSubsystem* Grid = GetGrid();
-	return Grid != nullptr ? Grid->CellToWorld(Coord) : GetActorLocation();
+	if (Grid == nullptr)
+	{
+		return GetActorLocation();
+	}
+
+	// On the floor, not on the board plane: the street stands above the plane, and on the
+	// plane his feet were under the asphalt walking and half his body lying down.
+	FVector Point = Grid->CellToWorld(Coord);
+	float GroundZ = 0.0f;
+	if (TraceGround(Point, GroundZ))
+	{
+		Point.Z = GroundZ;
+	}
+	return Point;
+}
+
+bool ABDAgent::TraceGround(const FVector& Point, float& OutGroundZ) const
+{
+	const UWorld* World = GetWorld();
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (World == nullptr || Grid == nullptr)
+	{
+		return false;
+	}
+
+	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
+	const float PlaneZ = Grid->GetOrigin().Z;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BDAgentGround), /*bTraceComplex*/ false);
+	Params.AddIgnoredActor(this);
+	Params.AddIgnoredActor(Palace.Get());
+
+	FHitResult Hit;
+	if (World->LineTraceSingleByChannel(Hit, FVector(Point.X, Point.Y, PlaneZ + Settings.GroundTraceDistance),
+		FVector(Point.X, Point.Y, PlaneZ - Settings.GroundTraceDistance), Settings.GroundTraceChannel, Params))
+	{
+		OutGroundZ = Hit.ImpactPoint.Z;
+		return true;
+	}
+	return false;
 }
 
 bool ABDAgent::CanStand(const FBDCellCoord& Coord) const
@@ -434,7 +474,10 @@ bool ABDAgent::StepAlong(const float DeltaSeconds, const float SpeedScale)
 		}
 		if (Distance > Budget)
 		{
-			SetActorLocation(Here + ToThere.GetSafeNormal2D() * Budget);
+			// The height follows the floor between the two cells instead of jumping at the end.
+			FVector Next = Here + ToThere.GetSafeNormal2D() * Budget;
+			Next.Z = FMath::Lerp(Here.Z, There.Z, Budget / Distance);
+			SetActorLocation(Next);
 			return false;
 		}
 		SetActorLocation(There);
@@ -761,6 +804,11 @@ void ABDAgent::Tick(const float DeltaSeconds)
 
 	FireCooldown = FMath::Max(0.0f, FireCooldown - DeltaSeconds);
 
+	// Lying down he rises off the floor a little, eased so the change of loop does not pop.
+	const float BodyZ = FMath::FInterpTo(Body->GetRelativeLocation().Z,
+		BodyBaseZ + (State == EBDAgentState::Sleeping ? Data->SleepLift : 0.0f), DeltaSeconds, 8.0f);
+	Body->SetRelativeLocation(FVector(0.0f, 0.0f, BodyZ));
+
 	// Asleep, the rest runs out on its own clock and the bar fills with it.
 	if (State == EBDAgentState::Sleeping)
 	{
@@ -964,6 +1012,40 @@ FString ABDAgent::Describe() const
 		ShotsFired, Kills, KillsOnPatrol, BonusEarned, *GetNameSafe(CurrentTarget.Get()));
 }
 
+bool ABDAgent::MeasureFeet(float& OutLowestBoneOverGround, float& OutRootOverGround) const
+{
+	OutLowestBoneOverGround = OutRootOverGround = 0.0f;
+	const UWorld* World = GetWorld();
+	if (World == nullptr || Body->GetSkeletalMeshAsset() == nullptr || Body->GetNumBones() == 0)
+	{
+		return false;
+	}
+
+	float GroundZ = 0.0f;
+	if (!TraceGround(GetActorLocation(), GroundZ))
+	{
+		return false;
+	}
+
+	const TArray<FTransform>& Pose = Body->GetComponentSpaceTransforms();
+	const FTransform& ToWorld = Body->GetComponentTransform();
+	float Lowest = TNumericLimits<float>::Max();
+	int32 LowestIndex = INDEX_NONE;
+	for (int32 Index = 0; Index < Pose.Num(); ++Index)
+	{
+		const float Z = ToWorld.TransformPosition(Pose[Index].GetLocation()).Z;
+		if (Z < Lowest)
+		{
+			Lowest = Z;
+			LowestIndex = Index;
+		}
+	}
+	UE_LOG(LogBDTower, Verbose, TEXT("%s: lowest bone %s."), *GetName(), *Body->GetBoneName(LowestIndex).ToString());
+	OutLowestBoneOverGround = Lowest - GroundZ;
+	OutRootOverGround = GetActorLocation().Z - GroundZ;
+	return true;
+}
+
 namespace BDAgentDebug
 {
 	template <typename FunctionType>
@@ -1013,6 +1095,23 @@ namespace BDAgentDebug
 		const int32 Count = ForEachAgent(World, [](ABDAgent& Agent) { Agent.DebugWake(); });
 		UE_LOG(LogBDTower, Log, TEXT("BD.Agent.Wake: %d agent(s) up on a full bar."), Count);
 	}
+
+	static void ExecFeet(const TArray<FString>& Args, UWorld* World)
+	{
+		const int32 Count = ForEachAgent(World, [](ABDAgent& Agent)
+		{
+			float Feet = 0.0f, Root = 0.0f;
+			const bool bMeasured = Agent.MeasureFeet(Feet, Root);
+			UE_LOG(LogBDTower, Log, TEXT("BD.Agent.Feet: %s %s: lowest bone %+.1f cm over the ground, root %+.1f cm%s."), *Agent.GetName(),
+				*StaticEnum<EBDAgentState>()->GetNameStringByValue(static_cast<int64>(Agent.GetState())), Feet, Root,
+				bMeasured ? TEXT("") : TEXT(" (not measured)"));
+		});
+		UE_LOG(LogBDTower, Log, TEXT("BD.Agent.Feet: %d agent(s)."), Count);
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs FeetCommand(TEXT("BD.Agent.Feet"),
+		TEXT("Logs how high every agent's lowest bone and root are over the ground under him."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecFeet));
 
 	static FAutoConsoleCommandWithWorldAndArgs StatusCommand(TEXT("BD.Agent.Status"),
 		TEXT("Lists every agent with his state, patrol time, weapon and kills."),

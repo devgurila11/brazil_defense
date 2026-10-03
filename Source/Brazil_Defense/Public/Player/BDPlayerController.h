@@ -86,6 +86,9 @@ private:
 	void HandleTogglePause();
 	void HandleResetCamera();
 
+	/** H: hides everything drawn over the game, or brings it back. */
+	void HandleToggleCleanView();
+
 	/** Puts the piece of a palette slot in hand, as the HUD button would. */
 	void SelectPaletteSlot(int32 Index);
 

@@ -263,6 +263,65 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-03 (bugs, áudio, estrelas, HUD limpo, coice) — COMMIT** (desde 07fb616):
+  - Briefing 2026-10-03 10:30.
+  - **Áudios renomeados** (script em lote): 10 músicas →
+    `MUS_Battle_01..10` (ordem de geração); efeitos em 5 grupos de 4:
+    `AMB_City_Day_01..04`, `AMB_Birds_Day_01..04`, `AMB_Night_01..04`,
+    `S_Bus_Engine_01..04`, `S_Bus_Horn_01..04` (vieram 4 de cada
+    ambiência, não 1). WAV originais em `SourceAudio/Effects` e
+    `SourceAudio/Musics` (este fora do git: 352 MB que repetem a fonte
+    guardada nos `.uasset`), mapa em
+    `SourceAudio/Musics_Effects_rename_map.txt`. Músicas em streaming
+    (Load on Demand) e na `SC_Music`; efeitos na `SC_Effects`.
+  - **Bug: mais de um palácio** — não existia trava nenhuma. Recusa
+    nova `PalaceAlreadyBuilt` ("Já existe um palácio") na mão e no
+    tabuleiro, contada pelos atores vivos: vender libera de novo.
+  - **Bugs: Agente afundado** — mesma causa: ele ficava no Z do plano
+    do grid e o asfalto está 26 cm acima. Agora pisa no chão traçado
+    (como os militantes) e o Z acompanha entre células. Dormindo, a
+    animação deita de lado e o braço ainda entrava ~12 cm:
+    `SleepLift` 14 cm (DA do palácio, categoria Agent) ergue o corpo só
+    no sono, suavizado. Medido com render: andando, osso mais baixo
+    +2 a +7 cm; dormindo, +1,2 a +30 cm em 32 s (nada abaixo do chão).
+    `BD.Agent.Feet`.
+  - **Personagens de plataforma (diagnóstico):** o giro estava certo
+    (5–15% do tempo). Com militante no alcance passavam 39–51%
+    "reconhecendo" (o `AcquisitionDelay` recomeçava a cada troca de
+    alvo, inclusive depois de cada abate) e 16–53% segurando fogo por
+    "todos condenados" (tiros no ar já matam), parados. Agora o
+    reconhecimento só vale saindo do ócio (`ReacquireGrace` 1 s, Towers)
+    e, com todos condenados, a mira segue o mais adiantado sem atirar.
+    Reconhecendo caiu para 6–33%. Vale para torres também.
+    `BD.Tower.Status` mostra a divisão do tempo.
+  - **Coice:** a cada tiro o personagem recua 12% do maior lado da
+    malha e volta (0,14 s); torres de chão só com `bRecoilOnGround`. No
+    Agente não: a animação de tiro da pistola já mostra o disparo.
+  - **Estrelas em todas as construções:** torres de chão pelo nível e
+    plataformas pelo nível do bloco (0 até todas as vagas terem
+    atirador), mesma linha do palácio, 70% do tamanho, mesmo fade.
+    Estrela cheia = nível (torre recém-construída mostra 1).
+  - **H = modo limpo:** esconde HUD, estrelas, barras, linhas de debug
+    (alcances, grid, rotas) e mensagens na tela; H de novo traz tudo.
+    `BD.HUD.Clean [0|1]`.
+  - **Música** (`UBDSoundscapeSubsystem`, Project Settings > Brazil
+    Defense - Audio): faixa aleatória sem repetir ao começar a onda
+    (fade-in 2,5 s), a próxima entra em crossfade 5 s antes do fim (as
+    faixas terminam em fade próprio), fade-out 4 s fora da onda. Toca
+    durante a pausa.
+  - **Ambiência:** cidade + pássaros de dia, noite (coruja/grilos) e
+    menos cidade à noite, pela hora do ciclo; cada camada encadeia as 4
+    variações curtas com crossfade; cai para 50% sob a música.
+  - **Ônibus:** cues `SCue_Bus_Engine` e `SCue_Bus_Horn` (aleatório sem
+    repetir, ±4% de tom). Motor nas bocas ativas quando a onda é
+    sorteada, e a saída espera pelo menos 1,5 s (`EngineLeadSeconds`);
+    buzina no primeiro militante de cada boca. 3D preso ao ônibus.
+    Envio de reverb ligado, mas o mapa não tem reverb ativo: ligar um
+    afetaria também os sons do jumento, então ficou para decidir.
+    `BD.Audio.Status`, `BD.Audio.Music`.
+  - Regressão 62/62 (novos: palácio único e revenda, Agente no chão,
+    coice, motor por boca ativa, música na onda).
+
 - **2026-10-02 (assets do usuário) — 152fecf** (desde d9926df):
   - Os assets que o usuário trabalhou no editor ao longo do dia:
     modelo do Palácio (`Meshs/Building/Palacio`: `SM_Palacio` e

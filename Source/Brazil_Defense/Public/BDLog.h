@@ -34,3 +34,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBDBribe, Log, All);
 
 /** Screens, options, saved settings and the texts of the interface. */
 DECLARE_LOG_CATEGORY_EXTERN(LogBDUI, Log, All);
+
+/** Music, ambience and the sounds of the buses. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDAudio, Log, All);

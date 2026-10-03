@@ -177,6 +177,28 @@ public:
 	/** Called by UBDPlatformComponent when this tower leaves a slot. Not meant to be called directly. */
 	void NotifyReleasedSlot();
 
+	//~ Diagnosis ---------------------------------------------------------------
+
+	/** Why a defender with a creep in its range is not shooting at a given moment. */
+	enum class EHold : uint8 { Engaged, AllDoomed, Acquiring, Turning, Count };
+
+	/**
+	 * Seconds spent with a living creep inside the range, split by what the defender was
+	 * doing: engaged (aligned, firing at its rate or reloading), holding fire because every
+	 * creep in range is already doomed by shots in the air, recognising, or turning.
+	 */
+	float GetHoldSeconds(EHold Hold) const { return HoldSeconds[static_cast<int32>(Hold)]; }
+	void ResetHoldSeconds() { FMemory::Memzero(HoldSeconds); }
+
+	/** Seconds of the recoil still to play; 0 when settled. */
+	float GetRecoilRemaining() const { return RecoilRemaining; }
+
+	/** How far back the mesh goes at the peak of a kick, in centimetres. */
+	float GetRecoilDistance() const { return RecoilDistance; }
+
+	/** Fires one shot of the current level at a creep now, aim or not. For the regression. */
+	bool DebugFireAt(ABDEnemyBase* Target);
+
 protected:
 	/** Spawns and launches one projectile at the current target. Virtual so a Blueprint child can add a muzzle effect. */
 	virtual void Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats);
@@ -240,6 +262,28 @@ private:
 	float ReloadRemaining = 0.0f;
 
 	bool bAligned = false;
+
+	/** See GetHoldSeconds. */
+	float HoldSeconds[static_cast<int32>(EHold::Count)] = {};
+
+	/** Where the mesh rests on the turret; the recoil plays around it. */
+	FVector MeshRest = FVector::ZeroVector;
+
+	/** The kick of the last shot: seconds left, and how far back at its peak. */
+	float RecoilRemaining = 0.0f;
+	float RecoilDistance = 0.0f;
+
+	/** Moves the mesh back along the weapon's facing by the kick's curve. */
+	void UpdateRecoil(float DeltaSeconds);
+
+	/**
+	 * The creep to keep the weapon on while every one in range is doomed: the furthest
+	 * ahead on its line, doomed or not. Null when none stands inside the range.
+	 */
+	ABDEnemyBase* FindCreepToFollow(float RangeSquared) const;
+
+	/** Seconds since the defender last had a creep to shoot or to follow. See UBDTowerSettings::ReacquireGrace. */
+	float SinceEngaged = TNumericLimits<float>::Max();
 
 	int32 ShotsFired = 0;
 	int32 Kills = 0;

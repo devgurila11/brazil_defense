@@ -146,6 +146,21 @@ namespace BDUIDebug
 		}
 	}
 
+	static void ExecClean(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDUISubsystem* UI = Find<UBDUISubsystem>(World))
+		{
+			if (Args.Num() > 0)
+			{
+				UI->SetCleanView(FCString::Atoi(*Args[0]) != 0);
+			}
+			else
+			{
+				UI->ToggleCleanView();
+			}
+		}
+	}
+
 	static void ExecStatus(const TArray<FString>& Args, UWorld* World)
 	{
 		const UBDUISubsystem* UI = Find<UBDUISubsystem>(World);
@@ -265,6 +280,11 @@ namespace BDUIDebug
 		TEXT("BD.UI.Volume"),
 		TEXT("BD.UI.Volume <music|effects|mute> <value>: sets a volume or the mute, saved like the options panel does."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecVolume));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdClean(
+		TEXT("BD.HUD.Clean"),
+		TEXT("BD.HUD.Clean [0|1]: hides everything drawn over the game (HUD, stars, bars, debug lines), or brings it back. What H does."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecClean));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(
 		TEXT("BD.UI.Status"),
