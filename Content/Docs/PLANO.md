@@ -263,6 +263,28 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-03 — onde paramos** (pausa do usuário, depois de e274853):
+  - Briefing 2026-10-03 10:30 feito por inteiro; regressão 62/62; os
+    dois alvos compilados (o `.exe` está atualizado).
+  - **A confirmar com o usuário (decisões minhas):**
+    - Estrela cheia = nível (torre recém-construída mostra 1);
+      plataforma com todas vazias até lotar as vagas.
+    - Saída dos militantes espera ≥ 1,5 s depois do motor
+      (`EngineLeadSeconds`).
+    - "Todos condenados" segue segurando fogo (agora girando atrás);
+      mudar se ele quiser que atirem mesmo assim.
+    - Coice só nos personagens de plataforma, não no Agente.
+    - WAV originais das músicas fora do git (`.gitignore`).
+  - **Para ele decidir:** reverb dos ônibus — o envio está ligado, mas
+    o mapa não tem reverb ativo; ligar um afeta também o som aprovado do
+    jumento.
+  - **Para ele checar no `.exe`:** volumes de música, ambiência, motor e
+    buzina; ambiências de 1–3 s podem soar repetitivas mesmo com
+    crossfade (se soarem, gerar versões mais longas); estrelas e tecla
+    H na tela.
+  - `PostMatch.csv`/`WaveLog.csv` ganharam linhas `Mode=Headless` dos
+    testes; as partidas reais seguem lá.
+
 - **2026-10-03 (bugs, áudio, estrelas, HUD limpo, coice) — f6c9ed5** (desde 07fb616):
   - Briefing 2026-10-03 10:30.
   - **Áudios renomeados** (script em lote): 10 músicas →
