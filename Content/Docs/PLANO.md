@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-05 (6º nível)** (desde 3965d1b):
+- **2026-10-05 (6º nível) — 2f9d0d8** (desde 3965d1b):
   - Pedido do usuário, resposta às 4/5 estrelas no topo: `UBDTowerData::MaxLevels`
     5 → 6 em torres e personagens de plataforma. Nível 1 = peça recém-feita, os cinco
     acima = as cinco estrelas; no topo, 5 de 5 cheias.
