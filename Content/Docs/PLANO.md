@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-05 (lados do placar, mira sem candidato, estrelas, Agente livre)** (desde bc5cceb):
+- **2026-10-05 (lados do placar, mira sem candidato, estrelas, Agente livre) — aff679d** (desde bc5cceb):
   - Briefing 2026-10-05 11:45.
   - **Placar invertido:** cédula vermelha, número vermelho, barra, número
     azul, cédula azul (era o contrário). A barra agora enche o vermelho
