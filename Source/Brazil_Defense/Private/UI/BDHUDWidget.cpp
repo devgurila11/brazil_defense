@@ -137,7 +137,7 @@ void UBDHUDWidget::BuildTree()
 	//~ Top center: scoreboard, wave line, speed, mouths.
 	UVerticalBox* Top = MakeColumn();
 
-	// Blue ballot, blue count, the urn, red count, red ballot: the pictures are the
+	// Red ballot, red count, the urn, blue count, blue ballot: the pictures are the
 	// HUD's own, from the interface settings, each in a scale box sized by the screen.
 	const UBDUISettings& UISettings = UBDUISettings::Get();
 	UHorizontalBox* Scores = MakeRow();
@@ -152,8 +152,9 @@ void UBDHUDWidget::BuildTree()
 		PartSlot->SetVerticalAlignment(VAlign_Center);
 		PartSlot->SetPadding(FMargin(LeftPad, 0.0f, 0.0f, 0.0f));
 	};
-	// The count bar between the numbers: three bands, blue for the kills, white for the
-	// waste, red for the arrivals, each as wide as its share. The urn stands on it.
+	// The count bar between the numbers: three bands, red for the arrivals, white for the
+	// waste, blue for the kills, each as wide as its share and each on the side of its
+	// count, so blue fills from the right. The urn stands on it.
 	ScoreBarBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 	ScoreBarBox->SetWidthOverride(ScoreBarWidth);
 	ScoreBarBox->SetVisibility(ESlateVisibility::HitTestInvisible);
@@ -171,9 +172,9 @@ void UBDHUDWidget::BuildTree()
 		BandSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 		return Band;
 	};
-	BlueBand = MakeBand(ColorBlue);
-	NullBand = MakeBand(ColorNull);
 	RedBand = MakeBand(ColorRed);
+	NullBand = MakeBand(ColorNull);
+	BlueBand = MakeBand(ColorBlue);
 	BandsBox->AddChild(Bands);
 	BarFrame->AddChild(BandsBox);
 	UOverlaySlot* FrameSlot = BarOverlay->AddChildToOverlay(BarFrame);
@@ -184,11 +185,11 @@ void UBDHUDWidget::BuildTree()
 	UrnOverlaySlot->SetVerticalAlignment(VAlign_Center);
 	ScoreBarBox->AddChild(BarOverlay);
 
-	AddScorePart(BlueIconBox, 0.0f);
-	AddScorePart(BlueScore, 8.0f);
+	AddScorePart(RedIconBox, 0.0f);
+	AddScorePart(RedScore, 8.0f);
 	AddScorePart(ScoreBarBox, 16.0f);
-	AddScorePart(RedScore, 16.0f);
-	AddScorePart(RedIconBox, 8.0f);
+	AddScorePart(BlueScore, 16.0f);
+	AddScorePart(BlueIconBox, 8.0f);
 	UVerticalBoxSlot* ScoresSlot = Top->AddChildToVerticalBox(Scores);
 	ScoresSlot->SetHorizontalAlignment(HAlign_Center);
 
@@ -1218,9 +1219,9 @@ void UBDHUDWidget::UpdateScoreBar()
 		}
 		Band->SetVisibility(Value > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	};
-	Weight(BlueBand, Blue);
-	Weight(NullBand, bEmpty ? 1.0f : Null);
 	Weight(RedBand, Red);
+	Weight(NullBand, bEmpty ? 1.0f : Null);
+	Weight(BlueBand, Blue);
 }
 
 void UBDHUDWidget::UpdateWaveLine()

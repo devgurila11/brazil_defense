@@ -54,6 +54,26 @@ namespace BDAgentPrivate
 	static constexpr float TargetChestHeight = 100.0f;
 
 	static const FIntPoint Steps[4] = { FIntPoint(1, 0), FIntPoint(0, 1), FIntPoint(-1, 0), FIntPoint(0, -1) };
+
+	/** Half his shoulders, as a share of a cell: the room a walk keeps from a divider's end. */
+	static constexpr float BodyMargin = 0.2f;
+
+	/** How finely a straight line is walked through the cells to check it, as a share of a cell. */
+	static constexpr float LineCheckStep = 0.2f;
+
+	/** Draws for a patrol point before he gives up and stands still a while. */
+	static constexpr int32 WalkDraws = 16;
+
+	/** How quickly an eased turn closes in, per second. The turn rate still caps it. */
+	static constexpr float TurnEase = 8.0f;
+
+	/** How quickly his height follows the floor under him, per second. */
+	static constexpr float FloorFollow = 15.0f;
+
+	/** Off his heading by this much he walks at full pace; by the second, he barely moves and turns. */
+	static constexpr float FullPaceOff = 20.0f;
+	static constexpr float TurnInPlaceOff = 100.0f;
+	static constexpr float TurnInPlacePace = 0.1f;
 }
 
 ABDAgent::ABDAgent()
@@ -220,6 +240,122 @@ bool ABDAgent::CanStep(const FBDCellCoord& From, const FBDCellCoord& To) const
 	return Grid != nullptr && CanStand(To) && !Grid->IsEdgeBlocked(From, To);
 }
 
+bool ABDAgent::IsLineClear(const FVector& From, const FVector& To, const float Margin) const
+{
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr)
+	{
+		return false;
+	}
+
+	const FVector Along = (To - From).GetSafeNormal2D();
+	const FVector Side = FVector::CrossProduct(FVector::UpVector, Along) * Margin;
+	const int32 Lines = Margin > 0.0f && !Along.IsNearlyZero() ? 3 : 1;
+	const float Step = Grid->GetCellSize() * BDAgentPrivate::LineCheckStep;
+	const int32 Samples = FMath::Max(1, FMath::CeilToInt(FVector::Dist2D(From, To) / Step));
+
+	for (int32 Line = 0; Line < Lines; ++Line)
+	{
+		const FVector Offset = Line == 0 ? FVector::ZeroVector : (Line == 1 ? Side : -Side);
+		FBDCellCoord Previous;
+		if (!Grid->WorldToCell(From + Offset, Previous) || !CanStand(Previous))
+		{
+			return false;
+		}
+
+		for (int32 Sample = 1; Sample <= Samples; ++Sample)
+		{
+			FBDCellCoord Current;
+			if (!Grid->WorldToCell(FMath::Lerp(From, To, static_cast<float>(Sample) / Samples) + Offset, Current))
+			{
+				return false;
+			}
+			if (Current == Previous)
+			{
+				continue;
+			}
+
+			const int32 DX = Current.X - Previous.X;
+			const int32 DY = Current.Y - Previous.Y;
+			if (FMath::Abs(DX) + FMath::Abs(DY) == 1)
+			{
+				if (!CanStep(Previous, Current))
+				{
+					return false;
+				}
+			}
+			else if (FMath::Abs(DX) == 1 && FMath::Abs(DY) == 1)
+			{
+				// Across a corner: open if either way round it is, as a man slips past the
+				// end of a fence. A divider running on through the corner closes both.
+				const FBDCellCoord ByX(Current.X, Previous.Y);
+				const FBDCellCoord ByY(Previous.X, Current.Y);
+				if (!(CanStep(Previous, ByX) && CanStep(ByX, Current)) && !(CanStep(Previous, ByY) && CanStep(ByY, Current)))
+				{
+					return false;
+				}
+			}
+			else
+			{
+				return false;
+			}
+			Previous = Current;
+		}
+	}
+	return true;
+}
+
+TArray<FVector> ABDAgent::PlanWay(const FVector& Goal) const
+{
+	TArray<FVector> Points;
+	const UBDGridSubsystem* Grid = GetGrid();
+	const FVector Here = GetActorLocation();
+	if (Grid == nullptr)
+	{
+		return Points;
+	}
+	if (IsLineClear(Here, Goal, 0.0f))
+	{
+		Points.Add(Goal);
+		return Points;
+	}
+
+	// Around by the cells, then pulled straight: from each point, the furthest one on
+	// that is in plain sight. Two points in a row always are, so the pull never sticks.
+	FBDCellCoord From;
+	FBDCellCoord To;
+	if (!Grid->WorldToCell(Here, From) || !Grid->WorldToCell(Goal, To))
+	{
+		return Points;
+	}
+	const TArray<FBDCellCoord> Cells = FindWay(From, To);
+	if (Cells.Num() == 0)
+	{
+		return Points;
+	}
+
+	TArray<FVector> Way;
+	Way.Add(Here);
+	for (int32 Index = 1; Index < Cells.Num() - 1; ++Index)
+	{
+		Way.Add(CellPoint(Cells[Index]));
+	}
+	Way.Add(Goal);
+
+	const float Margin = Grid->GetCellSize() * BDAgentPrivate::BodyMargin;
+	for (int32 At = 0; At < Way.Num() - 1;)
+	{
+		int32 Far = Way.Num() - 1;
+		while (Far > At + 1 && !IsLineClear(Way[At], Way[Far], Margin))
+		{
+			--Far;
+		}
+		Points.Add(Way[Far]);
+		At = Far;
+	}
+	return Points;
+}
+
 bool ABDAgent::FindSleepCell(FBDCellCoord& OutCell) const
 {
 	const ABDPalace* Home = Palace.Get();
@@ -338,35 +474,37 @@ void ABDAgent::DecideNext()
 void ABDAgent::StartWalk()
 {
 	const UBDPalaceData* Data = GetData();
-	const int32 MinCells = Data != nullptr ? FMath::Max(1, Data->WalkCellsMin) : 1;
-	const int32 MaxCells = Data != nullptr ? FMath::Max(MinCells, Data->WalkCellsMax) : 1;
+	const UBDGridSubsystem* Grid = GetGrid();
+	const float MinCells = Data != nullptr ? static_cast<float>(FMath::Max(1, Data->WalkCellsMin)) : 1.0f;
+	const float MaxCells = Data != nullptr ? static_cast<float>(FMath::Max(Data->WalkCellsMin, Data->WalkCellsMax)) : 1.0f;
 
-	// A random side first, then the others in turn: a boxed in agent still finds the way out.
-	const int32 FirstSide = FMath::RandRange(0, 3);
-	for (int32 Turn = 0; Turn < 4; ++Turn)
+	// A point at any angle, any distance in the range, straight there. Each draw that runs
+	// into a divider or the scenery is thrown away; first with room for his shoulders, then,
+	// tight against something, without it, so he never stays boxed in where he stands.
+	if (Grid != nullptr)
 	{
-		const FIntPoint& Step = BDAgentPrivate::Steps[(FirstSide + Turn) % 4];
-		const int32 Wanted = FMath::RandRange(MinCells, MaxCells);
-
-		TArray<FBDCellCoord> Walk;
-		FBDCellCoord Current = HeadingCell;
-		for (int32 Count = 0; Count < Wanted; ++Count)
+		const FVector Here = GetActorLocation();
+		const float Margin = Grid->GetCellSize() * BDAgentPrivate::BodyMargin;
+		for (int32 Pass = 0; Pass < 2; ++Pass)
 		{
-			const FBDCellCoord Next(Current.X + Step.X, Current.Y + Step.Y);
-			if (!CanStep(Current, Next))
+			for (int32 Draw = 0; Draw < BDAgentPrivate::WalkDraws; ++Draw)
 			{
-				break;
-			}
-			Walk.Add(Next);
-			Current = Next;
-		}
+				const float Yaw = FMath::FRandRange(0.0f, 360.0f);
+				const float Distance = FMath::FRandRange(MinCells, FMath::Max(MinCells, MaxCells)) * Grid->GetCellSize();
+				FVector There = Here + FRotator(0.0f, Yaw, 0.0f).Vector() * Distance;
+				if (!IsLineClear(Here, There, Pass == 0 ? Margin : 0.0f))
+				{
+					continue;
+				}
+				float GroundZ = 0.0f;
+				There.Z = TraceGround(There, GroundZ) ? GroundZ : Here.Z;
 
-		if (Walk.Num() > 0)
-		{
-			Route = MoveTemp(Walk);
-			State = EBDAgentState::Walking;
-			PlayStateAnimation();
-			return;
+				Route.Reset();
+				Route.Add(There);
+				State = EBDAgentState::Walking;
+				PlayStateAnimation();
+				return;
+			}
 		}
 	}
 
@@ -388,25 +526,18 @@ void ABDAgent::StartReturn()
 	ShotsOnWayHome = 0;
 	bGoingHome = true;
 
-	// Halfway into a cell, that cell is finished first: the edge to it was already crossed.
-	const bool bMidStep = Route.Num() > 0;
-	const FBDCellCoord From = bMidStep ? Route[0] : HeadingCell;
-
+	// From wherever he stands, not from a cell: the way is planned in the world.
 	FBDCellCoord Home;
-	TArray<FBDCellCoord> Way = FindSleepCell(Home) ? FindWay(From, Home) : TArray<FBDCellCoord>();
+	TArray<FVector> Way = FindSleepCell(Home) ? PlanWay(CellPoint(Home)) : TArray<FVector>();
 	if (Way.Num() == 0)
 	{
-		UE_LOG(LogBDTower, Warning, TEXT("%s: no way home from %s, resting where he stands."), *GetName(), *From.ToString());
+		UE_LOG(LogBDTower, Warning, TEXT("%s: no way home from %s, resting where he stands."), *GetName(), *HeadingCell.ToString());
 		Route.Reset();
 		StartSleep();
 		return;
 	}
-	if (!bMidStep)
-	{
-		Way.RemoveAt(0);
-	}
 
-	UE_LOG(LogBDTower, Log, TEXT("%s: patrol time over after %d kill(s), %d cell(s) home."), *GetName(), KillsOnPatrol, Way.Num());
+	UE_LOG(LogBDTower, Log, TEXT("%s: patrol time over after %d kill(s), %d straight leg(s) home."), *GetName(), KillsOnPatrol, Way.Num());
 	Route = MoveTemp(Way);
 	if (State != EBDAgentState::Shooting)
 	{
@@ -461,38 +592,61 @@ bool ABDAgent::StepAlong(const float DeltaSeconds, const float SpeedScale)
 		return true;
 	}
 
-	float Budget = Data->WalkSpeed * SpeedScale * Grid->GetCellSize() * DeltaSeconds;
-	while (Route.Num() > 0)
+	const FVector Here = GetActorLocation();
+	const FVector ToThere(Route[0].X - Here.X, Route[0].Y - Here.Y, 0.0f);
+	const float Distance = ToThere.Size();
+	if (Distance <= KINDA_SMALL_NUMBER)
 	{
-		const FVector Here = GetActorLocation();
-		const FVector There = CellPoint(Route[0]);
-		const FVector ToThere = There - Here;
-		const float Distance = ToThere.Size2D();
-		if (Distance > KINDA_SMALL_NUMBER)
-		{
-			TurnTowards(ToThere.GetSafeNormal2D().ToOrientationRotator().Yaw, DeltaSeconds, 0.0f);
-		}
-		if (Distance > Budget)
-		{
-			// The height follows the floor between the two cells instead of jumping at the end.
-			FVector Next = Here + ToThere.GetSafeNormal2D() * Budget;
-			Next.Z = FMath::Lerp(Here.Z, There.Z, Budget / Distance);
-			SetActorLocation(Next);
-			return false;
-		}
-		SetActorLocation(There);
-		Budget -= Distance;
-		HeadingCell = Route[0];
 		Route.RemoveAt(0);
+		return Route.Num() == 0;
 	}
-	return true;
+
+	// The body turns to where he walks, eased; well off his heading he mostly turns before
+	// he goes, so he never walks sideways or backwards into a new direction.
+	const FVector Direction = ToThere / Distance;
+	const float WantedYaw = Direction.ToOrientationRotator().Yaw;
+	TurnTowards(WantedYaw, DeltaSeconds, 0.0f, /*bEased*/ true);
+	const float Off = FMath::Abs(FMath::FindDeltaAngleDegrees(GetActorRotation().Yaw, WantedYaw));
+	const float Pace = FMath::GetMappedRangeValueClamped(FVector2D(BDAgentPrivate::FullPaceOff, BDAgentPrivate::TurnInPlaceOff),
+		FVector2D(1.0f, BDAgentPrivate::TurnInPlacePace), Off);
+	const float Budget = Data->WalkSpeed * SpeedScale * Pace * Grid->GetCellSize() * DeltaSeconds;
+
+	// On the floor under him wherever he steps, the height eased so a kerb is a step up and
+	// not a jump.
+	const bool bArrives = Distance <= Budget;
+	FVector Next = bArrives ? FVector(Route[0].X, Route[0].Y, Here.Z) : Here + Direction * Budget;
+	float GroundZ = 0.0f;
+	if (TraceGround(Next, GroundZ))
+	{
+		Next.Z = FMath::FInterpTo(Here.Z, GroundZ, DeltaSeconds, BDAgentPrivate::FloorFollow);
+	}
+	SetActorLocation(Next);
+	Grid->WorldToCell(Next, HeadingCell);
+
+	if (!bArrives)
+	{
+		return false;
+	}
+	Route.RemoveAt(0);
+	return Route.Num() == 0;
 }
 
-bool ABDAgent::TurnTowards(const float WantedYaw, const float DeltaSeconds, const float Tolerance)
+bool ABDAgent::TurnTowards(const float WantedYaw, const float DeltaSeconds, const float Tolerance, const bool bEased)
 {
 	const UBDPalaceData* Data = GetData();
 	const float Rate = Data != nullptr ? Data->TurnRate : 540.0f;
-	const float NewYaw = FMath::FixedTurn(GetActorRotation().Yaw, WantedYaw, Rate * DeltaSeconds);
+	const float CurrentYaw = GetActorRotation().Yaw;
+	float NewYaw = 0.0f;
+	if (bEased)
+	{
+		const float MaxStep = Rate * DeltaSeconds;
+		const float Delta = FMath::FindDeltaAngleDegrees(CurrentYaw, WantedYaw);
+		NewYaw = CurrentYaw + FMath::Clamp(Delta * (1.0f - FMath::Exp(-BDAgentPrivate::TurnEase * DeltaSeconds)), -MaxStep, MaxStep);
+	}
+	else
+	{
+		NewYaw = FMath::FixedTurn(CurrentYaw, WantedYaw, Rate * DeltaSeconds);
+	}
 	SetActorRotation(FRotator(0.0f, NewYaw, 0.0f));
 	return FMath::Abs(FMath::FindDeltaAngleDegrees(NewYaw, WantedYaw)) <= Tolerance + KINDA_SMALL_NUMBER;
 }
@@ -613,28 +767,23 @@ void ABDAgent::ChaseTowards(const ABDEnemyBase* Candidate)
 		return;
 	}
 
-	// Planned again only when he has moved to another cell, or the route ran out.
-	if (State == EBDAgentState::Chasing && Goal == ChaseGoal && Route.Num() > 0)
+	// In plain sight he runs straight at him, the line taken again every frame. Behind a
+	// divider the way around is planned again only when the candidate changes cell.
+	const FVector There = Candidate->GetActorLocation();
+	if (IsLineClear(GetActorLocation(), There, 0.0f))
 	{
-		return;
+		Route.Reset();
+		Route.Add(There);
 	}
-
-	const bool bMidStep = Route.Num() > 0;
-	const FBDCellCoord From = bMidStep ? Route[0] : HeadingCell;
-	TArray<FBDCellCoord> Way = FindWay(From, Goal);
-	if (!bMidStep && Way.Num() > 0)
+	else if (State != EBDAgentState::Chasing || Goal != ChaseGoal || Route.Num() == 0)
 	{
-		Way.RemoveAt(0);
-	}
-	if (Way.Num() == 0 && bMidStep)
-	{
-		Way.Add(From);
+		Route = PlanWay(There);
 	}
 	ChaseGoal = Goal;
-	Route = MoveTemp(Way);
 	if (State != EBDAgentState::Chasing)
 	{
-		UE_LOG(LogBDTower, Log, TEXT("%s runs after %s, %d cell(s) away."), *GetName(), *Candidate->GetName(), Route.Num());
+		UE_LOG(LogBDTower, Log, TEXT("%s runs after %s, %.1f cell(s) away, %d leg(s)."), *GetName(), *Candidate->GetName(),
+			FVector::Dist2D(There, GetActorLocation()) / Grid->GetCellSize(), Route.Num());
 		State = EBDAgentState::Chasing;
 		PlayStateAnimation();
 	}
@@ -919,11 +1068,11 @@ void ABDAgent::Tick(const float DeltaSeconds)
 
 	if (State == EBDAgentState::Shooting || State == EBDAgentState::Chasing)
 	{
-		// Back to the walk he was on, or a new decision. A chase leaves only the cell he
-		// is stepping into.
-		if (State == EBDAgentState::Chasing && Route.Num() > 1)
+		// Back to the walk he was on, or a new decision. A chase leaves nothing to finish:
+		// its points were after the candidate.
+		if (State == EBDAgentState::Chasing)
 		{
-			Route.SetNum(1);
+			Route.Reset();
 		}
 		if (Route.Num() > 0)
 		{
@@ -994,10 +1143,7 @@ void ABDAgent::DebugSetPatrolRemaining(const float Seconds)
 void ABDAgent::DebugWake()
 {
 	KickRemaining = 0.0f;
-	if (bGoingHome)
-	{
-		Route.SetNum(FMath::Min(Route.Num(), 1));
-	}
+	Route.Reset();
 	WakeUp();
 }
 

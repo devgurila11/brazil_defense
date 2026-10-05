@@ -34,6 +34,7 @@
 #include "Day/BDDaySettings.h"
 #include "Components/Button.h"
 #include "UI/BDHUDWidget.h"
+#include "UI/BDMatchHUD.h"
 #include "UObject/UObjectIterator.h"
 #include "Audio/BDAudioSettings.h"
 #include "Audio/BDSoundscapeSubsystem.h"
@@ -570,6 +571,10 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Crew.Num() == Stand->Slots.Num() && Match->GetFreeCharacterSlots() == 0 && Stand->IsFullyManned(),
 			FString::Printf(TEXT("%d of %d slots manned, %d free on the board"), Crew.Num(), Stand->Slots.Num(), Match->GetFreeCharacterSlots()));
 
+		// Manned but not evolved: every star empty, over the block and over a tower just built.
+		const int32 StarsManned = ABDMatchHUD::GetPieceStarsFilled(Stand->GetBlockLevel());
+		const int32 StarsNewTower = ABDMatchHUD::GetPieceStarsFilled(Crew[0]->GetTowerLevel());
+
 		// Full: the first may buy, and then may not again until the others catch up.
 		SlotZAtLevelOne = Stand->GetSlotWorldTransform(0).GetLocation().Z;
 		const bool bFirstBuys = Crew[0]->Upgrade();
@@ -583,6 +588,10 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		}
 		Check(TEXT("PLATAFORMA"), TEXT("the block reaches level 2 once every shooter has"), Stand->GetBlockLevel() == 2,
 			FString::Printf(TEXT("block level %d"), Stand->GetBlockLevel()));
+		const int32 StarsEvolved = ABDMatchHUD::GetPieceStarsFilled(Stand->GetBlockLevel());
+		Check(TEXT("ESTRELAS"), TEXT("a star is an evolution bought: none on a block just manned or a tower just built, one at level 2"),
+			StarsManned == 0 && StarsNewTower == 0 && StarsEvolved == 1,
+			FString::Printf(TEXT("manned block %d, new tower %d, block at level 2 %d"), StarsManned, StarsNewTower, StarsEvolved));
 
 		// The height is built on the platform's own tick.
 		WaitTicks = 3;
@@ -759,6 +768,36 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Check(TEXT("AGENTE"), TEXT("the Agent stands on the traced floor, not sunk to the board plane"),
 				bMeasured && FMath::Abs(RootOver) <= 2.0f,
 				FString::Printf(TEXT("root %+.1f cm over the floor, lowest bone %+.1f cm%s"), RootOver, FeetOver, bMeasured ? TEXT("") : TEXT(" (not measured)")));
+		}
+
+		// Off the grid: walking, he leaves the cells' centre lines at an angle, not along them.
+		if (Agent != nullptr)
+		{
+			// A fixed draw, so the check never rests on a walk that happened to run along an axis.
+			FMath::RandInit(20261005);
+			const float Cell = Grid->GetCellSize();
+			const FVector WalkStart = Agent->GetActorLocation();
+			float WorstOffAxis = 0.0f;
+			int32 WalkingTicks = 0;
+			for (int32 Tick = 0; Tick < 120; ++Tick)
+			{
+				Agent->Tick(1.0f / 30.0f);
+				FBDCellCoord Under;
+				if (Agent->GetState() != EBDAgentState::Walking || !Grid->WorldToCell(Agent->GetActorLocation(), Under))
+				{
+					continue;
+				}
+				++WalkingTicks;
+				const FVector Center = Grid->CellToWorld(Under);
+				const float OffX = FMath::Abs(Agent->GetActorLocation().X - Center.X);
+				const float OffY = FMath::Abs(Agent->GetActorLocation().Y - Center.Y);
+				WorstOffAxis = FMath::Max(WorstOffAxis, FMath::Min(OffX, OffY));
+			}
+			const float Moved = FVector::Dist2D(WalkStart, Agent->GetActorLocation());
+			Check(TEXT("AGENTE"), TEXT("the Agent walks free of the grid: off both centre lines of a cell, at any angle"),
+				WalkingTicks > 0 && WorstOffAxis > Cell * 0.05f,
+				FString::Printf(TEXT("%d walking tick(s), %.0f cm off the nearer centre line at most (cell %.0f), moved %.0f cm, yaw %.1f"),
+					WalkingTicks, WorstOffAxis, Cell, Moved, Agent->GetActorRotation().Yaw));
 		}
 
 		// One weapon a level, the pistol designed, the kill bonus 1 s down 0.15 s a star.

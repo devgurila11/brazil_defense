@@ -1,147 +1,90 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-03 10:30**
+**Versão: 2026-10-05 11:45**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Bugs + sistema de áudio/ambiência + estrelas + HUD limpo + coice
+# Trocar lados do HUD + mira das defesas sem prioridade de candidato
 
-O usuário vai gerar e importar os áudios (música, ambiência, motor,
-buzina) numa pasta; o terminal monta os sistemas e liga quando os
-arquivos chegarem. Há 3 BUGS para corrigir também.
+## 1. HUD dos votos — inverter os lados (está errado)
 
----
+- Hoje o HUD do placar está com os lados AZUL e VERMELHO trocados.
+- Inverter: trocar a posição dos dois lados — o número, o ícone de
+  cédula e a direção que a barra de apuração enche, de cada lado.
+- (Confirmar a orientação atual lendo o código e inverter para o lado
+  certo. O usuário confirmou que está trocado.)
 
-## 0. Renomear os áudios importados (ler as pastas, script em lote)
+## 2. Mira das torres e personagens de plataforma — SEM prioridade de candidato
 
-O usuário importou os áudios em duas pastas. Ler, identificar o que é
-cada um pelo conteúdo/tipo e renomear num padrão limpo, via script em
-lote (como foi feito com as falas do jumento):
+Observado: quando o candidato estava sendo alvejado e um militante
+passou na frente (mais perto da defesa), a defesa CONTINUOU grudada no
+candidato em vez de mirar o militante colado. Isso está ERRADO.
 
-- C:\Users\rafag\Documents\Unreal\Brazil_Defense\Content\audio\Musics
-  → as ~10 músicas de batalha. Renomear MUS_Battle_01 ... _NN.
-- C:\Users\rafag\Documents\Unreal\Brazil_Defense\Content\audio\Effects
-  → ambiência, motor e buzina misturados. Separar por tipo e renomear:
-    - Ambiência de cidade/dia  → AMB_City_Day
-    - Ambiência de pássaros/dia → AMB_Birds_Day (se vier separado)
-    - Ambiência de noite/coruja → AMB_Night
-    - Partidas de motor (4)     → S_Bus_Engine_01 ... _04
-    - Buzinas (4)               → S_Bus_Horn_01 ... _04
-- Identificar pelo conteúdo (duração, nome atual, tipo de som). Se
-  algum ficar ambíguo, listar para o usuário confirmar em vez de
-  adivinhar.
-- Depois de renomear, apontar cada um nos sistemas (música, ambiência,
-  motor, buzina) dos itens 7, 8 e 9.
+Correto (confirmado): torres e personagens de plataforma miram
+PURAMENTE o mais próximo/mais adiantado no alcance, trocando
+dinamicamente quando um NPC passa na frente — INCLUSIVE se o alvo atual
+for o candidato. Sem prioridade especial para o candidato neste tipo
+de defesa.
 
-## BUGS (corrigir primeiro)
+- REMOVER a prioridade do candidato nas torres e nos personagens de
+  plataforma. O candidato é tratado como qualquer inimigo no alcance:
+  se ele é o mais próximo/adiantado, leva tiro; se um militante passa
+  na frente, o tiro vai para o militante.
+- A regra de troca dinâmica (reavaliar a cada tiro, trava de margem)
+  continua valendo — agora sem a exceção do candidato.
 
-### 1. Mais de um palácio pôde ser construído (deveria ser 1)
-- A regra é: MÁXIMO 1 palácio por partida (1 palácio = 1 agente).
-- O usuário conseguiu pôr mais de um. A trava não está funcionando.
-- Corrigir: o segundo palácio é RECUSADO com motivo claro ("já existe
-  um palácio"). Se o palácio for vendido, pode construir outro.
-- Regression: adicionar/confirmar invariante "só 1 palácio aceito".
+### O AGENTE é exceção (mantém)
+- O Agente CONTINUA perseguindo o candidato (é o caçador dele, papel
+  próprio). A remoção da prioridade vale só para torres e personagens
+  de plataforma, NÃO para o Agente.
 
-### 2. Agente afunda no chão ao dormir
-- Na animação Sleeping_Idle, metade do corpo do Agente fica ENTERRADA
-  no chão. Ajustar o offset/altura (Z) do Agente deitado para ele
-  ficar SOBRE o chão, não dentro.
+## 3. BUG — plataformas já vêm com 1 estrela cheia no nível 0
 
-### 3. Pés do Agente abaixo do chão ao caminhar
-- Andando (Pistol_Walk), os pés ficam abaixo da superfície. Ajustar a
-  altura base do Agente no grid para os pés tocarem o chão, não
-  afundarem. (Pode ser a mesma origem Z do bug 2.)
+- Observado só nos PLATAFORMAS (o palanque mostra 1 estrela cheia
+  mesmo sem evolução, nível 0). As torres parecem corretas.
+- Causa provável: a plataforma evolui em BLOCO (o nível dela reflete o
+  nível dos personagens nela). O cálculo deve estar tratando
+  "lotada mas não evoluída" como nível 1, ou contando os personagens
+  presentes como se fossem uma evolução — por isso 1 estrela cheia no
+  que deveria ser nível 0.
+- Correto: plataforma recém-construída / com personagens nível 1 base
+  = nível 0 de evolução = 0 estrelas cheias (5 vazias). As estrelas só
+  enchem conforme o BLOCO sobe de nível (evolução comprada), 1 por
+  nível até 5.
+- Verificar os TRÊS tipos de plataforma: palanque, caminhão e
+  arquibancada — todos devem começar com 0 cheias.
+- Confirmar que as torres já estão corretas (0 cheias no nível base);
+  se não estiverem, alinhar.
 
----
+## 4. Agente — movimento livre no campo (não preso à grade)
 
-## 4. Personagens de plataforma — DIAGNÓSTICO + coice
+O Agente hoje se locomove só em 90° (frente, trás, esquerda, direita),
+saltando de centro de célula em centro de célula — robótico.
 
-Dois problemas:
+Correto: o Agente anda LIVREMENTE por todo o campo, em ESPAÇO
+CONTÍNUO, pisando em QUALQUER ponto e indo em QUALQUER ângulo. Ele NÃO
+deve obedecer à grade no movimento — a grade (células) serve para a
+lógica do jogo (rota da horda, posicionar peças), mas o Agente a
+IGNORA ao se mover. Ele vagueia pelo terreno como uma pessoa de
+verdade, não pelas linhas/centros da grade.
 
-a) DIAGNÓSTICO: os personagens de plataforma parecem não girar
-   dinamicamente atrás dos militantes e às vezes "observam passar sem
-   atacar". Pode ser o mesmo bug que as torres tiveram (giro/mira
-   desconectado). Investigar: eles giram a mira para o alvo? Estão
-   deixando militantes no alcance passarem sem atirar? Logar e corrigir
-   se for bug.
-
-b) COICE (feedback de disparo): após cada disparo, o personagem faz um
-   leve RECUO para trás (simulando o coice da arma), e volta. Assim dá
-   para ver que ele ESTÁ atacando, não parado. Movimento pequeno e
-   rápido, sincronizado com o tiro. Vale para os personagens de
-   plataforma e, se fizer sentido, para o Agente também.
-
----
-
-## 5. Estrelas de evolução em TODAS as construções
-
-- Hoje só o palácio tem o indicador de 5 estrelas. Todas as peças que
-  evoluem (torres, plataformas, personagens) também vão até nível 5.
-- Pôr o mesmo indicador de 5 estrelas (billboard para a câmera, fade
-  por distância, vazias = não evoluído) em TODAS as construções que
-  evoluem, igual ao palácio.
-- Reusar o sistema de estrelas que já existe no palácio.
-
----
-
-## 6. Tecla para esconder TODO o HUD (modo limpo)
-
-- Uma tecla (ex: H) alterna esconder/mostrar TODO o HUD — placar,
-  barras, estrelas, medidores, debug, tudo. Para o jogador ver o jogo
-  LIMPO, só a ação acontecendo.
-- Apertar de novo traz tudo de volta.
-- Esconde inclusive os indicadores de alcance e as estrelas.
-
----
-
-## 7. Sistema de MÚSICA (ligar quando os áudios chegarem)
-
-- ~10 músicas instrumentais brasileiras, em LOOP. O usuário importa.
-- Toca UMA aleatória DURANTE a onda. Em loop sem corte (ponto de loop
-  / crossfade para não dar sensação de corte).
-- Na PAUSA / fase de montagem (entre ondas): a música faz FADE OUT,
-  deixando só a AMBIÊNCIA de fundo tocando.
-- Ao começar a próxima onda: entra outra música aleatória (fade in).
-- Roteada para uma Sound Class de MÚSICA (separada de efeitos), para o
-  slider de música do menu controlar.
-- Slot/pasta pronta para o usuário apontar as músicas.
-
----
-
-## 8. Sistema de AMBIÊNCIA de fundo (ligar quando chegar)
-
-- Ambiência tocando SEMPRE (mais presente na pausa, por baixo da música
-  na onda):
-  - Dia: cidade em movimento + pássaros.
-  - Noite: menos cidade, coruja/grilos.
-- Troca conforme o ciclo dia/noite (usar o CycleAlpha que já existe).
-- Em loop sem corte. Roteada para efeitos (ou uma class de ambiente).
-- Slots prontos: AMB_City_Day, AMB_Birds_Day, AMB_Night, etc.
-
----
-
-## 9. MOTOR e BUZINA dos ônibus (ligar quando chegar)
-
-- 4 sons de MOTOR (partida): tocam no ônibus pouco ANTES da onda sair
-  daquela boca (o ônibus se prepara). 3D na posição do ônibus, reverb
-  de exterior, atenuação por câmera.
-- 4 sons de BUZINA: tocam no momento EXATO da saída dos militantes
-  daquele ônibus. 3D, mesma posição.
-- Sorteados (Random). Só nas bocas ATIVAS da onda (seguem o sorteio de
-  bocas que já existe).
-- Slots prontos: S_Bus_Engine_01-04, S_Bus_Horn_01-04.
-- Isso liga nos ganchos que já foram deixados prontos no sistema do
-  ônibus (quando o ônibus se move / quando a onda sai).
-
----
+- Patrulha sem rota fixa: escolhe um ponto aleatório no campo e vai em
+  linha reta até lá (qualquer ângulo, qualquer posição), para, escolhe
+  outro, etc.
+- Vira o CORPO suavemente para a direção do movimento (encara para onde
+  anda) — não deslizar de lado nem virar seco.
+- Mantém: sem colisão com construções (só separador bloqueia); raio de
+  tiro; barra de tempo; etc.
+- O ponto-chave: desacoplar o movimento do Agente da grade. Posição
+  contínua no mundo, não célula a célula.
 
 ## Entregável
-- 3 bugs corrigidos (1 palácio só; Agente não afunda dormindo nem
-  andando).
-- Personagens de plataforma: diagnóstico do giro/mira + coice no
-  disparo.
-- Estrelas de evolução em todas as construções.
-- Tecla de HUD limpo (esconde tudo).
-- Sistemas de música, ambiência, motor e buzina PRONTOS com slots
-  vazios, para o usuário apontar os áudios quando importar.
+- HUD com azul/vermelho nos lados corretos (invertido).
+- Torres e personagens de plataforma miram o mais próximo/adiantado,
+  sem prioridade de candidato; trocam quando alguém passa na frente.
+- Agente mantém a perseguição ao candidato.
+- Plataformas (palanque/caminhão/arquibancada) começam com 0 estrelas
+  cheias no nível 0; enchem só ao evoluir em bloco.
+- Agente anda livre no campo, em espaço contínuo (não preso à grade/
+  células), em qualquer ângulo, virando o corpo para onde anda.
 - BD.Test.Regression passa; compilar os dois alvos; commit.

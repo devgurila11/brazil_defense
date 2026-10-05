@@ -130,8 +130,9 @@ void ABDMatchHUD::DrawPieceStars()
 	const UBDUISettings& Settings = UBDUISettings::Get();
 	const auto TopOf = [](const AActor& Actor) { return Actor.GetComponentsBoundingBox(/*bNonColliding*/ true).Max.Z; };
 
-	// A tower on the ground by its own level. One on a platform evolves in step with the
-	// rest of the block, so the block's row speaks for it instead of one row a shooter.
+	// A star is an evolution bought, not the level (GetPieceStarsFilled). A tower on the
+	// ground by its own level. One on a platform evolves in step with the rest of the
+	// block, so the block's row speaks for it instead of one row a shooter.
 	for (TActorIterator<ABDTowerBase> It(World); It; ++It)
 	{
 		const ABDTowerBase* Tower = *It;
@@ -141,7 +142,7 @@ void ABDMatchHUD::DrawPieceStars()
 		}
 		const FVector Location = Tower->GetActorLocation();
 		DrawStarRow(FVector(Location.X, Location.Y, TopOf(*Tower) + Settings.PieceStarLift),
-			Tower->GetTowerLevel(), UBDTowerData::MaxLevels, Settings.PieceStarScale);
+			GetPieceStarsFilled(Tower->GetTowerLevel()), UBDTowerData::MaxLevels, Settings.PieceStarScale);
 	}
 
 	for (TObjectIterator<UBDPlatformComponent> It; It; ++It)
@@ -163,7 +164,7 @@ void ABDMatchHUD::DrawPieceStars()
 		}
 		const FVector Location = Stand->GetActorLocation();
 		DrawStarRow(FVector(Location.X, Location.Y, Top + Settings.PieceStarLift),
-			Platform->GetBlockLevel(), UBDTowerData::MaxLevels, Settings.PieceStarScale);
+			GetPieceStarsFilled(Platform->GetBlockLevel()), UBDTowerData::MaxLevels, Settings.PieceStarScale);
 	}
 }
 

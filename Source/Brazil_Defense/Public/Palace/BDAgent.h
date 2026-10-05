@@ -19,7 +19,7 @@ struct FBDAgentWeapon;
 UENUM(BlueprintType)
 enum class EBDAgentState : uint8
 {
-	/** Wandering: a few cells one way, now and then a stop. */
+	/** Wandering: straight to a point a few cells off, any way, now and then a stop. */
 	Walking,
 	Idle,
 
@@ -39,10 +39,13 @@ enum class EBDAgentState : uint8
 /**
  * The Agent ("o Mito"). Born with his palace, in front of it, and gone with it.
  *
- * He wanders the board cell to cell in a random direction, a few cells at a time, and
- * stops now and then. Nothing built is in his way - towers, platforms, the palace - and
- * neither are the creeps: only a divider on the edge he would cross turns him, and the
- * permanent scenery, like any creep. Movement is by hand, as the creeps', no collision.
+ * He wanders the board as a man would, not as a piece: a point a few cells off at any
+ * angle, straight there, the body turning to where he walks, and a stop now and then.
+ * The grid is the game's, not his; he only asks it what is in his way. Nothing built is -
+ * towers, platforms, the palace - and neither are the creeps: only a divider on a line
+ * he would cross, and the permanent scenery, like any creep. Home and after a candidate
+ * he goes around those by the cells, the way then pulled straight wherever it is in plain
+ * sight. Movement is by hand, as the creeps', no collision.
  *
  * A militant inside his detection radius stops him on the spot: he turns to it and
  * shoots, one creep at a time, until none is left in reach; then he walks on. He does not
@@ -157,6 +160,20 @@ private:
 	bool CanStep(const FBDCellCoord& From, const FBDCellCoord& To) const;
 
 	/**
+	 * Whether he can walk the straight line between two points: every cell it passes
+	 * standable and no divider on a cell edge it crosses. Margin, in centimetres, checks two
+	 * more lines that far to either side, so his body does not brush a divider's end.
+	 */
+	bool IsLineClear(const FVector& From, const FVector& To, float Margin) const;
+
+	/**
+	 * The points to walk from where he stands to a goal: straight when nothing is in the
+	 * way, otherwise the cells around it, pulled straight between every two in plain
+	 * sight. Empty when there is no way.
+	 */
+	TArray<FVector> PlanWay(const FVector& Goal) const;
+
+	/**
 	 * The cell he sleeps on: one beside the palace, the front first, then its right, its
 	 * back and its left; a free cell before one with something built on it.
 	 * @return false when none of them is on the board.
@@ -181,7 +198,7 @@ private:
 	/** Picks what to do next after a walk or a stop: another walk, or a stop first. */
 	void DecideNext();
 
-	/** Starts a walk of a few cells in a random open direction. Stops instead when boxed in. */
+	/** Starts a walk to a point a few cells off at a random angle. Stops instead when boxed in. */
 	void StartWalk();
 	void StartIdle();
 
@@ -190,11 +207,15 @@ private:
 	void StartSleep();
 	void WakeUp();
 
-	/** Walks the queued cells. @return true once the last one is reached. */
+	/** Walks the queued points. @return true once the last one is reached. */
 	bool StepAlong(float DeltaSeconds, float SpeedScale = 1.0f);
 
-	/** Turns the actor towards a yaw by the turn rate. @return true when within the tolerance. */
-	bool TurnTowards(float WantedYaw, float DeltaSeconds, float Tolerance);
+	/**
+	 * Turns the actor towards a yaw, no faster than the turn rate. Eased, the turn slows as
+	 * it closes in, as a body does; not eased, it is the aim's steady sweep.
+	 * @return true when within the tolerance.
+	 */
+	bool TurnTowards(float WantedYaw, float DeltaSeconds, float Tolerance, bool bEased = false);
 
 	/** A creep alive, walking, not already doomed, and inside the radius. */
 	bool IsValidTarget(const ABDEnemyBase* Enemy, float RadiusSquared) const;
@@ -212,7 +233,7 @@ private:
 	/** The nearest candidate anywhere on the board, or null. */
 	ABDEnemyBase* FindCandidate() const;
 
-	/** Points the route at the candidate's cell, kept while he stays in it. */
+	/** Points the route at the candidate: straight at him in plain sight, around by the cells otherwise. */
 	void ChaseTowards(const ABDEnemyBase* Candidate);
 
 	/** Fires now when the shooting animation has no shot notify, by the weapon's rate. */
@@ -244,10 +265,10 @@ private:
 
 	EBDAgentState State = EBDAgentState::Idle;
 
-	/** Cells still to walk, the next one first. Empty when standing. */
-	TArray<FBDCellCoord> Route;
+	/** Points still to walk, in the world, the next one first. Empty when standing. */
+	TArray<FVector> Route;
 
-	/** Cell he stands on or is walking into. Where a new walk or the way home starts from. */
+	/** Cell he stands on, wherever in it. For the log and the sleep spot; he walks by points. */
 	FBDCellCoord HeadingCell;
 
 	float IdleRemaining = 0.0f;
@@ -267,7 +288,7 @@ private:
 	/** Shots fired since the bar ran out, on the way home. */
 	int32 ShotsOnWayHome = 0;
 
-	/** The candidate's cell the chase route was planned to. */
+	/** The candidate's cell the chase route was planned to, when it goes around something. */
 	FBDCellCoord ChaseGoal;
 
 	TWeakObjectPtr<ABDEnemyBase> CurrentTarget;

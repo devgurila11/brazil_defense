@@ -3,11 +3,9 @@
 #include "Tower/BDTowerBase.h"
 
 #include "BDLog.h"
-#include "Candidate/BDCandidateSubsystem.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
-#include "Enemy/BDCandidate.h"
 #include "Enemy/BDEnemyBase.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -450,8 +448,8 @@ ABDEnemyBase* ABDTowerBase::AcquireTarget(const float RangeSquared) const
 	// The creep furthest ahead on the stretch this defender covers: the one with the least
 	// of its line left inside the range, about to walk out of it towards the urn. Local to
 	// the defender on purpose: the creep nearest the urn over the whole board may be the
-	// one walking right past it. The candidate outranks it: in range, it is the target,
-	// whatever else is there.
+	// one walking right past it. The candidate is one more creep here: the hunt for him is
+	// the Agent's, and a militant stepping ahead of him takes the shot.
 	const float Range = FMath::Sqrt(RangeSquared);
 	ABDEnemyBase* Best = nullptr;
 	float BestScore = -MAX_flt;
@@ -461,11 +459,6 @@ ABDEnemyBase* ABDTowerBase::AcquireTarget(const float RangeSquared) const
 		if (!IsValidTarget(Enemy, RangeSquared))
 		{
 			continue;
-		}
-
-		if (Enemy->IsCandidate())
-		{
-			return Enemy;
 		}
 
 		const float Score = -Enemy->GetPathLeftWithin(GetActorLocation(), Range);
@@ -555,21 +548,6 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 			AcquisitionRemaining = bWasEngaged ? 0.0f : Data->AcquisitionDelay;
 		}
 	}
-	else if (!Target->IsCandidate())
-	{
-		// A held target is not held against the candidate: the moment it comes into
-		// range every defender switches to it, recognition and all.
-		const UBDCandidateSubsystem* Candidates = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
-		ABDEnemyBase* Candidate = Candidates != nullptr ? Candidates->GetCandidate() : nullptr;
-		if (Candidate != nullptr && IsValidTarget(Candidate, RangeSquared))
-		{
-			UE_LOG(LogBDTower, Verbose, TEXT("%s drops %s for the candidate."), *GetName(), *Target->GetName());
-			DropTarget();
-			Target = Candidate;
-			CurrentTarget = Target;
-			AcquisitionRemaining = bWasEngaged ? 0.0f : Data->AcquisitionDelay;
-		}
-	}
 
 	DrawDebug();
 
@@ -599,12 +577,12 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 	// Before every shot, a look again: the horde overtakes itself, and a creep that got
 	// ahead of the one held inside the range takes the next shot. Fire comes in single
 	// shots, so the weapon has nothing to lose by changing; a continuous one (a laser,
-	// later) will hold its creep instead.
-	if (FireCooldown <= 0.0f && !IsReloading() && !Target->IsCandidate())
+	// later) will hold its creep instead. The candidate held is held like any creep.
+	if (FireCooldown <= 0.0f && !IsReloading())
 	{
 		ABDEnemyBase* Ahead = AcquireTarget(RangeSquared);
 		if (Ahead != nullptr && Ahead != Target
-			&& (Ahead->IsCandidate() || Ahead->GetPathLeftWithin(GetActorLocation(), Range) + 1.0f < Target->GetPathLeftWithin(GetActorLocation(), Range)))
+			&& Ahead->GetPathLeftWithin(GetActorLocation(), Range) + 1.0f < Target->GetPathLeftWithin(GetActorLocation(), Range))
 		{
 			UE_LOG(LogBDTower, Verbose, TEXT("%s switches from %s to %s, further ahead in range."), *GetName(), *Target->GetName(), *Ahead->GetName());
 			Target = Ahead;

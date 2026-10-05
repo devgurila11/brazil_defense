@@ -178,7 +178,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Patrol", meta = (ClampMin = "1.0"))
 	float TurnRate = 540.0f;
 
-	/** Cells walked in one go before deciding again, drawn between these two. */
+	/**
+	 * How far one walk goes, in cells, drawn anywhere between these two: straight to a
+	 * point that far off, at any angle, before deciding again.
+	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Patrol", meta = (ClampMin = "1"))
 	int32 WalkCellsMin = 1;
 

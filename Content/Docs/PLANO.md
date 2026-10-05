@@ -263,6 +263,37 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-05 (lados do placar, mira sem candidato, estrelas, Agente livre)** (desde bc5cceb):
+  - Briefing 2026-10-05 11:45.
+  - **Placar invertido:** cédula vermelha, número vermelho, barra, número
+    azul, cédula azul (era o contrário). A barra agora enche o vermelho
+    pela esquerda e o azul pela direita, cada faixa do lado do seu número.
+  - **Mira sem prioridade de candidato** (torres e personagens de
+    plataforma, que são a mesma classe): o candidato é mais um no
+    alcance. Saíram as três exceções (pegar o candidato de cara, largar o
+    alvo quando ele entra, nunca trocar estando nele); vale só o mais
+    adiantado no trecho coberto, reavaliado a cada tiro com a mesma
+    margem. O **Agente** segue caçando o candidato, sem mudança.
+  - **Estrelas = evoluções compradas** (nível − 1), torre e plataforma:
+    recém-construída e plataforma recém-lotada mostram 5 vazias; o bloco
+    no nível 2 mostra 1. Responde à decisão "estrela cheia = nível" da
+    pausa de 03/10. `ABDMatchHUD::GetPieceStarsFilled`.
+  - **Agente livre da grade:** anda em espaço contínuo. Patrulha: sorteia
+    um ponto a `WalkCellsMin`–`WalkCellsMax` células (agora distância
+    contínua entre os dois) em qualquer ângulo e vai reto; a grade só diz
+    o que bloqueia (divisória numa aresta cruzada e cenário fixo), com
+    folga de 0,2 célula para os ombros. Casa e perseguição: contorna pela
+    BFS de células e "puxa" o caminho em retas onde há visada; com o
+    candidato à vista, corre reto nele. O corpo vira suave (aproximação
+    exponencial limitada pelo `TurnRate`) e, desviado mais de 20°, anda
+    mais devagar até virar (quase parado a 100°), sem andar de lado. Z
+    segue o chão traçado a cada passo, suavizado (meio-fio é degrau).
+  - Regressão 64/64 (novas: ESTRELAS 0/0/1 e AGENTE fora das linhas de
+    centro da célula, com semente fixa); os dois alvos compilados.
+  - **Para ele decidir:** com estrela = evolução e nível máximo 5, a peça
+    no topo mostra 4 de 5 cheias (são 4 evoluções compradas). Opções:
+    um 6º nível, ou a linha das peças com 4 estrelas.
+
 - **2026-10-03 — onde paramos** (pausa do usuário, depois de e274853):
   - Briefing 2026-10-03 10:30 feito por inteiro; regressão 62/62; os
     dois alvos compilados (o `.exe` está atualizado).

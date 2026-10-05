@@ -14,8 +14,8 @@
  * close look reads every creep. The candidate keeps the bar of his own.
  *
  * Over every palace, five stars facing the camera: as many filled as its level, the
- * rest only an outline. A smaller row of the same over every ground tower (its level) and
- * every platform (its block's level). These are sized by the screen rather than the world, so the
+ * rest only an outline. A smaller row of the same over every ground tower and every
+ * platform (its block), filled by the evolutions bought: level 1, just built, is all empty. These are sized by the screen rather than the world, so the
  * evolution reads the same at every zoom they are shown at. They fade out as the
  * camera pulls back, and are gone in the overview (UBDUISettings::PalaceStarFade*).
  *
@@ -30,6 +30,13 @@ class BRAZIL_DEFENSE_API ABDMatchHUD : public AHUD
 public:
 	virtual void BeginPlay() override;
 	virtual void DrawHUD() override;
+
+	/**
+	 * Stars filled over a ground tower or a platform block at a level: the evolutions
+	 * bought, so level 1 (just built, or a block just manned) and 0 (a block with an empty
+	 * slot) are all empty.
+	 */
+	static int32 GetPieceStarsFilled(int32 Level) { return FMath::Max(0, Level - 1); }
 
 private:
 	void DrawCreepBars();
