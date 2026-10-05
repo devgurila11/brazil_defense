@@ -88,10 +88,11 @@ public:
 	static const FPrimaryAssetType TowerAssetType;
 
 	/**
-	 * Top of the ladder: five levels per defender, authored or derived. It bounds Levels
-	 * as well, so a designer never authors a level the game will not hand out.
+	 * Top of the ladder: six levels per defender, authored or derived. It bounds Levels
+	 * as well, so a designer never authors a level the game will not hand out. Level 1 is
+	 * the piece as built; the five above it are the five stars it can earn.
 	 */
-	static constexpr int32 MaxLevels = 5;
+	static constexpr int32 MaxLevels = 6;
 
 	//~ Begin UPrimaryDataAsset interface
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;

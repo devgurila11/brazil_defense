@@ -263,6 +263,18 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-05 (6º nível)** (desde 3965d1b):
+  - Pedido do usuário, resposta às 4/5 estrelas no topo: `UBDTowerData::MaxLevels`
+    5 → 6 em torres e personagens de plataforma. Nível 1 = peça recém-feita, os cinco
+    acima = as cinco estrelas; no topo, 5 de 5 cheias.
+  - Nada autorado novo: as fórmulas estendem. Custo 81x a base (40, 120, 360, 1080,
+    3240), dano 4,0x o nível 1 (era 3,4x no 5), alcance 1,5x (era 1,4x), plataforma
+    com 6 andares.
+  - `ReferenceMaxLevel` (régua do `BD.Balance.Report`) ficou em 5 de propósito, para
+    os relatórios seguirem comparáveis com as rodadas medidas.
+  - Regressão 64/64 (ESTRELAS agora confere também nível 6 = 5 de 5); os dois alvos
+    compilados. Não testado: uma torre subindo de fato até o 6 em jogo.
+
 - **2026-10-05 (lados do placar, mira sem candidato, estrelas, Agente livre) — aff679d** (desde bc5cceb):
   - Briefing 2026-10-05 11:45.
   - **Placar invertido:** cédula vermelha, número vermelho, barra, número
@@ -290,9 +302,8 @@ mudou desde o push anterior.
     segue o chão traçado a cada passo, suavizado (meio-fio é degrau).
   - Regressão 64/64 (novas: ESTRELAS 0/0/1 e AGENTE fora das linhas de
     centro da célula, com semente fixa); os dois alvos compilados.
-  - **Para ele decidir:** com estrela = evolução e nível máximo 5, a peça
-    no topo mostra 4 de 5 cheias (são 4 evoluções compradas). Opções:
-    um 6º nível, ou a linha das peças com 4 estrelas.
+  - Com estrela = evolução e nível máximo 5, a peça no topo mostrava 4 de
+    5 cheias; resolvido com o 6º nível (entrada acima).
 
 - **2026-10-03 — onde paramos** (pausa do usuário, depois de e274853):
   - Briefing 2026-10-03 10:30 feito por inteiro; regressão 62/62; os

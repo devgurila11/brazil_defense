@@ -163,8 +163,8 @@ float UBDPlatformComponent::GetLiftForLevel(const int32 Level) const
 {
 	// Level 1 is the ground floor: a platform that is merely manned stands where it was
 	// authored. The height is the rank of the shooters on it, not the fact of their
-	// being there, so it is the storeys ABOVE the first that lift the deck: level 5 is
-	// five floors, four of them stacked under the authored one.
+	// being there, so it is the storeys ABOVE the first that lift the deck: level 6 is
+	// six floors, five of them stacked under the authored one.
 	return FMath::Max(0.0f, FloorHeight) * FMath::Max(0, Level - 1);
 }
 
@@ -252,7 +252,7 @@ void UBDPlatformComponent::ApplyVisualLevel(const int32 Level)
 	}
 
 	// 2. The storeys fill the space under it, one per floor. One instanced component for
-	//    the lot: a platform at level 5 is five instances, not five components.
+	//    the lot: a platform at level 6 is five instances, not five components.
 	UStaticMesh* Storey = FloorMesh.LoadSynchronous();
 	if (Storey == nullptr && AuthoredMeshTransforms.Num() > 0)
 	{

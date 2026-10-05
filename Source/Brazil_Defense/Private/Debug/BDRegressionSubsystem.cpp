@@ -34,6 +34,7 @@
 #include "Day/BDDaySettings.h"
 #include "Components/Button.h"
 #include "UI/BDHUDWidget.h"
+#include "Tower/BDTowerData.h"
 #include "UI/BDMatchHUD.h"
 #include "UObject/UObjectIterator.h"
 #include "Audio/BDAudioSettings.h"
@@ -589,9 +590,11 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		Check(TEXT("PLATAFORMA"), TEXT("the block reaches level 2 once every shooter has"), Stand->GetBlockLevel() == 2,
 			FString::Printf(TEXT("block level %d"), Stand->GetBlockLevel()));
 		const int32 StarsEvolved = ABDMatchHUD::GetPieceStarsFilled(Stand->GetBlockLevel());
-		Check(TEXT("ESTRELAS"), TEXT("a star is an evolution bought: none on a block just manned or a tower just built, one at level 2"),
-			StarsManned == 0 && StarsNewTower == 0 && StarsEvolved == 1,
-			FString::Printf(TEXT("manned block %d, new tower %d, block at level 2 %d"), StarsManned, StarsNewTower, StarsEvolved));
+		const int32 StarsTop = ABDMatchHUD::GetPieceStarsFilled(UBDTowerData::MaxLevels);
+		Check(TEXT("ESTRELAS"), TEXT("a star is an evolution bought: none just built or manned, one at level 2, all five at the top level 6"),
+			StarsManned == 0 && StarsNewTower == 0 && StarsEvolved == 1 && UBDTowerData::MaxLevels == 6 && StarsTop == 5,
+			FString::Printf(TEXT("manned block %d, new tower %d, block at level 2 %d, level %d %d of 5"),
+				StarsManned, StarsNewTower, StarsEvolved, UBDTowerData::MaxLevels, StarsTop));
 
 		// The height is built on the platform's own tick.
 		WaitTicks = 3;

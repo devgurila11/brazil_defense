@@ -176,7 +176,7 @@ public:
 	 * How high one storey lifts the platform. Level 1 is the ground floor and lifts
 	 * nothing; every level above it stacks another storey under the deck, so the deck
 	 * ends up FloorHeight x (level - 1) above where it was authored, and the slots with
-	 * it. Level 5 is five floors: the authored one and four built under it.
+	 * it. Level 6 is six floors: the authored one and five built under it.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Brazil Defense|Platform|Floors", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
 	float FloorHeight = 120.0f;

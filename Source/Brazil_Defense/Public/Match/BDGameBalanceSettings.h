@@ -284,14 +284,14 @@ public:
 
 	//~ Upgrades ---------------------------------------------------------------
 	// Cost of level N = UpgradeCostBase x UpgradeCostGrowth ^ (N - 2): level 2 costs the
-	// base, each one after it UpgradeCostGrowth times the last (3 makes 1x, 3x, 9x, 27x).
+	// base, each one after it UpgradeCostGrowth times the last (3 makes 1x, 3x, 9x, 27x, 81x).
 	// The same on every wave: evolution climbs by level, never by wave. Damage at level N =
 	// Damage x (1 + DamageGrowthPerLevel x (N - 1)), range the same with RangeGrowthPerLevel,
 	// kept light: reach decides which cells a defender covers at all, so a large step would
 	// redraw the board on every level. Exponential cost against linear damage
 	// makes stacking the same defender expensive on its own, so spreading out becomes the
 	// right move without forbidding anything. Paid in public money, like everything the
-	// player buys. UBDTowerData::MaxLevels caps the ladder at five.
+	// player buys. UBDTowerData::MaxLevels caps the ladder at six.
 
 	UPROPERTY(config, EditAnywhere, Category = "Upgrades", meta = (ClampMin = "1.0", UIMin = "1.0"))
 	float UpgradeCostGrowth = 3.0f;
