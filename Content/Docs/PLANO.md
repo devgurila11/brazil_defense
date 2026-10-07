@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-07 (postes acendem à noite) — COMMIT** (desde 88d2b1a):
+- **2026-10-07 (postes acendem à noite) — 902049a** (desde 88d2b1a):
   - Briefing 2026-10-07 10:00.
   - **`ABDStreetLamp` ("BD Street Lamp")**: o poste inteiro num ator C++, com mesh
     `Twin_Spot`, dois spots e o `UBDStreetLightComponent`. Os spots ficam onde o
