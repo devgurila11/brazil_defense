@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-07 (HUD transparente, estrelas, postes só à noite, point light) — COMMIT** (desde 95b842d):
+- **2026-10-07 (HUD transparente, estrelas, postes só à noite, point light) — 6d3e1eb** (desde 95b842d):
   - Briefing 2026-10-07 14:00.
   - **Barra de peças transparente:** fundo navy a 30% (era 85%), itens fora da mão a
     55% (eram opacos), sombra nos textos. Ajustáveis em UI Settings
