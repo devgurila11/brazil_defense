@@ -34,6 +34,7 @@
 #include "Day/BDDaySettings.h"
 #include "Day/BDStreetLamp.h"
 #include "Day/BDStreetLightComponent.h"
+#include "Components/PointLightComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Components/LocalLightComponent.h"
 #include "Components/Button.h"
@@ -370,35 +371,66 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		if (UBDDayCycleComponent* Cycle = Match->GetDayCycle())
 		{
 			const float SkyBefore = Cycle->GetCycleAlpha();
+
+			// The lamps are for the dead of night: sunrise, day, sunset and dusk leave them off.
+			{
+				constexpr int32 Samples = 240;
+				float WorstOutside = 0.0f;
+				float WorstOutsideHour = 0.0f;
+				float PeakNight = 0.0f;
+				for (int32 Sample = 0; Sample <= Samples; ++Sample)
+				{
+					Cycle->SetAlphaImmediate(static_cast<float>(Sample) / Samples);
+					const float Multiplier = Cycle->GetStreetLightMultiplier();
+					if (UBDDayCycleComponent::PhaseForHour(Cycle->GetHour()) == EBDDayPhase::Night)
+					{
+						PeakNight = FMath::Max(PeakNight, Multiplier);
+					}
+					else if (Multiplier > WorstOutside)
+					{
+						WorstOutside = Multiplier;
+						WorstOutsideHour = Cycle->GetHour();
+					}
+				}
+				Cycle->SetAlphaImmediate(SkyBefore);
+				Check(TEXT("DIA"), TEXT("the street lights are off outside the night, sunrise and dusk included, and full in it"),
+					WorstOutside <= 0.001f && PeakNight >= 0.99f,
+					FString::Printf(TEXT("worst %.3f outside the night (at %.2f h), peak %.2f in it"), WorstOutside, WorstOutsideHour, PeakNight));
+			}
 			FActorSpawnParameters Params;
 			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 			ABDStreetLamp* Lamp = World->SpawnActor<ABDStreetLamp>(FVector(0.0, 0.0, -100000.0), FRotator::ZeroRotator, Params);
 			if (Lamp == nullptr)
 			{
-				Check(TEXT("DIA"), TEXT("a street lamp lights itself at night and goes dark by day"), false, TEXT("the lamp did not spawn"));
+				Check(TEXT("DIA"), TEXT("a street lamp lights itself at night and goes dark by day, spots and top light alike"), false, TEXT("the lamp did not spawn"));
 			}
 			else
 			{
 				// From the class default: the lamp was scaled to the current sky the moment it spawned.
 				const float Authored = GetDefault<ABDStreetLamp>()->GetSpotA()->Intensity;
+				const float TopAuthored = GetDefault<ABDStreetLamp>()->GetTopLight()->Intensity;
 				Cycle->SetAlphaImmediate(0.7f);
 				const float NightWant = Authored * Cycle->GetStreetLightMultiplier();
 				const float Night = Lamp->GetSpotA()->Intensity;
-				const bool bNightShown = Lamp->GetSpotA()->IsVisible() && Lamp->GetSpotB()->IsVisible();
+				const float NightMultiplier = Cycle->GetStreetLightMultiplier();
+				const float TopNight = Lamp->GetTopLight()->Intensity;
+				const bool bNightShown = Lamp->GetSpotA()->IsVisible() && Lamp->GetSpotB()->IsVisible() && Lamp->GetTopLight()->IsVisible();
 				Cycle->SetAlphaImmediate(0.3f);
 				const float DayCd = Lamp->GetSpotA()->Intensity;
-				const bool bDayHidden = !Lamp->GetSpotA()->IsVisible() && !Lamp->GetSpotB()->IsVisible();
-				const bool bNoShadows = !Lamp->GetSpotA()->CastShadows && !Lamp->GetSpotB()->CastShadows;
+				const float TopDay = Lamp->GetTopLight()->Intensity;
+				const bool bDayHidden = !Lamp->GetSpotA()->IsVisible() && !Lamp->GetSpotB()->IsVisible() && !Lamp->GetTopLight()->IsVisible();
+				const bool bNoShadows = !Lamp->GetSpotA()->CastShadows && !Lamp->GetSpotB()->CastShadows && !Lamp->GetTopLight()->CastShadows;
+				const bool bTopFollows = FMath::IsNearlyEqual(TopNight, TopAuthored * NightMultiplier, 0.5f) && TopDay == 0.0f;
 				// The lamp heads glow through the material: without the parameter they stay lit by day.
 				const int32 Glowing = Lamp->GetStreetLight()->GetGlowingMeshCount();
 				Cycle->SetAlphaImmediate(SkyBefore);
 				Lamp->Destroy();
 
-				Check(TEXT("DIA"), TEXT("a street lamp lights itself at night and goes dark by day"),
-					NightWant > 0.0f && FMath::IsNearlyEqual(Night, NightWant, 0.01f) && bNightShown && DayCd == 0.0f && bDayHidden && bNoShadows && Glowing > 0,
-					FString::Printf(TEXT("night %.2f cd of %.2f (%s), day %.2f cd (%s), shadows %s, %d glowing meshes"),
+				Check(TEXT("DIA"), TEXT("a street lamp lights itself at night and goes dark by day, spots and top light alike"),
+					NightWant > 0.0f && FMath::IsNearlyEqual(Night, NightWant, 0.01f) && bNightShown && DayCd == 0.0f && bDayHidden && bNoShadows && Glowing > 0 && bTopFollows,
+					FString::Printf(TEXT("night %.2f cd of %.2f (%s), day %.2f cd (%s), shadows %s, %d glowing meshes, top light %.0f by night and %.0f by day"),
 						Night, NightWant, bNightShown ? TEXT("shown") : TEXT("hidden"),
-						DayCd, bDayHidden ? TEXT("hidden") : TEXT("shown"), bNoShadows ? TEXT("off") : TEXT("on"), Glowing));
+						DayCd, bDayHidden ? TEXT("hidden") : TEXT("shown"), bNoShadows ? TEXT("off") : TEXT("on"), Glowing, TopNight, TopDay));
 			}
 		}
 
@@ -622,7 +654,15 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			return bMounted ? FindNewTower(Before) : nullptr;
 		};
 
+		const FVector StarsEmpty = ABDMatchHUD::GetPlatformStarAnchor(*Stand->GetOwner());
 		ABDTowerBase* First = Mount(0);
+		// The stars mark the construction: a shooter boarding does not move them.
+		{
+			const FVector StarsManned = ABDMatchHUD::GetPlatformStarAnchor(*Stand->GetOwner());
+			Check(TEXT("ESTRELAS"), TEXT("a platform's stars stay put when a shooter boards"),
+				First != nullptr && StarsManned.Equals(StarsEmpty, 0.5f),
+				FString::Printf(TEXT("row at %.1f cm empty, %.1f cm manned"), StarsEmpty.Z, StarsManned.Z));
+		}
 		FString Reason;
 		const bool bHeldBack = First != nullptr && !First->CanUpgrade(Reason);
 		Check(TEXT("PLATAFORMA"), TEXT("one character on a platform with empty slots cannot evolve"), bHeldBack,

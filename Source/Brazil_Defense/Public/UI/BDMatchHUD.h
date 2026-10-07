@@ -38,6 +38,9 @@ public:
 	 */
 	static int32 GetPieceStarsFilled(int32 Level) { return FMath::Max(0, Level - 1); }
 
+	/** Where a platform's row of stars floats: off the construction, whoever is on it. */
+	static FVector GetPlatformStarAnchor(const AActor& Stand);
+
 private:
 	void DrawCreepBars();
 	void DrawPalaceStars();

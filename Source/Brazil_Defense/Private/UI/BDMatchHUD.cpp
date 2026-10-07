@@ -119,6 +119,16 @@ void ABDMatchHUD::DrawPalaceStars()
 	}
 }
 
+FVector ABDMatchHUD::GetPlatformStarAnchor(const AActor& Stand)
+{
+	// Over the deck and its floors, with room for the crew: never the crew itself, who are
+	// actors of their own and so outside the stand's bounds.
+	const UBDUISettings& Settings = UBDUISettings::Get();
+	const FVector Location = Stand.GetActorLocation();
+	const float Top = Stand.GetComponentsBoundingBox(/*bNonColliding*/ true).Max.Z;
+	return FVector(Location.X, Location.Y, Top + Settings.PlatformCrewClearance + Settings.PieceStarLift);
+}
+
 void ABDMatchHUD::DrawPieceStars()
 {
 	UWorld* World = GetWorld();
@@ -153,17 +163,7 @@ void ABDMatchHUD::DrawPieceStars()
 		{
 			continue;
 		}
-		// Over the highest of the deck and the shooters on it.
-		float Top = TopOf(*Stand);
-		for (int32 Slot = 0; Slot < Platform->Slots.Num(); ++Slot)
-		{
-			if (const ABDTowerBase* Occupant = Platform->GetSlotOccupant(Slot))
-			{
-				Top = FMath::Max(Top, TopOf(*Occupant));
-			}
-		}
-		const FVector Location = Stand->GetActorLocation();
-		DrawStarRow(FVector(Location.X, Location.Y, Top + Settings.PieceStarLift),
+		DrawStarRow(GetPlatformStarAnchor(*Stand),
 			GetPieceStarsFilled(Platform->GetBlockLevel()), UBDTowerData::MaxLevels, Settings.PieceStarScale);
 	}
 }

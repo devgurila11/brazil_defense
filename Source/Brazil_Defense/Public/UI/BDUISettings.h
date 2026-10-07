@@ -166,6 +166,25 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Palace Stars", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
 	float PieceStarLift = 60.0f;
 
+	/**
+	 * Room left over a platform's deck for the crew, under its row. The row hangs off the
+	 * construction alone: a shooter's bounds move with every pose and kick, and a row that
+	 * followed them climbed and shook whenever someone was on board.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Palace Stars", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float PlatformCrewClearance = 220.0f;
+
+	/**
+	 * Opacity of the item bar's background at the bottom, 0 to 1. Low on purpose: the
+	 * board behind it is where the piece is going, so the bar should not hide it.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float ItemBarOpacity = 0.3f;
+
+	/** Opacity of an item of the bar not in hand. The one in hand stays solid. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float ItemIdleOpacity = 0.55f;
+
 	/** Height of the ballot pictures, as a fraction of the viewport height; the urn is drawn a little larger. */
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.02", ClampMax = "0.2", UIMin = "0.02", UIMax = "0.2"))
 	float ScoreIconHeightFraction = 0.045f;

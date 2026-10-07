@@ -49,6 +49,19 @@
 
 namespace BDHUDPrivate
 {
+	/** A palette colour at the opacity the settings give the item bar. */
+	static FLinearColor WithOpacity(const FLinearColor& Color, const float Opacity)
+	{
+		return FLinearColor(Color.R, Color.G, Color.B, FMath::Clamp(Opacity, 0.0f, 1.0f));
+	}
+
+	/** A dark drop under words that sit over the board through a see-through bar. */
+	static void ShadowText(UTextBlock* Text)
+	{
+		Text->SetShadowOffset(FVector2D(1.0f, 1.0f));
+		Text->SetShadowColorAndOpacity(FLinearColor(0.0f, 0.0f, 0.0f, 0.85f));
+	}
+
 	static constexpr int32 ScoreFontSize = 28;
 	static constexpr int32 LineFontSize = 18;
 	static constexpr int32 SmallFontSize = 14;
@@ -433,9 +446,10 @@ void UBDHUDWidget::BuildTree()
 	//~ Bottom center: the item bar. The urn first, then the palette in its order; the
 	// number keys follow the same order. Each item is a picture in a scale box over its
 	// words, so a 512 px icon comes down to a share of the screen, never a pixel size.
-	BuildBox = MakeBox(ColorPanel, 8.0f);
+	BuildBox = MakeBox(WithOpacity(ColorPanel, UBDUISettings::Get().ItemBarOpacity), 8.0f);
 	UVerticalBox* BuildColumn = MakeColumn();
 	BuildTitle = MakeText(SmallFontSize, ColorMuted);
+	ShadowText(BuildTitle);
 	BuildTitle->SetJustification(ETextJustify::Center);
 	BuildColumn->AddChildToVerticalBox(BuildTitle);
 	UHorizontalBox* ItemRow = MakeRow();
@@ -612,11 +626,13 @@ UButton* UBDHUDWidget::MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox
 
 	OutLabel = MakeText(SmallFontSize, ColorPanelDark);
 	OutLabel->SetJustification(ETextJustify::Center);
+	ShadowText(OutLabel);
 	Column->AddChildToVerticalBox(OutLabel);
 	// The info line: what is left and what it costs, or why the piece cannot be taken.
 	// It wraps, because a reason is words and a count is a digit.
 	OutInfo = MakeText(SmallFontSize, ColorPanelDark);
 	OutInfo->SetJustification(ETextJustify::Center);
+	ShadowText(OutInfo);
 	OutInfo->SetAutoWrapText(true);
 	Column->AddChildToVerticalBox(OutInfo);
 
@@ -1795,6 +1811,8 @@ void UBDHUDWidget::UpdateBuildPanel()
 
 	// The urn: there until it is down, then gone.
 	const UBDPlaceableData* Urn = UBDObjectiveSettings::Get().ObjectivePlaceable.Get();
+	// Not in hand: see-through, so the bar does not stand between the player and the board.
+	const FLinearColor ItemIdle = BDHUDPrivate::WithOpacity(ColorButtonIdle, UBDUISettings::Get().ItemIdleOpacity);
 	const bool bUrnLeft = Match != nullptr && Match->GetObjectivesRemaining() > 0;
 	UrnButton->SetVisibility(bUrnLeft ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	if (bUrnLeft)
@@ -1805,14 +1823,15 @@ void UBDHUDWidget::UpdateBuildPanel()
 		UrnLabel->SetText(BDLoc::Format(TEXT("HUD.Build.Entry"), UrnArgs));
 		// The item in hand is the lit one, like the current speed.
 		const bool bUrnHeld = Held != nullptr && Held == Urn;
-		UrnButton->SetBackgroundColor(bUrnHeld ? ColorButton : ColorButtonIdle);
-		UrnLabel->SetColorAndOpacity(FSlateColor(bUrnHeld ? ColorPanelDark : ColorText));
+		UrnButton->SetBackgroundColor(bUrnHeld ? ColorButton : ItemIdle);
 		const EBDPlacementRefusal UrnRefusal = bOver ? EBDPlacementRefusal::MatchRefused : BuildRefusal(Urn);
 		const bool bUrnAvailable = UrnRefusal == EBDPlacementRefusal::None;
+		UrnLabel->SetColorAndOpacity(FSlateColor(bUrnHeld ? ColorPanelDark : (bUrnAvailable ? ColorText : ColorMuted)));
 		UrnCount->SetColorAndOpacity(FSlateColor(
 			bUrnHeld ? ColorPanelDark : (bUrnAvailable ? ColorMuted : ColorRed)));
 		UrnCount->SetText(BuildInfoText(Urn, UrnRefusal));
-		UrnButton->SetIsEnabled(bUrnAvailable);
+		// Never disabled: a disabled button fades its words, and over a see-through bar the
+		// reason in red stopped reading. The click is refused by the hand all the same.
 	}
 
 	for (int32 Index = 0; Index < PaletteData.Num(); ++Index)
@@ -1824,17 +1843,16 @@ void UBDHUDWidget::UpdateBuildPanel()
 		Args.Add(TEXT("Name"), BDLoc::PieceName(Data));
 		BuildLabels[Index]->SetText(BDLoc::Format(TEXT("HUD.Build.Entry"), Args));
 		const bool bHeld = Held == Data;
-		BuildButtons[Index]->SetBackgroundColor(bHeld ? ColorButton : ColorButtonIdle);
-		BuildLabels[Index]->SetColorAndOpacity(FSlateColor(bHeld ? ColorPanelDark : ColorText));
+		BuildButtons[Index]->SetBackgroundColor(bHeld ? ColorButton : ItemIdle);
 		// What is left and what it costs, or - when the piece cannot be taken - the reason,
 		// in red. A button that only greys out is the thing the player complained about:
 		// whatever stops the piece is now written under it.
 		const EBDPlacementRefusal Refusal = bOver ? EBDPlacementRefusal::MatchRefused : BuildRefusal(Data);
 		const bool bAvailable = Refusal == EBDPlacementRefusal::None;
+		BuildLabels[Index]->SetColorAndOpacity(FSlateColor(bHeld ? ColorPanelDark : (bAvailable ? ColorText : ColorMuted)));
 		BuildCounts[Index]->SetColorAndOpacity(FSlateColor(
 			bHeld ? ColorPanelDark : (bAvailable ? ColorMuted : ColorRed)));
 		BuildCounts[Index]->SetText(BuildInfoText(Data, Refusal));
-		BuildButtons[Index]->SetIsEnabled(bAvailable);
 	}
 }
 

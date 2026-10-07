@@ -263,6 +263,38 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-07 (HUD transparente, estrelas, postes só à noite, point light) — COMMIT** (desde 95b842d):
+  - Briefing 2026-10-07 14:00.
+  - **Barra de peças transparente:** fundo navy a 30% (era 85%), itens fora da mão a
+    55% (eram opacos), sombra nos textos. Ajustáveis em UI Settings
+    (`ItemBarOpacity`, `ItemIdleOpacity`). Itens bloqueados deixaram de ficar
+    desabilitados, porque o botão desabilitado esmaecia o motivo em vermelho até sumir
+    sobre o chão. Agora o nome fica em cinza, o motivo em vermelho legível, e o clique
+    continua recusado pela mão (`TakeIntoHand`), como já acontecia pelo teclado.
+    Conferido em screenshot renderizado.
+  - **Estrelas da plataforma não brigam mais com a tropa:** a altura somava os limites
+    de cada personagem, que mudam com pose e coice. Agora é só a construção (deck e
+    andares) + `PlatformCrewClearance` (220 cm) + `PieceStarLift`
+    (`ABDMatchHUD::GetPlatformStarAnchor`). Acompanha os andares quando a plataforma
+    sobe de nível, nunca o personagem. Torre no chão sem mudança (o coice é só
+    horizontal).
+  - **Postes só na noite fechada:** `CF_StreetLightIntensity` reimportada por CSV.
+    Fica 0 até 20h30 (`NightHour`), sobe em S até cheia às 21h50, cheia até 03h36 e
+    cai em S até 0 às 05h (`SunriseHour`). Amanhecer, dia, pôr do sol e anoitecer: 0.
+    A partida abre às 06h com os postes apagados.
+  - **Point light do poste na classe:** o point light que o usuário pôs como
+    componente de instância nas 8 cópias virou o `TopLight` do `ABDStreetLamp`
+    (2255 cm, 5000 sem unidade, raio 3837, sem sombra). A cópia de instância saiu das
+    8 por script, então um poste novo vindo de Place Actors já nasce com ele. Os spots
+    passam a ter 5 cd de padrão, como o usuário ajustou. O controle do ciclo já pegava
+    toda luz do ator; `BD.Day.Lamps` lista o TopLight.
+  - Regressão 67/67. Novas: DIA (luz zero fora da noite, cheia nela), ESTRELAS
+    (estrelas paradas quando um atirador sobe); a do poste agora cobre o TopLight.
+    Os dois alvos compilados.
+  - Inclui os 8 postes que o usuário posicionou no mapa.
+  - Observação: o total da regressão oscila em 1 entre execuções (63 ou 64 das
+    checagens antigas), independente desta leva; não investigado.
+
 - **2026-10-07 (poste aceso direto) — 43d35f1** (desde 8e3a557):
   - Briefing 2026-10-07 11:00. O código do poste acompanhava o ciclo; havia duas
     causas fora dele:

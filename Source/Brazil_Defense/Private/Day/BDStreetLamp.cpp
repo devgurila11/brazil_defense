@@ -2,6 +2,7 @@
 
 #include "Day/BDStreetLamp.h"
 
+#include "Components/PointLightComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Day/BDStreetLightComponent.h"
@@ -12,14 +13,18 @@ namespace BDStreetLampPrivate
 {
 	static const TCHAR* const PoleMeshPath = TEXT("/Game/BD/Meshs/Twin_Post/Twin_Spot.Twin_Spot");
 
-	// Taken from the post fitted by hand on the Esplanada: the heads hang 1120 cm up,
-	// 350 and 370 cm out along the arm, and the spots point straight down.
+	// Taken from the posts fitted by hand on the Esplanada: the heads hang 1120 cm up,
+	// 350 and 370 cm out along the arm, the spots point straight down, and a broad point
+	// light sits over the pole for the light dying away round it.
 	static const FVector SpotALocation(350.0f, 0.0f, 1120.0f);
 	static const FVector SpotBLocation(-370.0f, 0.0f, 1120.0f);
 	static const FRotator SpotRotation(-90.0f, 0.0f, 0.0f);
-	static constexpr float SpotCandelas = 10.0f;
+	static constexpr float SpotCandelas = 5.0f;
 	static constexpr float SpotAttenuationRadius = 2197.0f;
 	static constexpr float SpotOuterConeAngle = 60.0f;
+	static const FVector TopLightLocation(0.0f, 0.0f, 2255.0f);
+	static constexpr float TopLightIntensity = 5000.0f;
+	static constexpr float TopLightAttenuationRadius = 3837.4f;
 
 	static USpotLightComponent* MakeSpot(AActor* Owner, const FName Name, const FVector& Location, USceneComponent* Parent)
 	{
@@ -52,6 +57,15 @@ ABDStreetLamp::ABDStreetLamp()
 
 	SpotA = BDStreetLampPrivate::MakeSpot(this, TEXT("SpotA"), BDStreetLampPrivate::SpotALocation, Pole);
 	SpotB = BDStreetLampPrivate::MakeSpot(this, TEXT("SpotB"), BDStreetLampPrivate::SpotBLocation, Pole);
+
+	TopLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("TopLight"));
+	TopLight->SetupAttachment(Pole);
+	TopLight->SetRelativeLocation(BDStreetLampPrivate::TopLightLocation);
+	TopLight->SetMobility(EComponentMobility::Movable);
+	TopLight->IntensityUnits = ELightUnits::Unitless;
+	TopLight->Intensity = BDStreetLampPrivate::TopLightIntensity;
+	TopLight->AttenuationRadius = BDStreetLampPrivate::TopLightAttenuationRadius;
+	TopLight->CastShadows = false;
 
 	StreetLight = CreateDefaultSubobject<UBDStreetLightComponent>(TEXT("StreetLight"));
 
