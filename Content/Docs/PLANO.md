@@ -263,6 +263,29 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-07 — onde paramos** (pausa do usuário para o almoço, depois de f694375):
+  - Os briefings de hoje (10:00, 11:00, 14:00 e 16:15) foram feitos por inteiro e estão
+    pushed. Regressão 67/67; os dois alvos compilados (o `.exe` está atualizado); árvore
+    limpa.
+  - No mapa: 8 `BD_StreetLamp` com SpotA/SpotB (5 cd) e TopLight (5000) da classe. O
+    poste montado à mão e o point light de instância saíram.
+  - **Para ele checar na tela:**
+    - Postes: `BD.Day.SetAlpha 0.5` (18h00, apagados), `0.53` (18h43, acesos) e
+      `0.7` (noite). Numa partida, acendem logo depois do pôr do sol.
+    - Barra de peças transparente: legibilidade dos itens e dos motivos em vermelho.
+    - Estrelas da plataforma paradas quando um personagem sobe.
+  - **Decisões minhas a confirmar:**
+    - Limites dos postes: −3° (apagado) e −12° (cheio), em Project Settings → Day Cycle.
+    - Spots ficaram em 5 cd (valor dele nas cópias); o briefing citava 10 cd.
+    - Itens bloqueados da barra deixaram de ficar desabilitados (o clique segue
+      recusado), para o motivo em vermelho ficar legível.
+    - Estrelas da plataforma sobem com os andares (folga fixa de 220 cm para a tropa).
+  - **Aberto:**
+    - O total da regressão oscila em 1 entre execuções (63 ou 64 checagens antigas);
+      ainda não sei qual checagem condicional é.
+    - O aviso vermelho da engine "Cached lighting in Lumen… exposure -8.0" na build de
+      desenvolvimento parece vir da exposição do Post Process Volume.
+
 - **2026-10-07 (postes seguem o sol) — daff34b** (desde 15d9419):
   - Briefing 2026-10-07 16:15 ("postes não acendem nem à noite").
   - Diagnóstico: a curva não estava zerada. Na versão em disco, `BD.Day.SetAlpha 0.7`
