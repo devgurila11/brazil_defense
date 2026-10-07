@@ -91,7 +91,17 @@ bool UBDDayCycleComponent::IsStreetLightRegistered(const UBDStreetLightComponent
 
 float UBDDayCycleComponent::GetStreetLightMultiplier() const
 {
+	const UBDDaySettings& Settings = UBDDaySettings::Get();
+	if (Settings.bStreetLightsFollowSun && SunPitchByAlpha != nullptr)
+	{
+		return Settings.StreetLightForElevation(UBDDaySettings::SunElevationForPitch(SunPitchByAlpha->GetFloatValue(CycleAlpha)));
+	}
 	return StreetLightIntensityByAlpha != nullptr ? StreetLightIntensityByAlpha->GetFloatValue(CycleAlpha) : 0.0f;
+}
+
+float UBDDayCycleComponent::GetSunElevation() const
+{
+	return SunPitchByAlpha != nullptr ? UBDDaySettings::SunElevationForPitch(SunPitchByAlpha->GetFloatValue(CycleAlpha)) : 0.0f;
 }
 
 void UBDDayCycleComponent::UnregisterStreetLight(UBDStreetLightComponent* Light)
@@ -366,8 +376,8 @@ namespace BDDayCommands
 			return;
 		}
 
-		UE_LOG(LogBDMatch, Display, TEXT("BD.Day.Lamps: cycle at %.3f (%s), street lights at %.2f of full."),
-			Cycle->GetCycleAlpha(), *Cycle->GetClockText().ToString(), Cycle->GetStreetLightMultiplier());
+		UE_LOG(LogBDMatch, Display, TEXT("BD.Day.Lamps: cycle at %.3f (%s), sun %.1f deg over the horizon, street lights at %.2f of full."),
+			Cycle->GetCycleAlpha(), *Cycle->GetClockText().ToString(), Cycle->GetSunElevation(), Cycle->GetStreetLightMultiplier());
 
 		int32 Posts = 0;
 		for (TActorIterator<AActor> It(World); It; ++It)

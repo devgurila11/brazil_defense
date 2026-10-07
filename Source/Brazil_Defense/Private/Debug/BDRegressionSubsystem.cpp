@@ -372,30 +372,46 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		{
 			const float SkyBefore = Cycle->GetCycleAlpha();
 
-			// The lamps are for the dead of night: sunrise, day, sunset and dusk leave them off.
+			// The lamps follow the dark, not the clock: off while the sun is up or just under
+			// the horizon (day, sunrise, the afterglow), full the whole night through and
+			// whenever the sun is well down. A clock curve once left the board dark and the
+			// lamps off from six to half past eight, and a check by phase alone let it by.
 			{
-				constexpr int32 Samples = 240;
-				float WorstOutside = 0.0f;
-				float WorstOutsideHour = 0.0f;
-				float PeakNight = 0.0f;
+				const UBDDaySettings& DaySettings = UBDDaySettings::Get();
+				constexpr int32 Samples = 480;
+				int32 LitWrong = 0;
+				int32 DarkWrong = 0;
+				int32 NightSamples = 0;
+				float WorstNight = 1.0f;
+				float WorstNightHour = 0.0f;
+				float WorstLit = 0.0f;
+				float WorstLitHour = 0.0f;
 				for (int32 Sample = 0; Sample <= Samples; ++Sample)
 				{
 					Cycle->SetAlphaImmediate(static_cast<float>(Sample) / Samples);
 					const float Multiplier = Cycle->GetStreetLightMultiplier();
-					if (UBDDayCycleComponent::PhaseForHour(Cycle->GetHour()) == EBDDayPhase::Night)
+					const float Elevation = Cycle->GetSunElevation();
+					const EBDDayPhase Phase = UBDDayCycleComponent::PhaseForHour(Cycle->GetHour());
+					const bool bMustBeFull = Phase == EBDDayPhase::Night || Elevation <= DaySettings.StreetLightFullElevation;
+					const bool bMustBeOff = Phase == EBDDayPhase::Day || Elevation >= DaySettings.StreetLightOffElevation;
+					if (Phase == EBDDayPhase::Night) { ++NightSamples; }
+					if (bMustBeFull && Multiplier < 0.999f)
 					{
-						PeakNight = FMath::Max(PeakNight, Multiplier);
+						++DarkWrong;
+						if (Multiplier < WorstNight) { WorstNight = Multiplier; WorstNightHour = Cycle->GetHour(); }
 					}
-					else if (Multiplier > WorstOutside)
+					if (bMustBeOff && Multiplier > 0.001f)
 					{
-						WorstOutside = Multiplier;
-						WorstOutsideHour = Cycle->GetHour();
+						++LitWrong;
+						if (Multiplier > WorstLit) { WorstLit = Multiplier; WorstLitHour = Cycle->GetHour(); }
 					}
 				}
 				Cycle->SetAlphaImmediate(SkyBefore);
-				Check(TEXT("DIA"), TEXT("the street lights are off outside the night, sunrise and dusk included, and full in it"),
-					WorstOutside <= 0.001f && PeakNight >= 0.99f,
-					FString::Printf(TEXT("worst %.3f outside the night (at %.2f h), peak %.2f in it"), WorstOutside, WorstOutsideHour, PeakNight));
+				Check(TEXT("DIA"), TEXT("the street lights are full the whole night and whenever the sun is well down, off while it is up"),
+					DaySettings.bStreetLightsFollowSun && NightSamples > 0 && DarkWrong == 0 && LitWrong == 0,
+					FString::Printf(TEXT("%d dark samples short of full (worst %.2f at %.2f h), %d bright samples lit (worst %.2f at %.2f h), %d night samples; off from %.0f deg, full from %.0f deg"),
+						DarkWrong, WorstNight, WorstNightHour, LitWrong, WorstLit, WorstLitHour, NightSamples,
+						DaySettings.StreetLightOffElevation, DaySettings.StreetLightFullElevation));
 			}
 			FActorSpawnParameters Params;
 			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;

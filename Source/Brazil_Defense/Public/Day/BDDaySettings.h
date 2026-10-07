@@ -40,9 +40,32 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Curves")
 	TSoftObjectPtr<UCurveLinearColor> SunColorByAlpha;
 
-	/** Street light multiplier, 0 off to 1 fully lit, by alpha. */
-	UPROPERTY(config, EditAnywhere, Category = "Curves")
+	/** Street light multiplier, 0 off to 1 fully lit, by alpha. Only with bStreetLightsFollowSun off. */
+	UPROPERTY(config, EditAnywhere, Category = "Curves", meta = (EditCondition = "!bStreetLightsFollowSun"))
 	TSoftObjectPtr<UCurveFloat> StreetLightIntensityByAlpha;
+
+	//~ Street lights -------------------------------------------------------------
+	// The lamps follow how far the sun is under the horizon, read off SunPitchByAlpha: the
+	// same curve that darkens the scene, so they cannot fall out of step with it. A clock
+	// curve did - the sky went dark at six and the lamps waited for half past eight.
+
+	/** Lamps by the sun's height rather than StreetLightIntensityByAlpha. */
+	UPROPERTY(config, EditAnywhere, Category = "Street Lights")
+	bool bStreetLightsFollowSun = true;
+
+	/** Sun height, in degrees, at and above which the lamps are off: day, sunrise and the afterglow of sunset. */
+	UPROPERTY(config, EditAnywhere, Category = "Street Lights", meta = (EditCondition = "bStreetLightsFollowSun", ClampMin = "-90.0", ClampMax = "90.0", ForceUnits = "deg"))
+	float StreetLightOffElevation = -3.0f;
+
+	/** Sun height, in degrees, at and below which the lamps are fully lit. Between the two they fade. */
+	UPROPERTY(config, EditAnywhere, Category = "Street Lights", meta = (EditCondition = "bStreetLightsFollowSun", ClampMin = "-90.0", ClampMax = "90.0", ForceUnits = "deg"))
+	float StreetLightFullElevation = -12.0f;
+
+	/** Height of the sun over the horizon, in degrees, for a directional light at this pitch. */
+	static float SunElevationForPitch(float Pitch);
+
+	/** Lamp multiplier, 0 off to 1 fully lit, for a sun at this height. */
+	float StreetLightForElevation(float Elevation) const;
 
 	//~ The clock ----------------------------------------------------------------
 	// Alpha 0 is DawnHour on a 24 hour clock and a full cycle is one day, so the HUD can

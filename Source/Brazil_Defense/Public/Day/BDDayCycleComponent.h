@@ -88,8 +88,11 @@ public:
 	/** Whether the cycle is driving this light. */
 	bool IsStreetLightRegistered(const UBDStreetLightComponent* Light) const;
 
-	/** What the street lights get at the current alpha, 0 off to 1 fully lit. */
+	/** What the street lights get at the current alpha, 0 off to 1 fully lit: by the sun's height (UBDDaySettings). */
 	float GetStreetLightMultiplier() const;
+
+	/** Height of the sun over the horizon at the current alpha, in degrees; 0 without a pitch curve. */
+	float GetSunElevation() const;
 
 	/** Waves it takes to come back round to dawn. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cycle", meta = (ClampMin = "1", UIMin = "1"))

@@ -263,6 +263,32 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-07 (postes seguem o sol) — COMMIT** (desde 15d9419):
+  - Briefing 2026-10-07 16:15 ("postes não acendem nem à noite").
+  - Diagnóstico: a curva não estava zerada. Na versão em disco, `BD.Day.SetAlpha 0.7`
+    dava multiplicador 1,00 e acendia os 8 postes (log e screenshot). O defeito real era
+    o descompasso com o céu: o sol passa do horizonte às 18h00 (`CF_SunPitch` −180°) e o
+    cenário escurece, mas a curva por relógio só acendia às 20h30 (cheia às 21h50). A
+    partida do usuário (Standalone, 12h11) terminou na onda 12, às 20h10: escuro com
+    postes apagados. Nenhum log de hoje registra um `SetAlpha 0.7` depois da mudança.
+  - **Correção:** o poste segue a altura do sol, tirada da mesma `CF_SunPitch` que move a
+    luz (`UBDDaySettings::SunElevationForPitch`). Apagado com o sol acima de −3° (dia,
+    amanhecer e o brilho do pôr do sol), cheio abaixo de −12°, fade suave entre os dois:
+    acende das 18h12 até cheio às 18h48 e apaga das 05h12 às 05h48. Em Project Settings →
+    Day Cycle: `bStreetLightsFollowSun` (ligado), `StreetLightOffElevation` (−3),
+    `StreetLightFullElevation` (−12). `CF_StreetLightIntensity` só vale com o modo
+    desligado.
+  - Conferido: no jogo headless (13h12 apagado, 18h00 apagado, 18h14 1%, 19h59 cheio,
+    22h47 cheio, 05h45 1%) e em screenshots (18h00 pôr do sol avermelhado, postes
+    apagados; 18h43 cenário preto, 8 postes acesos). `BD.Day.Lamps` mostra a altura do
+    sol.
+  - Regressão 67/67. A checagem da curva foi reescrita: exige luz cheia em TODA amostra
+    da noite e sempre que o sol está abaixo do limite, e zero de dia e com o sol acima
+    do outro limite. Teria pegado a curva por relógio (18h48–20h30 escuro e apagado).
+    Os dois alvos compilados.
+  - Mantido: spots a 5 cd, o valor que o usuário pôs nas cópias. O briefing fala em
+    10 cd; para mudar, é a Intensity do SpotA/SpotB (ou o padrão da classe).
+
 - **2026-10-07 (HUD transparente, estrelas, postes só à noite, point light) — 6d3e1eb** (desde 95b842d):
   - Briefing 2026-10-07 14:00.
   - **Barra de peças transparente:** fundo navy a 30% (era 85%), itens fora da mão a

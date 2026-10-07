@@ -51,3 +51,21 @@ float UBDDaySettings::SkyAlphaForProgress(const float Progress) const
 	}
 	return FMath::Min(1.0f, NightEnd + (P - NightTo) / DayRate);
 }
+
+float UBDDaySettings::SunElevationForPitch(const float Pitch)
+{
+	// The light shines along its forward vector, so the sun sits the other way: overhead
+	// at -90, on the horizon at 0 and -180, under it past that.
+	return FMath::RadiansToDegrees(FMath::Asin(-FMath::Sin(FMath::DegreesToRadians(Pitch))));
+}
+
+float UBDDaySettings::StreetLightForElevation(const float Elevation) const
+{
+	const float Full = FMath::Min(StreetLightFullElevation, StreetLightOffElevation);
+	const float Off = FMath::Max(StreetLightFullElevation, StreetLightOffElevation);
+	if (Off - Full <= KINDA_SMALL_NUMBER)
+	{
+		return Elevation < Off ? 1.0f : 0.0f;
+	}
+	return 1.0f - FMath::SmoothStep(Full, Off, Elevation);
+}

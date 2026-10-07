@@ -1,54 +1,42 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-07 14:00**
+**Versão: 2026-10-07 16:15**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# HUD transparente + estrelas + postes só à noite + point light
+# BUG — postes não acendem nem à noite
 
-## 1. HUD de seleção mais transparente
+Na última mudança (tirar a intensidade do amanhecer/entardecer), a
+curva CF_StreetLightIntensity foi zerada DEMAIS: o pico da noite também
+ficou em 0. Agora os postes NÃO acendem em horário nenhum — confirmado
+que BD.Day.SetAlpha 0.7 (noite cheia, ~22h47) deixa tudo apagado.
 
-- A barra/painel onde se selecionam as peças (divisória, torre,
-  plataforma, etc.) está meio escura e atrapalha ver o cenário atrás.
-- Aumentar a TRANSPARÊNCIA (baixar a opacidade do fundo desse HUD) para
-  ver o jogo por trás com mais nitidez. Manter o texto/ícones legíveis.
+## Correção
+- Os postes devem acender quando o CENÁRIO FICA ESCURO (noite), e
+  apagar quando está claro (dia/amanhecer/entardecer).
+- A lógica mais robusta: a intensidade do poste segue o INVERSO da luz
+  do sol — sol forte = poste apagado; sol apagado (cenário preto) =
+  poste aceso (pico). Assim nunca descasa do visual.
+- Mantido o que o usuário pediu: amanhecer e entardecer SEM poste
+  aceso (eles são bonitos sozinhos). Só a NOITE ESCURA acende.
+- Garantir que o PICO da noite seja a intensidade cheia (10 cd nos
+  spots / brilho cheio no vidro), não 0. O erro foi zerar o pico junto
+  com as pontas.
+- Transição suave (fade) entrando e saindo da noite, mas o miolo da
+  noite com luz CHEIA.
 
-## 2. BUG — estrelas "brigam" com o personagem no palanque
-
-- Quando se põe um personagem no palanque, as estrelas de nível SOBEM,
-  como se brigassem com a colisão/altura do personagem.
-- Causa: a altura das estrelas está sendo calculada pelo TOPO DINÂMICO
-  da peça (bounds que inclui o personagem em cima), então muda quando
-  há personagem.
-- Correto: a altura das estrelas é FIXA em relação à CONSTRUÇÃO (o
-  palanque/plataforma), não ao que está em cima. As estrelas marcam a
-  PLATAFORMA, não a tropa — ficam sempre na mesma altura, com ou sem
-  personagem, em qualquer nível.
-- Usar um offset fixo a partir do ator da construção, não o
-  bounds/topo dinâmico. Vale para todas as construções.
-
-## 3. Postes só acendem à NOITE (sem intensidade no amanhecer/entardecer)
-
-- O amanhecer e o entardecer estão bonitos e NÃO precisam dos postes
-  acesos. Os postes só devem acender na NOITE fechada.
-- Ajustar a curva CF_StreetLightIntensity: 0 no amanhecer e no
-  entardecer, subindo só na noite. Isso também zera o "25% às 06h na
-  montagem" (vai para 0 — poste apagado no início da partida).
-- Transição ainda suave, mas concentrada na noite.
-
-## 4. Novo Point Light do poste deve respeitar o acendimento
-
-- O usuário adicionou um POINT LIGHT a mais no BP do poste (além dos
-  spots), para o efeito de luz sumindo mais realista.
-- Esse Point Light deve seguir o MESMO controle de ciclo dos spots:
-  acende à noite, apaga de dia, com a mesma curva/fade. Hoje o código
-  controla os spots; incluir o Point Light novo no mesmo controle.
-- Confirmar que o BD.Day.Lamps e as checagens de regressão também
-  cobrem o Point Light (não deixar luz do poste fora do controle).
+## Testar
+- BD.Day.SetAlpha 0.7 (noite cheia) → postes ACESOS, spots 10 cd,
+  vidro e point light no máximo.
+- 0.5 (entardecer) → apagado (ou quase).
+- 0.3 (dia) → apagado.
+- Conferir visualmente: quando o cenário escurece, os postes acendem.
 
 ## Entregável
-- HUD de seleção mais transparente, texto legível.
-- Estrelas com altura fixa da construção (não brigam com o personagem).
-- Postes só acendem à noite (curva 0 no amanhecer/entardecer).
-- Point Light do poste controlado pelo ciclo, como os spots.
-- BD.Test.Regression passa; compilar os dois alvos; commit.
+- Postes acendem na noite escura (pico = luz cheia), apagados de dia e
+  no amanhecer/entardecer.
+- Spots, vidro e point light todos acendendo juntos no pico da noite.
+- BD.Test.Regression: a checagem da curva deve confirmar PICO CHEIO na
+  noite (não só "0 fora da noite") — ajustar para pegar este caso, que
+  escapou (a curva passou no teste zerada).
+- Compilar os dois alvos; commit.
