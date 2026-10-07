@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-07 (postes seguem o sol) — COMMIT** (desde 15d9419):
+- **2026-10-07 (postes seguem o sol) — daff34b** (desde 15d9419):
   - Briefing 2026-10-07 16:15 ("postes não acendem nem à noite").
   - Diagnóstico: a curva não estava zerada. Na versão em disco, `BD.Day.SetAlpha 0.7`
     dava multiplicador 1,00 e acendia os 8 postes (log e screenshot). O defeito real era
