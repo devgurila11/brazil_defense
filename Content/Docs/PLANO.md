@@ -263,6 +263,33 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-07 (postes acendem à noite) — COMMIT** (desde 88d2b1a):
+  - Briefing 2026-10-07 10:00.
+  - **`ABDStreetLamp` ("BD Street Lamp")**: o poste inteiro num ator C++, com mesh
+    `Twin_Spot`, dois spots e o `UBDStreetLightComponent`. Os spots ficam onde o
+    usuário os encaixou à mão na Esplanada: 1120 cm de altura, +350/−370 cm no braço,
+    para baixo, 10 cd, raio 2197, cone 60°. Toda cópia (Ctrl+D, Alt+arrastar ou Place
+    Actors) acende sozinha.
+  - **Componente** (já existia desde o início, sem uso no mapa): o valor "aceso" passa
+    a ser a intensidade que cada luz tem no editor, em vez dos 5000 fixos; luz
+    invisível quando a curva dá ~0 (de dia não custa nada); escala o parâmetro
+    "Light Force" dos materiais (vidro acende junto); `bLightsCastShadows` desligado
+    por padrão (performance), ajustável por poste.
+  - Curva `CF_StreetLightIntensity` reaproveitada sem mudança: 0 das 10h48 às 16h48,
+    cheia das 19h12 às 02h24, 25% às 06h. O fade sai do `CycleAlpha`, que já anda
+    suave.
+  - Correção: poste que se registra depois do ciclo recebia o valor só quando o sol
+    mexia (ficava aceso de dia); agora o registro aplica na hora
+    (`GetStreetLightMultiplier`).
+  - Regressão 64/64, com checagem nova em DIA (poste acende à noite com a intensidade
+    autoral, some de dia, sem sombra). Os dois alvos compilados.
+  - Assets do usuário inclusos: poste antigo (`SM_Twin_Streetlamp_Pole`,
+    `MI_Twin_Post` e texturas) trocado por `Twin_Spot`, `M_Master_Emission`,
+    `MI_TwinPost`, máscara emissiva; atores do mapa (dois spots, post process, poste).
+  - **Pendente do usuário:** no mapa, trocar o poste montado à mão (`Twin_Spot` + 2
+    `SpotLight`) por um BD Street Lamp em (-11560, 11980, 20) com Yaw 90; conferir na
+    tela com `BD.Day.SetAlpha 0.7` (noite), `0.5` (anoitecer) e `0.3` (dia).
+
 - **2026-10-05 (6º nível) — 2f9d0d8** (desde 3965d1b):
   - Pedido do usuário, resposta às 4/5 estrelas no topo: `UBDTowerData::MaxLevels`
     5 → 6 em torres e personagens de plataforma. Nível 1 = peça recém-feita, os cinco

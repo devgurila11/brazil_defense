@@ -32,6 +32,9 @@
 #include "Animation/AnimSequenceBase.h"
 #include "Day/BDDayCycleComponent.h"
 #include "Day/BDDaySettings.h"
+#include "Day/BDStreetLamp.h"
+#include "Day/BDStreetLightComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "Components/Button.h"
 #include "UI/BDHUDWidget.h"
 #include "Tower/BDTowerData.h"
@@ -358,6 +361,42 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				FString::Printf(TEXT("%.1f%% of the waves at night, %.1f%% asked; the clock gives the night %.1f%% of the sky"),
 					NightFraction * 100.0f, Day.NightShare * 100.0f,
 					(FMath::Frac((Day.SunriseHour - Day.NightHour) / 24.0f + 1.0f)) * 100.0f));
+		}
+
+		// A lamp post dropped on the map lights itself: dark by day, its editor brightness
+		// at night, the copy needing nothing set. Spawned far off the board so it blocks no
+		// cell, and the sky put back where it was.
+		if (UBDDayCycleComponent* Cycle = Match->GetDayCycle())
+		{
+			const float SkyBefore = Cycle->GetCycleAlpha();
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			ABDStreetLamp* Lamp = World->SpawnActor<ABDStreetLamp>(FVector(0.0, 0.0, -100000.0), FRotator::ZeroRotator, Params);
+			if (Lamp == nullptr)
+			{
+				Check(TEXT("DIA"), TEXT("a street lamp lights itself at night and goes dark by day"), false, TEXT("the lamp did not spawn"));
+			}
+			else
+			{
+				// From the class default: the lamp was scaled to the current sky the moment it spawned.
+				const float Authored = GetDefault<ABDStreetLamp>()->GetSpotA()->Intensity;
+				Cycle->SetAlphaImmediate(0.7f);
+				const float NightWant = Authored * Cycle->GetStreetLightMultiplier();
+				const float Night = Lamp->GetSpotA()->Intensity;
+				const bool bNightShown = Lamp->GetSpotA()->IsVisible() && Lamp->GetSpotB()->IsVisible();
+				Cycle->SetAlphaImmediate(0.3f);
+				const float DayCd = Lamp->GetSpotA()->Intensity;
+				const bool bDayHidden = !Lamp->GetSpotA()->IsVisible() && !Lamp->GetSpotB()->IsVisible();
+				const bool bNoShadows = !Lamp->GetSpotA()->CastShadows && !Lamp->GetSpotB()->CastShadows;
+				Cycle->SetAlphaImmediate(SkyBefore);
+				Lamp->Destroy();
+
+				Check(TEXT("DIA"), TEXT("a street lamp lights itself at night and goes dark by day"),
+					NightWant > 0.0f && FMath::IsNearlyEqual(Night, NightWant, 0.01f) && bNightShown && DayCd == 0.0f && bDayHidden && bNoShadows,
+					FString::Printf(TEXT("night %.2f cd of %.2f (%s), day %.2f cd (%s), shadows %s"),
+						Night, NightWant, bNightShown ? TEXT("shown") : TEXT("hidden"),
+						DayCd, bDayHidden ? TEXT("hidden") : TEXT("shown"), bNoShadows ? TEXT("off") : TEXT("on")));
+			}
 		}
 
 		// The HUD's buttons never keep the keyboard: a focused button would swallow Escape.

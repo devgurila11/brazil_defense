@@ -1,90 +1,57 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-05 11:45**
+**Versão: 2026-10-07 10:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Trocar lados do HUD + mira das defesas sem prioridade de candidato
+# Postes de iluminação acendendo à noite
 
-## 1. HUD dos votos — inverter os lados (está errado)
+Os postes já estão no cenário, com os SPOTS posicionados nos pontos de
+acendimento. Falta fazê-los ACENDER à noite e APAGAR de dia, seguindo
+o ciclo dia/noite que já existe. O usuário vai posicionar VÁRIAS CÓPIAS
+do poste no terreno — então a solução tem que funcionar sozinha em
+qualquer cópia, sem configurar uma a uma.
 
-- Hoje o HUD do placar está com os lados AZUL e VERMELHO trocados.
-- Inverter: trocar a posição dos dois lados — o número, o ícone de
-  cédula e a direção que a barra de apuração enche, de cada lado.
-- (Confirmar a orientação atual lendo o código e inverter para o lado
-  certo. O usuário confirmou que está trocado.)
+## Verificar o que já existe primeiro
+- Lá no início do projeto foi desenhado um UBDStreetLightComponent que
+  receberia a intensidade da curva CF_StreetLightIntensity do ciclo.
+  Checar se esse componente/curva já existe no código e reaproveitar.
+- O ciclo dia/noite já tem o CycleAlpha (UBDDayCycleComponent) e as
+  curvas CF_Sun*. Usar a mesma fonte de tempo.
 
-## 2. Mira das torres e personagens de plataforma — SEM prioridade de candidato
+## O que fazer
+- O poste deve ACENDER os spots ao entardecer e APAGAR ao amanhecer,
+  com transição SUAVE (fade de intensidade), seguindo a curva do ciclo
+  — não ligar/desligar seco.
+- A intensidade dos spots acompanha a fase do dia: zero de dia, subindo
+  no pôr do sol / fim de tarde, cheia à noite, caindo no nascer do sol.
+- Se já houver a curva CF_StreetLightIntensity, usar ela; se não,
+  criar (ou derivar do inverso da intensidade do sol).
 
-Observado: quando o candidato estava sendo alvejado e um militante
-passou na frente (mais perto da defesa), a defesa CONTINUOU grudada no
-candidato em vez de mirar o militante colado. Isso está ERRADO.
+## IMPORTANTE: escalar para várias cópias (preferir CÓDIGO)
+- O usuário vai posicionar VÁRIAS cópias do poste. A lógica de acender
+  deve estar de forma que QUALQUER cópia colocada no terreno já acenda
+  sozinha, sem configuração manual por cópia.
+- Preferir a lógica num COMPONENTE C++ (ou num ator de poste do jogo)
+  que lê o ciclo e controla os spots. Assim, toda cópia do mesmo
+  ator/componente acende automaticamente.
+- Decisão BP vs código fica com o terminal, MAS o critério é: a solução
+  tem que ser "posicionou, acende" para N cópias, sem trabalho manual.
+  Se BP resolver isso igualmente bem, tudo bem; o importante é escalar.
+- Confirmar como o usuário deve posicionar as próximas cópias (duplicar
+  qual ator?) para que acendam.
 
-Correto (confirmado): torres e personagens de plataforma miram
-PURAMENTE o mais próximo/mais adiantado no alcance, trocando
-dinamicamente quando um NPC passa na frente — INCLUSIVE se o alvo atual
-for o candidato. Sem prioridade especial para o candidato neste tipo
-de defesa.
-
-- REMOVER a prioridade do candidato nas torres e nos personagens de
-  plataforma. O candidato é tratado como qualquer inimigo no alcance:
-  se ele é o mais próximo/adiantado, leva tiro; se um militante passa
-  na frente, o tiro vai para o militante.
-- A regra de troca dinâmica (reavaliar a cada tiro, trava de margem)
-  continua valendo — agora sem a exceção do candidato.
-
-### O AGENTE é exceção (mantém)
-- O Agente CONTINUA perseguindo o candidato (é o caçador dele, papel
-  próprio). A remoção da prioridade vale só para torres e personagens
-  de plataforma, NÃO para o Agente.
-
-## 3. BUG — plataformas já vêm com 1 estrela cheia no nível 0
-
-- Observado só nos PLATAFORMAS (o palanque mostra 1 estrela cheia
-  mesmo sem evolução, nível 0). As torres parecem corretas.
-- Causa provável: a plataforma evolui em BLOCO (o nível dela reflete o
-  nível dos personagens nela). O cálculo deve estar tratando
-  "lotada mas não evoluída" como nível 1, ou contando os personagens
-  presentes como se fossem uma evolução — por isso 1 estrela cheia no
-  que deveria ser nível 0.
-- Correto: plataforma recém-construída / com personagens nível 1 base
-  = nível 0 de evolução = 0 estrelas cheias (5 vazias). As estrelas só
-  enchem conforme o BLOCO sobe de nível (evolução comprada), 1 por
-  nível até 5.
-- Verificar os TRÊS tipos de plataforma: palanque, caminhão e
-  arquibancada — todos devem começar com 0 cheias.
-- Confirmar que as torres já estão corretas (0 cheias no nível base);
-  se não estiverem, alinhar.
-
-## 4. Agente — movimento livre no campo (não preso à grade)
-
-O Agente hoje se locomove só em 90° (frente, trás, esquerda, direita),
-saltando de centro de célula em centro de célula — robótico.
-
-Correto: o Agente anda LIVREMENTE por todo o campo, em ESPAÇO
-CONTÍNUO, pisando em QUALQUER ponto e indo em QUALQUER ângulo. Ele NÃO
-deve obedecer à grade no movimento — a grade (células) serve para a
-lógica do jogo (rota da horda, posicionar peças), mas o Agente a
-IGNORA ao se mover. Ele vagueia pelo terreno como uma pessoa de
-verdade, não pelas linhas/centros da grade.
-
-- Patrulha sem rota fixa: escolhe um ponto aleatório no campo e vai em
-  linha reta até lá (qualquer ângulo, qualquer posição), para, escolhe
-  outro, etc.
-- Vira o CORPO suavemente para a direção do movimento (encara para onde
-  anda) — não deslizar de lado nem virar seco.
-- Mantém: sem colisão com construções (só separador bloqueia); raio de
-  tiro; barra de tempo; etc.
-- O ponto-chave: desacoplar o movimento do Agente da grade. Posição
-  contínua no mundo, não célula a célula.
+## Performance
+- Vários spots dinâmicos acendendo podem pesar. Avaliar: os spots
+  precisam projetar sombra dinâmica (caro) ou só iluminar (mais leve)?
+  Para horda com muitos postes, luz sem sombra dinâmica por poste
+  costuma bastar. Deixar ajustável.
 
 ## Entregável
-- HUD com azul/vermelho nos lados corretos (invertido).
-- Torres e personagens de plataforma miram o mais próximo/adiantado,
-  sem prioridade de candidato; trocam quando alguém passa na frente.
-- Agente mantém a perseguição ao candidato.
-- Plataformas (palanque/caminhão/arquibancada) começam com 0 estrelas
-  cheias no nível 0; enchem só ao evoluir em bloco.
-- Agente anda livre no campo, em espaço contínuo (não preso à grade/
-  células), em qualquer ângulo, virando o corpo para onde anda.
+- Postes acendem à noite / apagam de dia, com fade, pelo ciclo.
+- Qualquer cópia nova do poste acende sozinha (sem config por cópia).
+- Instrução de como duplicar/posicionar as próximas cópias.
 - BD.Test.Regression passa; compilar os dois alvos; commit.
+- O usuário confere na tela o acendimento ao virar a noite (lembrar:
+  a noite foi reduzida no ciclo; usar BD.Day.SetAlpha se houver, para
+  forçar a noite e testar sem esperar).

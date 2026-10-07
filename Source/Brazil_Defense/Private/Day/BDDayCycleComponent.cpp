@@ -77,7 +77,15 @@ void UBDDayCycleComponent::RegisterStreetLight(UBDStreetLightComponent* Light)
 	if (Light != nullptr)
 	{
 		StreetLights.AddUnique(Light);
+		// A post that turns up after the sky has settled would otherwise keep its editor
+		// brightness until the next wave moves the sun.
+		Light->ApplyCycleIntensity(GetStreetLightMultiplier());
 	}
+}
+
+float UBDDayCycleComponent::GetStreetLightMultiplier() const
+{
+	return StreetLightIntensityByAlpha != nullptr ? StreetLightIntensityByAlpha->GetFloatValue(CycleAlpha) : 0.0f;
 }
 
 void UBDDayCycleComponent::UnregisterStreetLight(UBDStreetLightComponent* Light)
@@ -279,9 +287,7 @@ void UBDDayCycleComponent::ApplyCycle()
 		}
 	}
 
-	const float StreetMultiplier = StreetLightIntensityByAlpha != nullptr
-		? StreetLightIntensityByAlpha->GetFloatValue(CycleAlpha)
-		: 0.0f;
+	const float StreetMultiplier = GetStreetLightMultiplier();
 
 	for (int32 Index = StreetLights.Num() - 1; Index >= 0; --Index)
 	{

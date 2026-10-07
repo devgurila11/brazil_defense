@@ -4,11 +4,19 @@
 
 #include "BDLog.h"
 #include "Components/LightComponent.h"
+#include "Components/MeshComponent.h"
 #include "Day/BDDayCycleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Grid/BDGridSubsystem.h"
 #include "Match/BDMatchManager.h"
+#include "Materials/MaterialInterface.h"
+
+namespace BDStreetLightPrivate
+{
+	/** Below this the lights are switched off outright rather than drawn at nothing. */
+	static constexpr float DarkMultiplier = 0.001f;
+}
 
 UBDStreetLightComponent::UBDStreetLightComponent()
 {
@@ -67,6 +75,8 @@ void UBDStreetLightComponent::BeginPlay()
 		MarkCellBlocked();
 	}
 
+	CaptureLitValues();
+
 	if (const ABDMatchManager* Match = ABDMatchManager::Get(this))
 	{
 		if (UBDDayCycleComponent* Cycle = Match->GetDayCycle())
@@ -89,19 +99,86 @@ void UBDStreetLightComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UBDStreetLightComponent::ApplyCycleIntensity(const float Multiplier)
+void UBDStreetLightComponent::CaptureLitValues()
 {
 	AActor* Owner = GetOwner();
-	if (Owner == nullptr)
+	if (bCapturedLitValues || Owner == nullptr)
+	{
+		return;
+	}
+	bCapturedLitValues = true;
+
+	TArray<ULightComponent*> Lights;
+	Owner->GetComponents(Lights);
+	for (ULightComponent* Light : Lights)
+	{
+		LitLights.Add({ Light, Light->Intensity });
+		Light->SetCastShadows(bLightsCastShadows);
+	}
+
+	if (GlowParameter.IsNone())
 	{
 		return;
 	}
 
-	TArray<ULightComponent*> Lights;
-	Owner->GetComponents(Lights);
-
-	for (ULightComponent* Light : Lights)
+	TArray<UMeshComponent*> Meshes;
+	Owner->GetComponents(Meshes);
+	for (UMeshComponent* Mesh : Meshes)
 	{
-		Light->SetIntensity(LitIntensity * FMath::Max(0.0f, Multiplier));
+		// The brightest slot that has the parameter stands for the mesh: the lamp heads
+		// are one material on any post seen so far.
+		bool bFound = false;
+		float LitValue = 0.0f;
+		for (int32 Slot = 0; Slot < Mesh->GetNumMaterials(); ++Slot)
+		{
+			float Value = 0.0f;
+			const UMaterialInterface* Material = Mesh->GetMaterial(Slot);
+			if (Material != nullptr && Material->GetScalarParameterValue(FHashedMaterialParameterInfo(GlowParameter), Value))
+			{
+				LitValue = bFound ? FMath::Max(LitValue, Value) : Value;
+				bFound = true;
+			}
+		}
+
+		if (bFound)
+		{
+			LitGlows.Add({ Mesh, LitValue });
+		}
+	}
+
+	UE_LOG(LogBDMatch, Verbose, TEXT("Street light %s: %d lights, %d glowing meshes."),
+		*Owner->GetName(), LitLights.Num(), LitGlows.Num());
+}
+
+void UBDStreetLightComponent::ApplyCycleIntensity(const float Multiplier)
+{
+	// The cycle may adopt this light before its own BeginPlay has run.
+	CaptureLitValues();
+
+	const float Clamped = FMath::Max(0.0f, Multiplier);
+	if (FMath::IsNearlyEqual(Clamped, AppliedMultiplier, BDStreetLightPrivate::DarkMultiplier))
+	{
+		return;
+	}
+	AppliedMultiplier = Clamped;
+
+	// Hidden rather than drawn at zero by day: an invisible light costs nothing, a dark
+	// one still pays for its pass.
+	const bool bLit = Clamped > BDStreetLightPrivate::DarkMultiplier;
+	for (const FLitLight& Lit : LitLights)
+	{
+		if (ULightComponent* Light = Lit.Light.Get())
+		{
+			Light->SetIntensity(Lit.LitIntensity * Clamped);
+			Light->SetVisibility(bLit);
+		}
+	}
+
+	for (const FLitGlow& Glow : LitGlows)
+	{
+		if (UMeshComponent* Mesh = Glow.Mesh.Get())
+		{
+			Mesh->SetScalarParameterValueOnMaterials(GlowParameter, Glow.LitValue * Clamped);
+		}
 	}
 }

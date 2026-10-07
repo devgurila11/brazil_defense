@@ -85,6 +85,9 @@ public:
 	void RegisterStreetLight(UBDStreetLightComponent* Light);
 	void UnregisterStreetLight(UBDStreetLightComponent* Light);
 
+	/** What the street lights get at the current alpha, 0 off to 1 fully lit. */
+	float GetStreetLightMultiplier() const;
+
 	/** Waves it takes to come back round to dawn. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Cycle", meta = (ClampMin = "1", UIMin = "1"))
 	int32 WavesPerCycle = 16;
