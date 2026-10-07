@@ -4,9 +4,11 @@
 
 #include "BDLog.h"
 #include "Components/LightComponent.h"
+#include "Components/LocalLightComponent.h"
 #include "Components/MeshComponent.h"
 #include "Day/BDDayCycleComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Actor.h"
 #include "Grid/BDGridSubsystem.h"
 #include "Match/BDMatchManager.h"
@@ -97,6 +99,27 @@ void UBDStreetLightComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 
 	Super::EndPlay(EndPlayReason);
+}
+
+void UBDStreetLightComponent::FindLooseLights(const UWorld* World, TArray<ULocalLightComponent*>& OutLights)
+{
+	OutLights.Reset();
+	if (World == nullptr)
+	{
+		return;
+	}
+
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		if (It->FindComponentByClass<UBDStreetLightComponent>() != nullptr)
+		{
+			continue;
+		}
+
+		TArray<ULocalLightComponent*> Lights;
+		It->GetComponents(Lights);
+		OutLights.Append(Lights);
+	}
 }
 
 void UBDStreetLightComponent::CaptureLitValues()

@@ -35,6 +35,7 @@
 #include "Day/BDStreetLamp.h"
 #include "Day/BDStreetLightComponent.h"
 #include "Components/SpotLightComponent.h"
+#include "Components/LocalLightComponent.h"
 #include "Components/Button.h"
 #include "UI/BDHUDWidget.h"
 #include "Tower/BDTowerData.h"
@@ -388,15 +389,43 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				const float DayCd = Lamp->GetSpotA()->Intensity;
 				const bool bDayHidden = !Lamp->GetSpotA()->IsVisible() && !Lamp->GetSpotB()->IsVisible();
 				const bool bNoShadows = !Lamp->GetSpotA()->CastShadows && !Lamp->GetSpotB()->CastShadows;
+				// The lamp heads glow through the material: without the parameter they stay lit by day.
+				const int32 Glowing = Lamp->GetStreetLight()->GetGlowingMeshCount();
 				Cycle->SetAlphaImmediate(SkyBefore);
 				Lamp->Destroy();
 
 				Check(TEXT("DIA"), TEXT("a street lamp lights itself at night and goes dark by day"),
-					NightWant > 0.0f && FMath::IsNearlyEqual(Night, NightWant, 0.01f) && bNightShown && DayCd == 0.0f && bDayHidden && bNoShadows,
-					FString::Printf(TEXT("night %.2f cd of %.2f (%s), day %.2f cd (%s), shadows %s"),
+					NightWant > 0.0f && FMath::IsNearlyEqual(Night, NightWant, 0.01f) && bNightShown && DayCd == 0.0f && bDayHidden && bNoShadows && Glowing > 0,
+					FString::Printf(TEXT("night %.2f cd of %.2f (%s), day %.2f cd (%s), shadows %s, %d glowing meshes"),
 						Night, NightWant, bNightShown ? TEXT("shown") : TEXT("hidden"),
-						DayCd, bDayHidden ? TEXT("hidden") : TEXT("shown"), bNoShadows ? TEXT("off") : TEXT("on")));
+						DayCd, bDayHidden ? TEXT("hidden") : TEXT("shown"), bNoShadows ? TEXT("off") : TEXT("on"), Glowing));
 			}
+		}
+
+		// The posts on the map itself: each one driven by the cycle, and no light left
+		// outside a post, which would burn day and night whatever the sky says.
+		if (const UBDDayCycleComponent* Cycle = Match->GetDayCycle())
+		{
+			int32 Posts = 0;
+			int32 Driven = 0;
+			for (TActorIterator<AActor> It(World); It; ++It)
+			{
+				if (const UBDStreetLightComponent* Street = It->FindComponentByClass<UBDStreetLightComponent>())
+				{
+					++Posts;
+					Driven += Cycle->IsStreetLightRegistered(Street) ? 1 : 0;
+				}
+			}
+			TArray<ULocalLightComponent*> Loose;
+			UBDStreetLightComponent::FindLooseLights(World, Loose);
+			FString LooseNames;
+			for (const ULocalLightComponent* Light : Loose)
+			{
+				LooseNames += TEXT(" ") + Light->GetOwner()->GetActorNameOrLabel();
+			}
+			Check(TEXT("DIA"), TEXT("every light on the map is a street light the cycle drives"),
+				Driven == Posts && Loose.Num() == 0,
+				FString::Printf(TEXT("%d of %d posts driven, %d loose lights%s"), Driven, Posts, Loose.Num(), *LooseNames));
 		}
 
 		// The HUD's buttons never keep the keyboard: a focused button would swallow Escape.

@@ -263,6 +263,28 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-07 (poste aceso direto) — COMMIT** (desde 8e3a557):
+  - Briefing 2026-10-07 11:00. O código do poste acompanhava o ciclo; havia duas
+    causas fora dele:
+    - **O mapa salvo não tinha BD Street Lamp.** Seguiam lá o `Twin_Spot` e dois
+      `SpotLight` comuns, montados à mão e sem componente, acesos dia e noite. Troca
+      feita por script com o editor fechado: um `BD_StreetLamp` na transformação do
+      antigo, (-11560, 11980, 20) Yaw 90, e os três atores antigos removidos (estão
+      no histórico, em 902049a).
+    - **O vidro emissivo não tinha controle.** O `M_Master_Emission` fazia máscara ×
+      constante 10, sem parâmetro; o "Light Force" do `MI_TwinPost` era um override
+      órfão. A constante virou o parâmetro escalar "Light Force" (padrão 10, o mesmo
+      visual à noite), e o componente agora o apaga de dia.
+  - `BD.Day.Lamps`: lista cada poste (registrado ou não, multiplicador, intensidade
+    e visibilidade dos spots, meshes com brilho controlado) e avisa de luz solta fora
+    de poste. Verificado no jogo headless: 13h12 → 0 cd escondido, 18h → 5 cd,
+    22h47 → 10 cd.
+  - Regressão 66/66. Nova checagem em DIA: todo poste do mapa registrado no ciclo e
+    nenhuma luz solta (teria pegado o caso de hoje). A checagem do poste agora também
+    exige o vidro controlado. Os dois alvos compilados.
+  - Observação: a partida abre às 06h (alpha 0), onde a curva dá 25%, então na
+    montagem o poste começa em 2,5 cd e o vidro a 25%; apaga quando o dia avança.
+
 - **2026-10-07 (postes acendem à noite) — 902049a** (desde 88d2b1a):
   - Briefing 2026-10-07 10:00.
   - **`ABDStreetLamp` ("BD Street Lamp")**: o poste inteiro num ator C++, com mesh

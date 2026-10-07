@@ -85,6 +85,9 @@ public:
 	void RegisterStreetLight(UBDStreetLightComponent* Light);
 	void UnregisterStreetLight(UBDStreetLightComponent* Light);
 
+	/** Whether the cycle is driving this light. */
+	bool IsStreetLightRegistered(const UBDStreetLightComponent* Light) const;
+
 	/** What the street lights get at the current alpha, 0 off to 1 fully lit. */
 	float GetStreetLightMultiplier() const;
 

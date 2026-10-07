@@ -9,6 +9,7 @@
 
 class UBDGridSubsystem;
 class ULightComponent;
+class ULocalLightComponent;
 class UMeshComponent;
 
 /**
@@ -39,8 +40,18 @@ public:
 	/** Scales the lights by what the day cycle asked for, 0 dark to 1 fully lit. */
 	void ApplyCycleIntensity(float Multiplier);
 
+	/**
+	 * Point, spot and rect lights in the world on an actor with no street light: they
+	 * stay at their editor brightness day and night, which on this map is always a
+	 * lamp post someone built by hand.
+	 */
+	static void FindLooseLights(const UWorld* World, TArray<ULocalLightComponent*>& OutLights);
+
 	/** Last multiplier the cycle applied, -1 before the first. */
 	float GetAppliedMultiplier() const { return AppliedMultiplier; }
+
+	/** Meshes whose GlowParameter follows the lights. */
+	int32 GetGlowingMeshCount() const { return LitGlows.Num(); }
 
 	/**
 	 * Whether the lights cast dynamic shadows. Off by default: a street of shadowed spots

@@ -6,6 +6,7 @@
 #include "Misc/App.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Components/LocalLightComponent.h"
 #include "Curves/CurveFloat.h"
 #include "Curves/CurveLinearColor.h"
 #include "Day/BDDaySettings.h"
@@ -81,6 +82,11 @@ void UBDDayCycleComponent::RegisterStreetLight(UBDStreetLightComponent* Light)
 		// brightness until the next wave moves the sun.
 		Light->ApplyCycleIntensity(GetStreetLightMultiplier());
 	}
+}
+
+bool UBDDayCycleComponent::IsStreetLightRegistered(const UBDStreetLightComponent* Light) const
+{
+	return StreetLights.Contains(Light);
 }
 
 float UBDDayCycleComponent::GetStreetLightMultiplier() const
@@ -350,4 +356,55 @@ namespace BDDayCommands
 		TEXT("BD.Day.SetAlpha"),
 		TEXT("BD.Day.SetAlpha <0..1>: puts the day cycle straight at an alpha, for authoring the curves."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSetAlpha));
+
+	static void ExecLamps(UWorld* World)
+	{
+		const UBDDayCycleComponent* Cycle = FindDayCycle(World);
+		if (Cycle == nullptr)
+		{
+			UE_LOG(LogBDMatch, Error, TEXT("BD.Day.Lamps: no day cycle in this world."));
+			return;
+		}
+
+		UE_LOG(LogBDMatch, Display, TEXT("BD.Day.Lamps: cycle at %.3f (%s), street lights at %.2f of full."),
+			Cycle->GetCycleAlpha(), *Cycle->GetClockText().ToString(), Cycle->GetStreetLightMultiplier());
+
+		int32 Posts = 0;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			const UBDStreetLightComponent* Street = It->FindComponentByClass<UBDStreetLightComponent>();
+			if (Street == nullptr)
+			{
+				continue;
+			}
+			++Posts;
+
+			TArray<ULocalLightComponent*> Lights;
+			It->GetComponents(Lights);
+			FString Detail;
+			for (const ULocalLightComponent* Light : Lights)
+			{
+				Detail += FString::Printf(TEXT(" %s %.2f%s%s"), *Light->GetName(), Light->Intensity,
+					Light->IsVisible() ? TEXT("") : TEXT(" hidden"), Light->CastShadows ? TEXT(" shadowed") : TEXT(""));
+			}
+			UE_LOG(LogBDMatch, Display, TEXT("  %s: %s, applied %.2f, %d glowing meshes (%s);%s"), *It->GetActorNameOrLabel(),
+				Cycle->IsStreetLightRegistered(Street) ? TEXT("driven by the cycle") : TEXT("NOT REGISTERED"),
+				Street->GetAppliedMultiplier(), Street->GetGlowingMeshCount(), *Street->GlowParameter.ToString(), *Detail);
+		}
+
+		TArray<ULocalLightComponent*> Loose;
+		UBDStreetLightComponent::FindLooseLights(World, Loose);
+		for (const ULocalLightComponent* Light : Loose)
+		{
+			UE_LOG(LogBDMatch, Warning, TEXT("  %s (%s): a light on no street light, lit day and night at %.2f."),
+				*Light->GetOwner()->GetActorNameOrLabel(), *Light->GetName(), Light->Intensity);
+		}
+
+		UE_LOG(LogBDMatch, Display, TEXT("BD.Day.Lamps: %d posts, %d loose lights."), Posts, Loose.Num());
+	}
+
+	static FAutoConsoleCommandWithWorld CmdLamps(
+		TEXT("BD.Day.Lamps"),
+		TEXT("BD.Day.Lamps: lists the street lights with what the cycle gave them, and any light left out of it."),
+		FConsoleCommandWithWorldDelegate::CreateStatic(&ExecLamps));
 }
