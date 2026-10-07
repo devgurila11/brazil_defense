@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-07 (poste aceso direto) — COMMIT** (desde 8e3a557):
+- **2026-10-07 (poste aceso direto) — 43d35f1** (desde 8e3a557):
   - Briefing 2026-10-07 11:00. O código do poste acompanhava o ciclo; havia duas
     causas fora dele:
     - **O mapa salvo não tinha BD Street Lamp.** Seguiam lá o `Twin_Spot` e dois
