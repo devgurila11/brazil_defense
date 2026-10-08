@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-08 (desempenho com plataformas cheias) — COMMIT** (desde 5b0cc5f):
+- **2026-10-08 (desempenho com plataformas cheias) — f087df2** (desde 5b0cc5f):
   - Briefing de GPU com 8 plataformas cheias (~50 atiradores). Medido renderizado, números
     e reprodução na seção 13, Rodada 6. Sem horda o frame era preso na render thread, não
     na GPU: o debug da grade, ligado no jogo, desenhava uma esfera de linhas grossas e uma
