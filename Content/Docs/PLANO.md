@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-08 (primeiro atirador de plataforma) — COMMIT** (desde 0552671):
+- **2026-10-08 (primeiro atirador de plataforma) — 7df91c5** (desde 0552671):
   - Briefing 2026-10-08 10:00. Toda a estrutura com slots vazios; os assets entram depois.
   - **Atirador (`ABDShooter`, dado `UBDShooterData`):** filho de `ABDTowerBase`, então a
     mira (mais adiantado no próprio alcance, revista a cada tiro), a cadência, o carregador
