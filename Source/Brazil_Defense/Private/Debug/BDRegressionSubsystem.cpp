@@ -39,6 +39,12 @@
 #include "Components/LocalLightComponent.h"
 #include "Components/Button.h"
 #include "UI/BDHUDWidget.h"
+#include "Components/DecalComponent.h"
+#include "Engine/Texture2D.h"
+#include "Enemy/BDBloodDecals.h"
+#include "Tower/BDShooter.h"
+#include "Tower/BDShooterData.h"
+#include "Tower/BDShotSound.h"
 #include "Tower/BDTowerData.h"
 #include "UI/BDMatchHUD.h"
 #include "UObject/UObjectIterator.h"
@@ -656,6 +662,29 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			return false;
 		}
 
+		// The shooters' button of the bar unfolds their list upwards; an entry takes its
+		// shooter into the hand and folds the list again. The key hands over the same one.
+		{
+			UBDHUDWidget* Hud = nullptr;
+			for (TObjectIterator<UBDHUDWidget> It; It; ++It)
+			{
+				if (It->GetWorld() == World) { Hud = *It; }
+			}
+			const int32 Listed = UBDPlacementSettings::Get().Shooters.Num();
+			const bool bClicked = Hud != nullptr && Hud->DebugClickShooterGroup();
+			const bool bOpened = bClicked && Hud->AreShootersOpen();
+			const int32 Entries = Hud != nullptr ? Hud->GetShooterEntryCount() : 0;
+			const bool bPicked = bOpened && Hud->DebugPickShooter(0);
+			const UBDPlaceableData* Held = Placement->GetCurrentSelection();
+			const bool bFolded = Hud != nullptr && !Hud->AreShootersOpen();
+			const bool bKeySame = Placement->ResolvePaletteEntry(Character) == Held;
+			Placement->CancelSelection();
+			Check(TEXT("INTERFACE"), TEXT("the shooters' button unfolds their list; an entry takes its shooter and folds it, and the key gives the same"),
+				Listed > 0 && bOpened && Entries == Listed && bPicked && Held != nullptr && UBDPlacementSettings::Get().IsListedShooter(Held) && bFolded && bKeySame,
+				FString::Printf(TEXT("%s, %d of %d listed, picked %s, list %s, key %s"), Hud == nullptr ? TEXT("no HUD") : (bOpened ? TEXT("unfolded") : TEXT("STAYED SHUT")),
+					Entries, Listed, *GetNameSafe(Held), bFolded ? TEXT("folded") : TEXT("STILL OPEN"), bKeySame ? TEXT("same") : TEXT("ANOTHER")));
+		}
+
 		const auto Mount = [this, Placement, Character, World](const int32 Slot) -> ABDTowerBase*
 		{
 			TArray<ABDTowerBase*> Before;
@@ -754,6 +783,91 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			}
 			Check(TEXT("PLATAFORMA"), TEXT("a character kicks back at every shot"), bKicked && Peak > 1.0f,
 				FString::Printf(TEXT("kick %s, %.0f cm back at its peak"), bKicked ? TEXT("playing") : TEXT("none"), Peak));
+		}
+
+		// The platform's character is a shooter with a body's slots: the weapon of his level
+		// in hand, a flash and a sound at every shot, an impact where it lands.
+		if (Crew.Num() > 0 && Crew[0].IsValid())
+		{
+			ABDShooter* Shooter = Cast<ABDShooter>(Crew[0].Get());
+			const UBDShooterData* ShooterData = Shooter != nullptr ? Shooter->GetShooterData() : nullptr;
+			const FBDShooterWeapon* Held = ShooterData != nullptr ? ShooterData->GetWeapon(Shooter->GetTowerLevel()) : nullptr;
+			Check(TEXT("ATIRADOR"), TEXT("the character piece builds a shooter, six weapons, the pistol designed and the star's weapon in hand"),
+				Shooter != nullptr && ShooterData != nullptr && ShooterData->Weapons.Num() == UBDTowerData::MaxLevels
+					&& !ShooterData->Weapons[0].bPlaceholder && Shooter->GetWeaponLevel() == Shooter->GetTowerLevel() && Shooter->GetTowerLevel() == 2,
+				Shooter == nullptr ? FString::Printf(TEXT("%s is a %s"), *Crew[0]->GetName(), *Crew[0]->GetClass()->GetName())
+					: FString::Printf(TEXT("level %d, weapon of level %d (%s), %d weapons, hand socket '%s'"), Shooter->GetTowerLevel(), Shooter->GetWeaponLevel(),
+						Held != nullptr ? *Held->Name.ToString() : TEXT("none"), ShooterData != nullptr ? ShooterData->Weapons.Num() : 0,
+						ShooterData != nullptr ? *ShooterData->HandSocket.ToString() : TEXT("")));
+
+			// A placeholder weapon fights with the level ladder; the pistol with its own numbers.
+			const float PistolDamage = ShooterData != nullptr ? ShooterData->Weapons[0].Damage : 0.0f;
+			const FBDTowerLevel* Base = ShooterData != nullptr ? ShooterData->GetLevel(1) : nullptr;
+			const float LadderAtTwo = Base != nullptr ? Base->Damage * UBDGameBalanceSettings::Get().GetUpgradeDamageScale(2) : 0.0f;
+			Check(TEXT("ATIRADOR"), TEXT("the pistol keeps the old shooter's numbers, a placeholder weapon follows the level ladder"),
+				Shooter != nullptr && Base != nullptr && FMath::IsNearlyEqual(PistolDamage, Base->Damage) && FMath::IsNearlyEqual(Shooter->GetEffectiveDamage(), LadderAtTwo, 0.01f)
+					&& FMath::IsNearlyEqual(Shooter->GetFireRate(), Base->FireRate),
+				FString::Printf(TEXT("pistol %.1f dmg (level 1 %.1f), level 2 %.1f dmg (ladder %.1f), %.2f shots/s"),
+					PistolDamage, Base != nullptr ? Base->Damage : 0.0f, Shooter != nullptr ? Shooter->GetEffectiveDamage() : 0.0f, LadderAtTwo,
+					Shooter != nullptr ? Shooter->GetFireRate() : 0.0f));
+
+			UBDShotSoundSubsystem* Shots = World->GetSubsystem<UBDShotSoundSubsystem>();
+			ABDEnemyBase* Dummy = Waves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), 0);
+			const int32 FlashesBefore = Shooter != nullptr ? Shooter->GetFlashesRequested() : 0;
+			const int32 SoundsBefore = Shots != nullptr ? Shots->GetShotsRequested() : 0;
+			const int32 ImpactsBefore = Shooter != nullptr ? Shooter->GetImpactsRequested() : 0;
+			const bool bFired = Shooter != nullptr && Dummy != nullptr && Shooter->DebugFireAt(Dummy);
+			if (Shooter != nullptr && Dummy != nullptr)
+			{
+				Shooter->ApplyHit(Dummy, Dummy->GetActorLocation(), 0.0f);
+			}
+			if (Dummy != nullptr)
+			{
+				Dummy->Destroy();
+			}
+			const int32 Flashes = Shooter != nullptr ? Shooter->GetFlashesRequested() - FlashesBefore : 0;
+			const int32 Sounds = Shots != nullptr ? Shots->GetShotsRequested() - SoundsBefore : 0;
+			const int32 Impacts = Shooter != nullptr ? Shooter->GetImpactsRequested() - ImpactsBefore : 0;
+			Check(TEXT("ATIRADOR"), TEXT("a shot asks once for the muzzle flash and the shot sound, a hit for the impact"),
+				bFired && Flashes == 1 && Sounds == 1 && Impacts == 1,
+				FString::Printf(TEXT("shot %s, %d flash, %d sound, %d impact (slots %s, %s, %s)"), bFired ? TEXT("fired") : TEXT("NOT FIRED"), Flashes, Sounds, Impacts,
+					ShooterData != nullptr && !ShooterData->ResolveMuzzleFlash(2).IsNull() ? TEXT("flash set") : TEXT("flash empty"),
+					ShooterData != nullptr && !ShooterData->ResolveFireSound(2).IsNull() ? TEXT("sound set") : TEXT("sound empty"),
+					ShooterData != nullptr && !ShooterData->ImpactEffect.IsNull() ? TEXT("impact set") : TEXT("impact empty")));
+		}
+
+		// The green stains: one per kill, gone on their own with a fade, never more than
+		// MaxDecals whole on the ground. Painted with an engine texture here, so the pool is
+		// tested before the art lands; without a texture nothing is left at all.
+		if (UBDBloodDecalSubsystem* Blood = UBDBloodDecalSubsystem::Get(World))
+		{
+			const UBDBloodSettings& BloodSettings = UBDBloodSettings::Get();
+			const bool bEmptyLeavesNone = !BloodSettings.BloodTexture.IsNull() || Blood->SpawnAt(Grid->CellToWorld(UrnCell)) == nullptr;
+			Blood->SetTextureOverride(LoadObject<UTexture2D>(nullptr, TEXT("/Engine/EngineResources/DefaultTexture.DefaultTexture")));
+			const int32 EvictedBefore = Blood->GetEvicted();
+			const int32 Burst = BloodSettings.MaxDecals + 5;
+			TArray<TWeakObjectPtr<UDecalComponent>> Left;
+			for (int32 Each = 0; Each < Burst; ++Each)
+			{
+				Left.Add(Blood->SpawnAt(Grid->CellToWorld(UrnCell) + FVector(Each * 10.0f, 0.0f, 0.0f)));
+			}
+			Blood->SetTextureOverride(nullptr);
+			const IConsoleVariable* FadeScaleVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Decal.FadeDurationScale"));
+			const float FadeScale = FadeScaleVar != nullptr ? FadeScaleVar->GetFloat() : 1.0f;
+			int32 Spawned = 0;
+			int32 FadingOnTheirOwn = 0;
+			for (const TWeakObjectPtr<UDecalComponent>& Decal : Left)
+			{
+				Spawned += Decal.IsValid() ? 1 : 0;
+				FadingOnTheirOwn += Decal.IsValid() && FMath::IsNearlyEqual(Decal->GetFadeDuration(), BloodSettings.DecalFadeTime * FadeScale, 0.01f) ? 1 : 0;
+			}
+			const int32 Evicted = Blood->GetEvicted() - EvictedBefore;
+			const bool bWorldSettings = World->GetWorldSettings() != nullptr && !World->GetWorldSettings()->IsActorBeingDestroyed();
+			Check(TEXT("SANGUE"), TEXT("a stain per kill fades out on its own, the oldest gives way past MaxDecals, none without a texture"),
+				bEmptyLeavesNone && Spawned == Burst && FadingOnTheirOwn == BloodSettings.MaxDecals && Evicted == Burst - BloodSettings.MaxDecals && bWorldSettings,
+				FString::Printf(TEXT("%d of %d left, %d fading on their own over %.1f s after %.1f s, %d sent early, cap %d, %s"),
+					Spawned, Burst, FadingOnTheirOwn, BloodSettings.DecalFadeTime, BloodSettings.HoldTime, Evicted, BloodSettings.MaxDecals,
+					bEmptyLeavesNone ? TEXT("empty slot leaves none") : TEXT("EMPTY SLOT LEFT ONE")));
 		}
 
 		// The palace: 2x2, bought with public money at its share of candidates, holding its
@@ -1307,7 +1421,11 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			{
 				++CorpsesBefore;
 			}
+			UBDBloodDecalSubsystem* Blood = UBDBloodDecalSubsystem::Get(GetWorld());
+			const int32 StainsBefore = Blood != nullptr ? Blood->GetRequested() : 0;
 			Creep->Kill();
+			Check(TEXT("SANGUE"), TEXT("a kill asks for a stain where the creep fell"), Blood != nullptr && Blood->GetRequested() == StainsBefore + 1,
+				FString::Printf(TEXT("%d stain(s) asked"), Blood != nullptr ? Blood->GetRequested() - StainsBefore : 0));
 
 			// Its fall is show only: the creep is gone from the game on the spot (nothing
 			// may aim at it or wait on it), and what is left is a body that is not a creep

@@ -12,8 +12,8 @@
  * the arm would kick with nothing coming out. The shooter plays the loop at the rate its
  * weapon fires, so one gesture is one shot.
  *
- * Only the Agent (ABDAgent) listens to it today; Shooting carries it at 0.21 s, where the
- * right wrist snaps back.
+ * The Agent (ABDAgent) and the platform shooters (ABDShooter) listen to it. The Agent's
+ * Shooting carries it at 0.21 s, where the right wrist snaps back.
  */
 UCLASS(const, hidecategories = Object, collapsecategories, meta = (DisplayName = "BD Shot"))
 class BRAZIL_DEFENSE_API UBDAnimNotify_Shot : public UAnimNotify

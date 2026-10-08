@@ -7,6 +7,7 @@
 #include "Animation/AnimSequenceBase.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Enemy/BDBloodDecals.h"
 #include "Enemy/BDCreepCorpse.h"
 #include "Enemy/BDCreepSoundSubsystem.h"
 #include "Enemy/BDEnemyData.h"
@@ -784,6 +785,10 @@ void ABDEnemyBase::Die()
 		Sounds->PlayDeath(*this);
 	}
 	ABDCreepCorpse::SpawnFrom(*this);
+	if (UBDBloodDecalSubsystem* Blood = UBDBloodDecalSubsystem::Get(this))
+	{
+		Blood->SpawnAt(GetActorLocation());
+	}
 
 	Destroy();
 }

@@ -518,6 +518,60 @@ void UBDHUDWidget::BuildTree()
 	BuildSlotOnCanvas->SetAutoSize(true);
 	BuildSlotOnCanvas->SetPosition(FVector2D(0.0f, -Margin));
 
+	//~ Over the shooters' button: the drop-up of the shooters, folded until it is clicked.
+	// It stands on the canvas, not in the bar, so unfolding it never pushes the bar.
+	for (int32 Index = 0; Index < PaletteData.Num() && ShooterGroupIndex == INDEX_NONE; ++Index)
+	{
+		if (UBDPlacementSettings::Get().IsShooterGroup(PaletteData[Index]))
+		{
+			ShooterGroupIndex = Index;
+		}
+	}
+	if (ShooterGroupIndex != INDEX_NONE)
+	{
+		for (const TSoftObjectPtr<UBDPlaceableData>& Entry : UBDPlacementSettings::Get().Shooters)
+		{
+			if (ShooterData.Num() >= MaxShooterEntries)
+			{
+				break;
+			}
+			if (UBDPlaceableData* Data = Entry.LoadSynchronous())
+			{
+				ShooterData.Add(Data);
+			}
+		}
+	}
+	ShooterBox = MakeBox(WithOpacity(ColorPanel, UBDUISettings::Get().ItemBarOpacity), 6.0f);
+	UVerticalBox* ShooterColumn = MakeColumn();
+	// Listed top down in the order of the settings; the list grows upwards from the bar.
+	for (int32 Index = 0; Index < ShooterData.Num(); ++Index)
+	{
+		ShooterButtons[Index] = MakeShooterEntry(ShooterIcons[Index], ShooterIconBoxes[Index], ShooterLabels[Index], ShooterInfos[Index]);
+		UVerticalBoxSlot* EntrySlot = ShooterColumn->AddChildToVerticalBox(ShooterButtons[Index]);
+		EntrySlot->SetPadding(FMargin(0.0f, ItemGap * 0.5f));
+		EntrySlot->SetHorizontalAlignment(HAlign_Fill);
+		if (UTexture2D* Texture = ShooterData[Index]->Icon.LoadSynchronous())
+		{
+			ShooterIcons[Index]->SetBrushFromTexture(Texture, /*bMatchSize*/ false);
+		}
+		else
+		{
+			ShooterIconBoxes[Index]->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+	if (ShooterData.Num() > 0) { ShooterButtons[0]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleShooter0); }
+	if (ShooterData.Num() > 1) { ShooterButtons[1]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleShooter1); }
+	if (ShooterData.Num() > 2) { ShooterButtons[2]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleShooter2); }
+	if (ShooterData.Num() > 3) { ShooterButtons[3]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleShooter3); }
+	if (ShooterData.Num() > 4) { ShooterButtons[4]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleShooter4); }
+	if (ShooterData.Num() > 5) { ShooterButtons[5]->OnClicked.AddDynamic(this, &UBDHUDWidget::HandleShooter5); }
+	ShooterBox->AddChild(ShooterColumn);
+	ShooterBox->SetVisibility(ESlateVisibility::Collapsed);
+	UCanvasPanelSlot* ShooterSlot = Canvas->AddChildToCanvas(ShooterBox);
+	ShooterSlot->SetAnchors(FAnchors(0.0f, 0.0f));
+	ShooterSlot->SetAlignment(FVector2D(0.5f, 1.0f));
+	ShooterSlot->SetAutoSize(true);
+
 	//~ Top left: the game menu and the save, side by side.
 	UHorizontalBox* CornerRow = MakeRow();
 	UButton* MenuButton = MakeButton(MenuLabel, SmallFontSize);
@@ -640,6 +694,45 @@ UButton* UBDHUDWidget::MakeItem(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox
 	return Button;
 }
 
+UButton* UBDHUDWidget::MakeShooterEntry(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutInfo)
+{
+	using namespace BDHUDPrivate;
+
+	// The item of the bar laid on its side: a list reads down, a bar reads across.
+	UButton* Button = WidgetTree->ConstructWidget<UButton>(UButton::StaticClass());
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	Button->IsFocusable = ButtonsTakeFocus();
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	Button->SetBackgroundColor(ColorButton);
+	UHorizontalBox* Row = MakeRow();
+
+	OutIconBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+	OutIconBox->SetWidthOverride(ItemIconSize * 0.6f);
+	OutIconBox->SetHeightOverride(ItemIconSize * 0.6f);
+	UScaleBox* Scale = WidgetTree->ConstructWidget<UScaleBox>(UScaleBox::StaticClass());
+	Scale->SetStretch(EStretch::ScaleToFit);
+	OutIcon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass());
+	OutIcon->SetVisibility(ESlateVisibility::HitTestInvisible);
+	Scale->AddChild(OutIcon);
+	OutIconBox->AddChild(Scale);
+	UHorizontalBoxSlot* IconSlot = Row->AddChildToHorizontalBox(OutIconBox);
+	IconSlot->SetVerticalAlignment(VAlign_Center);
+	IconSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
+
+	UVerticalBox* Words = MakeColumn();
+	OutLabel = MakeText(SmallFontSize, ColorPanelDark);
+	ShadowText(OutLabel);
+	Words->AddChildToVerticalBox(OutLabel);
+	OutInfo = MakeText(SmallFontSize, ColorPanelDark);
+	ShadowText(OutInfo);
+	Words->AddChildToVerticalBox(OutInfo);
+	UHorizontalBoxSlot* WordsSlot = Row->AddChildToHorizontalBox(Words);
+	WordsSlot->SetVerticalAlignment(VAlign_Center);
+
+	Button->AddChild(Row);
+	return Button;
+}
+
 void UBDHUDWidget::ApplyResponsiveSizes()
 {
 	using namespace BDHUDPrivate;
@@ -661,6 +754,11 @@ void UBDHUDWidget::ApplyResponsiveSizes()
 	{
 		BuildIconBoxes[Index]->SetWidthOverride(Icon);
 		BuildIconBoxes[Index]->SetHeightOverride(Icon);
+	}
+	for (int32 Index = 0; Index < ShooterData.Num(); ++Index)
+	{
+		ShooterIconBoxes[Index]->SetWidthOverride(Icon * 0.6f);
+		ShooterIconBoxes[Index]->SetHeightOverride(Icon * 0.6f);
 	}
 	const float ScoreIcon = FMath::Max(16.0f, Size.Y * Settings.ScoreIconHeightFraction);
 	BlueIconBox->SetWidthOverride(ScoreIcon);
@@ -1470,14 +1568,13 @@ void UBDHUDWidget::UpdateDefenderPanel()
 	DefenderBox->SetVisibility(ESlateVisibility::Visible);
 
 	const UBDTowerData* Data = Tower->GetData();
-	const FBDTowerLevel* Level = Tower->GetCurrentLevel();
 
 	FFormatNamedArguments Args;
 	Args.Add(TEXT("Name"), BDLoc::PieceName(Data));
 	Args.Add(TEXT("Level"), Tower->GetTowerLevel());
 	Args.Add(TEXT("Damage"), FMath::RoundToInt(Tower->GetEffectiveDamage()));
 	Args.Add(TEXT("Range"), FText::AsNumber(Tower->GetEffectiveRangeCells(), &FNumberFormattingOptions().SetMaximumFractionalDigits(1)));
-	Args.Add(TEXT("FireRate"), FText::AsNumber(Level != nullptr ? Level->FireRate : 0.0f, &FNumberFormattingOptions().SetMaximumFractionalDigits(2)));
+	Args.Add(TEXT("FireRate"), FText::AsNumber(Tower->GetFireRate(), &FNumberFormattingOptions().SetMaximumFractionalDigits(2)));
 	DefenderName->SetText(BDLoc::Format(TEXT("HUD.Defender.Name"), Args));
 	DefenderStats->SetText(BDLoc::Format(TEXT("HUD.Defender.Stats"), Args));
 
@@ -1836,13 +1933,15 @@ void UBDHUDWidget::UpdateBuildPanel()
 
 	for (int32 Index = 0; Index < PaletteData.Num(); ++Index)
 	{
-		const UBDPlaceableData* Data = PaletteData[Index];
-		const EBDPieceKind Kind = Data->GetPieceKind();
+		// The shooters' button speaks for the shooter it would hand over, and is lit for any
+		// shooter in hand.
+		const bool bGroup = Index == ShooterGroupIndex;
+		const UBDPlaceableData* Data = bGroup && Placement != nullptr ? Placement->ResolvePaletteEntry(PaletteData[Index]) : PaletteData[Index].Get();
 		FFormatNamedArguments Args;
 		Args.Add(TEXT("Key"), FText::AsNumber(Index + 1));
-		Args.Add(TEXT("Name"), BDLoc::PieceName(Data));
+		Args.Add(TEXT("Name"), bGroup ? Loc(TEXT("HUD.Build.Shooters")) : BDLoc::PieceName(Data));
 		BuildLabels[Index]->SetText(BDLoc::Format(TEXT("HUD.Build.Entry"), Args));
-		const bool bHeld = Held == Data;
+		const bool bHeld = Held != nullptr && (Held == Data || (bGroup && UBDPlacementSettings::Get().IsListedShooter(Held)));
 		BuildButtons[Index]->SetBackgroundColor(bHeld ? ColorButton : ItemIdle);
 		// What is left and what it costs, or - when the piece cannot be taken - the reason,
 		// in red. A button that only greys out is the thing the player complained about:
@@ -1854,7 +1953,104 @@ void UBDHUDWidget::UpdateBuildPanel()
 			bHeld ? ColorPanelDark : (bAvailable ? ColorMuted : ColorRed)));
 		BuildCounts[Index]->SetText(BuildInfoText(Data, Refusal));
 	}
+
+	UpdateShooterList();
 }
+
+void UBDHUDWidget::SetShootersOpen(const bool bOpen)
+{
+	bShootersOpen = bOpen && ShooterGroupIndex != INDEX_NONE && ShooterData.Num() > 0;
+	const UBDPlacementComponent* Placement = GetPlacement();
+	HeldWhenOpened = Placement != nullptr ? Placement->GetCurrentSelection() : nullptr;
+	ShooterBox->SetVisibility(bShootersOpen ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	if (bShootersOpen)
+	{
+		UpdateShooterList();
+	}
+}
+
+void UBDHUDWidget::UpdateShooterList()
+{
+	using namespace BDHUDPrivate;
+
+	if (!bShootersOpen)
+	{
+		return;
+	}
+
+	// Another piece taken by any door - a key, the urn, a click on the board - folds it.
+	const ABDMatchManager* Match = GetMatch();
+	const UBDPlacementComponent* Placement = GetPlacement();
+	const UBDPlaceableData* Held = Placement != nullptr ? Placement->GetCurrentSelection() : nullptr;
+	if (Held != HeldWhenOpened.Get() || Match == nullptr || Match->IsMatchOver())
+	{
+		SetShootersOpen(false);
+		return;
+	}
+
+	// Standing on the top of the bar, centred over its button, wherever the bar is.
+	const FGeometry& CanvasGeometry = RootCanvas->GetCachedGeometry();
+	const FGeometry& ButtonGeometry = BuildButtons[ShooterGroupIndex]->GetCachedGeometry();
+	const FVector2D ButtonTopLeft = CanvasGeometry.AbsoluteToLocal(ButtonGeometry.GetAbsolutePosition());
+	const FVector2D ButtonBottomRight = CanvasGeometry.AbsoluteToLocal(ButtonGeometry.GetAbsolutePosition() + ButtonGeometry.GetAbsoluteSize());
+	const float BarTop = CanvasGeometry.AbsoluteToLocal(BuildBox->GetCachedGeometry().GetAbsolutePosition()).Y;
+	if (UCanvasPanelSlot* ShooterSlot = Cast<UCanvasPanelSlot>(ShooterBox->Slot))
+	{
+		ShooterSlot->SetPosition(FVector2D((ButtonTopLeft.X + ButtonBottomRight.X) * 0.5f, BarTop - ItemGap));
+	}
+
+	const FLinearColor ItemIdle = WithOpacity(ColorButtonIdle, UBDUISettings::Get().ItemIdleOpacity);
+	for (int32 Index = 0; Index < ShooterData.Num(); ++Index)
+	{
+		const UBDPlaceableData* Data = ShooterData[Index];
+		const bool bHeld = Held == Data;
+		const EBDPlacementRefusal Refusal = BuildRefusal(Data);
+		const bool bAvailable = Refusal == EBDPlacementRefusal::None;
+		ShooterButtons[Index]->SetBackgroundColor(bHeld ? ColorButton : ItemIdle);
+		ShooterLabels[Index]->SetText(BDLoc::PieceName(Data));
+		ShooterLabels[Index]->SetColorAndOpacity(FSlateColor(bHeld ? ColorPanelDark : (bAvailable ? ColorText : ColorMuted)));
+		ShooterInfos[Index]->SetColorAndOpacity(FSlateColor(bHeld ? ColorPanelDark : (bAvailable ? ColorMuted : ColorRed)));
+		ShooterInfos[Index]->SetText(BuildInfoText(Data, Refusal));
+	}
+}
+
+void UBDHUDWidget::SelectShooter(const int32 Index)
+{
+	UBDPlacementComponent* Placement = GetPlacement();
+	if (Placement == nullptr || !ShooterData.IsValidIndex(Index))
+	{
+		return;
+	}
+	SetShootersOpen(false);
+	Placement->TakeIntoHand(ShooterData[Index]);
+}
+
+bool UBDHUDWidget::DebugClickShooterGroup()
+{
+	if (ShooterGroupIndex == INDEX_NONE)
+	{
+		return false;
+	}
+	SelectBuild(ShooterGroupIndex);
+	return true;
+}
+
+bool UBDHUDWidget::DebugPickShooter(const int32 Index)
+{
+	if (!bShootersOpen || !ShooterData.IsValidIndex(Index))
+	{
+		return false;
+	}
+	SelectShooter(Index);
+	return true;
+}
+
+void UBDHUDWidget::HandleShooter0() { SelectShooter(0); }
+void UBDHUDWidget::HandleShooter1() { SelectShooter(1); }
+void UBDHUDWidget::HandleShooter2() { SelectShooter(2); }
+void UBDHUDWidget::HandleShooter3() { SelectShooter(3); }
+void UBDHUDWidget::HandleShooter4() { SelectShooter(4); }
+void UBDHUDWidget::HandleShooter5() { SelectShooter(5); }
 
 void UBDHUDWidget::SelectBuild(const int32 Index)
 {
@@ -1863,6 +2059,15 @@ void UBDHUDWidget::SelectBuild(const int32 Index)
 	{
 		return;
 	}
+
+	// The shooters' button unfolds their list instead of handing one over; clicked again,
+	// or any other button, folds it.
+	if (Index == ShooterGroupIndex)
+	{
+		SetShootersOpen(!bShootersOpen);
+		return;
+	}
+	SetShootersOpen(false);
 
 	// Clicking the piece already in hand puts it down again.
 	if (Placement->GetCurrentSelection() == PaletteData[Index])
@@ -1877,6 +2082,7 @@ void UBDHUDWidget::HandleBuildUrn()
 {
 	UBDPlacementComponent* Placement = GetPlacement();
 	UBDPlaceableData* Urn = UBDObjectiveSettings::Get().ObjectivePlaceable.LoadSynchronous();
+	SetShootersOpen(false);
 	if (Placement != nullptr && Urn != nullptr)
 	{
 		Placement->TakeIntoHand(Urn);

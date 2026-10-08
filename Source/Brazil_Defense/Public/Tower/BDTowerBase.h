@@ -39,7 +39,7 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	/** Called once by whoever spawned the tower, before its first tick. Applies the data and the mesh. */
-	void InitializeTower(const UBDTowerData* InData);
+	virtual void InitializeTower(const UBDTowerData* InData);
 
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Tower")
 	const UBDTowerData* GetData() const { return Data; }
@@ -199,9 +199,44 @@ public:
 	/** Fires one shot of the current level at a creep now, aim or not. For the regression. */
 	bool DebugFireAt(ABDEnemyBase* Target);
 
+	/** Shots per second at the current level. */
+	float GetFireRate() const;
+
 protected:
-	/** Spawns and launches one projectile at the current target. Virtual so a Blueprint child can add a muzzle effect. */
+	/** Spawns and launches one projectile at the current target. Virtual so a child can add a muzzle effect. */
 	virtual void Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats);
+
+	/**
+	 * The weapon is ready, aligned and loaded: the shot is due. The base fires it on the
+	 * spot (CommitShot); a shooter with a gesture may start the gesture first and commit
+	 * on its shot frame. The cooldown has already started either way.
+	 */
+	virtual void BeginShot(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats);
+
+	/** Fires, and counts the round off the magazine, starting the reload on the last one. */
+	void CommitShot(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats);
+
+	/** Damage of one hit at a level: authored when the level is authored, the upgrade formula otherwise. */
+	virtual float GetDamageAtLevel(int32 AtLevel) const;
+
+	/** Shots per second at a level. The base reads the level's entry of the data. */
+	virtual float GetFireRateAtLevel(int32 AtLevel) const;
+
+	/** Where shots leave from: the top of the mesh, or the weapon pivot when there is none. */
+	virtual FVector GetMuzzleLocation() const;
+
+	/** A shot of this defender reached a living creep, before the damage. For the effects of a child. */
+	virtual void OnShotLanded(ABDEnemyBase* HitTarget, const FVector& HitLocation) {}
+
+	/** The target held now, or null. */
+	ABDEnemyBase* GetHeldTarget() const { return CurrentTarget.Get(); }
+
+	/**
+	 * The creep to shoot right now inside the range: the one held while it is valid,
+	 * otherwise the best one in range. Null when there is none. For a shot committed after
+	 * a gesture, when the creep the gesture started on may be gone.
+	 */
+	ABDEnemyBase* ResolveShotTarget();
 
 private:
 	UBDWaveSubsystem* GetWaves() const;
@@ -220,9 +255,6 @@ private:
 
 	/** Forgets the target and starts the acquisition over. */
 	void DropTarget();
-
-	/** Where shots leave from: the top of the mesh, or the weapon pivot when there is none. */
-	FVector GetMuzzleLocation() const;
 
 	/** Range in cells of a level of this defender where it stands, platform included. */
 	float GetRangeCellsAtLevel(int32 AtLevel) const;

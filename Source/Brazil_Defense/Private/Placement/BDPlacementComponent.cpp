@@ -30,6 +30,8 @@
 #include "Platform/BDPlatformComponent.h"
 #include "Objective/BDObjectiveSettings.h"
 #include "Save/BDMatchSave.h"
+#include "Tower/BDShooter.h"
+#include "Tower/BDShooterData.h"
 #include "Tower/BDTowerBase.h"
 #include "Tower/BDTowerData.h"
 #include "Wave/BDWaveSubsystem.h"
@@ -386,7 +388,12 @@ UClass* UBDPlacementComponent::ResolveActorClass() const
 		const UBDTowerData* TowerData = CurrentSelection->TowerData.LoadSynchronous();
 		if (TowerData != nullptr)
 		{
-			return TowerData->TowerClass.IsNull() ? ABDTowerBase::StaticClass() : TowerData->TowerClass.LoadSynchronous();
+			if (!TowerData->TowerClass.IsNull())
+			{
+				return TowerData->TowerClass.LoadSynchronous();
+			}
+			// A shooter's data asks for a body to wear: the shooter class, unless told otherwise.
+			return TowerData->IsA<UBDShooterData>() ? ABDShooter::StaticClass() : ABDTowerBase::StaticClass();
 		}
 	}
 
@@ -455,7 +462,26 @@ bool UBDPlacementComponent::TakeIntoHand(UBDPlaceableData* Piece)
 	}
 
 	SelectPlaceable(Piece);
+	if (CurrentSelection == Piece && UBDPlacementSettings::Get().IsListedShooter(Piece))
+	{
+		LastShooter = Piece;
+	}
 	return CurrentSelection == Piece;
+}
+
+UBDPlaceableData* UBDPlacementComponent::ResolvePaletteEntry(UBDPlaceableData* Entry) const
+{
+	const UBDPlacementSettings& Settings = UBDPlacementSettings::Get();
+	if (!Settings.IsShooterGroup(Entry))
+	{
+		return Entry;
+	}
+	if (LastShooter != nullptr)
+	{
+		return LastShooter;
+	}
+	UBDPlaceableData* First = Settings.Shooters[0].LoadSynchronous();
+	return First != nullptr ? First : Entry;
 }
 
 void UBDPlacementComponent::SelectPlaceable(UBDPlaceableData* Placeable)

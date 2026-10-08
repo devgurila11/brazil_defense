@@ -263,6 +263,54 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-08 (primeiro atirador de plataforma) — COMMIT** (desde 0552671):
+  - Briefing 2026-10-08 10:00. Toda a estrutura com slots vazios; os assets entram depois.
+  - **Atirador (`ABDShooter`, dado `UBDShooterData`):** filho de `ABDTowerBase`, então a
+    mira (mais adiantado no próprio alcance, revista a cada tiro), a cadência, o carregador
+    e a evolução em bloco da plataforma são os mesmos. Corpo esquelético no pivô da arma
+    (o homem inteiro gira para mirar), Idle em loop sem alvo, um gesto de Shooting por
+    tiro (acelerado para caber na cadência, nunca desacelerado), volta ao Idle após
+    `IdleAfter` sem tiro. Com o notify `BD Shot` na animação, o tiro (projétil, flash e
+    som) sai nesse quadro; sem notify, no início do gesto. Sem `BodyMesh` o cone
+    placeholder segue no lugar.
+  - **Arma separada:** componente próprio preso ao socket `HandSocket` do corpo (padrão
+    `hand_r`), com `Grip` para ajustar a empunhadura. `Weapons`: 6 entradas, uma por
+    nível (1 = a construída, 2–6 = as estrelas); a estrela comprada troca o modelo na mão.
+    Só a Pistola é desenhada (dano 10, 2 tiros/s, os números do atirador antigo, balanço
+    intacto); Arma2–6 são placeholder: modelo, flash e som vazios herdam o da entrada de
+    baixo, dano/cadência 0 seguem a escada de níveis do dado (`Levels` + fórmula).
+  - **Muzzle flash:** Niagara por arma (`MuzzleFlash`), no socket `MuzzleSocket` da malha
+    da arma (padrão `Muzzle`); sem o socket, no ponto do cano calculado.
+  - **Impacto:** `ImpactEffect` (Niagara) no ponto do acerto, virado para o atirador,
+    via o gancho novo `ABDTowerBase::OnShotLanded`.
+  - **Som:** `FireSound` por arma, tocado pelo `UBDShotSoundSubsystem` (3D no cano,
+    SC_Effects, atenuação por câmera, concurrency dos tiros). Cue de 4 variações:
+    importar os 4 wavs numa pasta e rodar `-run=BDBuildSoundCue -Cue=/Game/BD/Audio/
+    SCue_Pistola_Tiro -Folder=<pasta> -Pitch=0.05` (Random sem repetir + Modulator).
+  - **Sangue verde:** `UBDBloodDecalSubsystem` + Project Settings → Brazil Defense - Blood.
+    Um decal por NPC abatido, no chão onde caiu, giro e tamanho aleatórios
+    (`Size` 180 cm ±25%). Fica `HoldTime` 3 s e some em fade `DecalFadeTime` 2 s
+    (5 s no total). Teto `MaxDecals` 24: acima dele o mais antigo sai em fade de 0,3 s.
+    Material `M_BloodDecal` (decal diferido: textura × `Tint` verde, alfa ×
+    DecalLifetimeOpacity). `BloodTexture` vazia = nenhuma mancha.
+  - **Menu drop-up:** o botão do personagem na barra virou "Atiradores" e abre uma lista
+    para cima com cada atirador de `UBDPlacementSettings::Shooters` (ícone, nome, custo ou
+    o motivo da recusa). Escolher põe na mão e fecha a lista; clicar de novo, outro botão
+    ou pegar outra peça fecha. A tecla 6 dá o último escolhido. Novo atirador = um
+    placeable em `+Shooters=` no `DefaultGame.ini`.
+  - Assets: `DA_Shooter_Pistol` (novo, copiado do `DA_Character_Test`), `DA_Character`
+    aponta para ele, `M_BloodDecal`. `DA_Character_Test` ficou sem uso, não apagado.
+  - Torre base: `GetDamageAtLevel`, `GetFireRateAtLevel`, `BeginShot`/`CommitShot`,
+    `GetMuzzleLocation` e `InitializeTower` viraram virtuais; comportamento das torres
+    igual. Módulo Niagara no Build.cs.
+  - Regressão 73/73 (7 novas: drop-up, atirador com 6 armas e a da estrela na mão,
+    números da pistola e da escada, flash/som/impacto por tiro, pool e fade das manchas,
+    mancha por abate). Os dois alvos compilados.
+  - **Para ele:** importar corpo, arma, Idle/Shooting, 4 sons, Niagara de flash e de
+    impacto, textura do sangue; criar os sockets da mão e do cano e confirmar os nomes
+    (`hand_r` e `Muzzle` são só os padrões); pôr o notify `BD Shot` no quadro do coice
+    da Shooting.
+
 - **2026-10-07 — onde paramos** (pausa do usuário para o almoço, depois de f694375):
   - Os briefings de hoje (10:00, 11:00, 14:00 e 16:15) foram feitos por inteiro e estão
     pushed. Regressão 67/67; os dois alvos compilados (o `.exe` está atualizado); árvore

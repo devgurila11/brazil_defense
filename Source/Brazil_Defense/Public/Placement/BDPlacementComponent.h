@@ -183,6 +183,12 @@ public:
 	bool TakeIntoHand(UBDPlaceableData* Piece);
 
 	/**
+	 * The piece a palette entry hands over: the entry itself, or - for the shooters'
+	 * button - the shooter last taken from its list, the first listed before any.
+	 */
+	UBDPlaceableData* ResolvePaletteEntry(UBDPlaceableData* Entry) const;
+
+	/**
 	 * Leaves placement mode and destroys the ghost. Also done on its own when the building
 	 * phase ends or the budget of the held piece runs out: a piece stuck to the cursor
 	 * says "you can still build", and at those moments that is not true.
@@ -553,6 +559,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBDPlaceableData> CurrentSelection;
+
+	/** The shooter last taken into the hand, which the shooters' button and key hand over again. */
+	UPROPERTY(Transient)
+	TObjectPtr<UBDPlaceableData> LastShooter;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ABDPlacementPreview> Preview;

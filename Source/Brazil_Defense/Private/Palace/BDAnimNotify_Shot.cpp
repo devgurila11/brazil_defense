@@ -5,14 +5,20 @@
 #include "Animation/AnimSequenceBase.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Palace/BDAgent.h"
+#include "Tower/BDShooter.h"
 
 void UBDAnimNotify_Shot::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference)
 {
 	Super::Notify(MeshComp, Animation, EventReference);
 
-	if (ABDAgent* Agent = MeshComp != nullptr ? Cast<ABDAgent>(MeshComp->GetOwner()) : nullptr)
+	AActor* Owner = MeshComp != nullptr ? MeshComp->GetOwner() : nullptr;
+	if (ABDAgent* Agent = Cast<ABDAgent>(Owner))
 	{
 		Agent->OnShotFrame();
+	}
+	else if (ABDShooter* Shooter = Cast<ABDShooter>(Owner))
+	{
+		Shooter->OnShotFrame();
 	}
 }
 

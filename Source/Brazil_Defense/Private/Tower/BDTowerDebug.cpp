@@ -27,7 +27,6 @@ namespace BDTowerDebug
 		{
 			const ABDTowerBase* Tower = *It;
 			const UBDTowerData* Data = Tower->GetData();
-			const FBDTowerLevel* Level = Tower->GetCurrentLevel();
 			const ABDEnemyBase* Target = Tower->GetCurrentTarget();
 
 			const FString Where = Tower->IsOnPlatform()
@@ -55,7 +54,7 @@ namespace BDTowerDebug
 				TEXT("  %s (%s): level %d/%d (%s) | %s | range %.2f cells = %.0f cm | %.1f dmg @ %.2f/s | target %s | %s | %s | %d shot(s), %d kill(s)."),
 				*Tower->GetName(), *GetNameSafe(Data), Tower->GetTowerLevel(), UBDTowerData::MaxLevels, *UpgradeText, *Where,
 				Tower->GetEffectiveRangeCells(), Tower->GetEffectiveRange(),
-				Tower->GetEffectiveDamage(), Level != nullptr ? Level->FireRate : 0.0f,
+				Tower->GetEffectiveDamage(), Tower->GetFireRate(),
 				*TargetText, *Magazine, *Reload,
 				Tower->GetShotsFired(), Tower->GetKills());
 

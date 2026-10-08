@@ -8,7 +8,7 @@ public class Brazil_Defense : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "DeveloperSettings", "UMG" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "DeveloperSettings", "UMG", "Niagara" });
 
 		// RenderCore and RHI are pulled in by SceneView.h, used by the grid debug canvas pass.
 		// AssetRegistry lets the placement console command find a data asset by bare name.

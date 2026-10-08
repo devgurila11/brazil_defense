@@ -195,6 +195,11 @@ const FBDTowerLevel* ABDTowerBase::GetCurrentLevel() const
 
 float ABDTowerBase::GetEffectiveDamage() const
 {
+	return GetDamageAtLevel(Level);
+}
+
+float ABDTowerBase::GetDamageAtLevel(const int32 AtLevel) const
+{
 	if (Data == nullptr)
 	{
 		return 0.0f;
@@ -202,13 +207,24 @@ float ABDTowerBase::GetEffectiveDamage() const
 
 	// An authored level says what it does. Past the authored ones, the formula grows the
 	// base damage: a single authored level is a base and nine formula levels.
-	if (Data->HasAuthoredLevel(Level) && Level > 1)
+	if (Data->HasAuthoredLevel(AtLevel) && AtLevel > 1)
 	{
-		return Data->GetLevel(Level)->Damage;
+		return Data->GetLevel(AtLevel)->Damage;
 	}
 
 	const FBDTowerLevel* Base = Data->GetLevel(1);
-	return Base != nullptr ? Base->Damage * UBDGameBalanceSettings::Get().GetUpgradeDamageScale(Level) : 0.0f;
+	return Base != nullptr ? Base->Damage * UBDGameBalanceSettings::Get().GetUpgradeDamageScale(AtLevel) : 0.0f;
+}
+
+float ABDTowerBase::GetFireRateAtLevel(const int32 AtLevel) const
+{
+	const FBDTowerLevel* Stats = Data != nullptr ? Data->GetLevel(AtLevel) : nullptr;
+	return Stats != nullptr ? Stats->FireRate : 0.0f;
+}
+
+float ABDTowerBase::GetFireRate() const
+{
+	return GetFireRateAtLevel(Level);
 }
 
 //~ Upgrades ---------------------------------------------------------------------
@@ -231,19 +247,7 @@ int32 ABDTowerBase::GetUpgradeCost() const
 
 float ABDTowerBase::GetDamageAtNextLevel() const
 {
-	if (Data == nullptr || IsMaxLevel())
-	{
-		return GetEffectiveDamage();
-	}
-
-	const int32 Next = Level + 1;
-	if (Data->HasAuthoredLevel(Next))
-	{
-		return Data->GetLevel(Next)->Damage;
-	}
-
-	const FBDTowerLevel* Base = Data->GetLevel(1);
-	return Base != nullptr ? Base->Damage * UBDGameBalanceSettings::Get().GetUpgradeDamageScale(Next) : 0.0f;
+	return GetDamageAtLevel(IsMaxLevel() ? Level : Level + 1);
 }
 
 bool ABDTowerBase::CanUpgrade(FString& OutReason) const
@@ -604,19 +608,46 @@ void ABDTowerBase::Tick(const float DeltaSeconds)
 	}
 	if (bAligned && FireCooldown <= 0.0f && !IsReloading())
 	{
-		Fire(Target, *LevelStats);
-		FireCooldown = 1.0f / FMath::Max(LevelStats->FireRate, KINDA_SMALL_NUMBER);
+		FireCooldown = 1.0f / FMath::Max(GetFireRate(), KINDA_SMALL_NUMBER);
+		BeginShot(Target, *LevelStats);
+	}
+}
 
-		if (Data->MagazineSize > 0 && --ShotsInMagazine <= 0)
+void ABDTowerBase::BeginShot(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats)
+{
+	CommitShot(Target, LevelStats);
+}
+
+void ABDTowerBase::CommitShot(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats)
+{
+	Fire(Target, LevelStats);
+
+	if (Data != nullptr && Data->MagazineSize > 0 && --ShotsInMagazine <= 0)
+	{
+		ReloadRemaining = Data->ReloadTime;
+		if (ReloadRemaining <= 0.0f)
 		{
-			ReloadRemaining = Data->ReloadTime;
-			if (ReloadRemaining <= 0.0f)
-			{
-				// A magazine with no reload time is just a counter: fill it and carry on.
-				ShotsInMagazine = Data->MagazineSize;
-			}
+			// A magazine with no reload time is just a counter: fill it and carry on.
+			ShotsInMagazine = Data->MagazineSize;
 		}
 	}
+}
+
+ABDEnemyBase* ABDTowerBase::ResolveShotTarget()
+{
+	const float Range = GetEffectiveRange();
+	const float RangeSquared = Range * Range;
+	ABDEnemyBase* Target = CurrentTarget.Get();
+	if (IsValidTarget(Target, RangeSquared))
+	{
+		return Target;
+	}
+	Target = AcquireTarget(RangeSquared);
+	if (Target != nullptr)
+	{
+		CurrentTarget = Target;
+	}
+	return Target;
 }
 
 FVector ABDTowerBase::GetMuzzleLocation() const
@@ -690,6 +721,11 @@ bool ABDTowerBase::DebugFireAt(ABDEnemyBase* Target)
 
 void ABDTowerBase::ApplyHit(ABDEnemyBase* HitTarget, const FVector& HitLocation, const float Damage)
 {
+	if (HitTarget != nullptr)
+	{
+		OnShotLanded(HitTarget, HitLocation);
+	}
+
 	const EBDDamageType DamageType = Data != nullptr ? Data->DamageType : EBDDamageType::Single;
 
 	if (DamageType == EBDDamageType::Area)

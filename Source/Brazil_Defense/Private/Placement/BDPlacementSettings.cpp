@@ -35,3 +35,18 @@ int32 UBDPlacementSettings::GetUnlockWave(const UBDPlaceableData* Piece) const
 	}
 	return 0;
 }
+
+bool UBDPlacementSettings::IsShooterGroup(const UBDPlaceableData* Entry) const
+{
+	return Entry != nullptr && Shooters.Num() > 0 && Entry->GetPieceKind() == EBDPieceKind::Character;
+}
+
+bool UBDPlacementSettings::IsListedShooter(const UBDPlaceableData* Piece) const
+{
+	if (Piece == nullptr)
+	{
+		return false;
+	}
+	const FSoftObjectPath Path(Piece);
+	return Shooters.ContainsByPredicate([&Path](const TSoftObjectPtr<UBDPlaceableData>& Entry) { return Entry.ToSoftObjectPath() == Path; });
+}

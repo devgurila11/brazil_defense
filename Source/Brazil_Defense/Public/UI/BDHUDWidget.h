@@ -43,6 +43,18 @@ class BRAZIL_DEFENSE_API UBDHUDWidget : public UBDWidgetBase
 {
 	GENERATED_BODY()
 
+public:
+	//~ The shooters' drop-up, for the regression: the same doors as the clicks.
+
+	/** Clicks the shooters' button of the bar. @return false when the bar has none. */
+	bool DebugClickShooterGroup();
+
+	/** Clicks an entry of the open drop-up. @return false when there is no such entry. */
+	bool DebugPickShooter(int32 Index);
+
+	bool AreShootersOpen() const { return bShootersOpen; }
+	int32 GetShooterEntryCount() const { return ShooterData.Num(); }
+
 protected:
 	virtual void BuildTree() override;
 	virtual void RefreshTexts() override;
@@ -262,6 +274,31 @@ private:
 	void HandleBuild8();
 
 	void SelectBuild(int32 Index);
+
+	UFUNCTION()
+	void HandleShooter0();
+	UFUNCTION()
+	void HandleShooter1();
+	UFUNCTION()
+	void HandleShooter2();
+	UFUNCTION()
+	void HandleShooter3();
+	UFUNCTION()
+	void HandleShooter4();
+	UFUNCTION()
+	void HandleShooter5();
+
+	/** Takes a shooter of the drop-up into the hand and folds the list away. */
+	void SelectShooter(int32 Index);
+
+	/** Unfolds or folds the shooters' list over its button. */
+	void SetShootersOpen(bool bOpen);
+
+	/** Keeps the drop-up standing over its button, and its entries' words current. */
+	void UpdateShooterList();
+
+	/** One entry of the drop-up: a small picture beside the name and the info line. */
+	UButton* MakeShooterEntry(TObjectPtr<UImage>& OutIcon, TObjectPtr<USizeBox>& OutIconBox, TObjectPtr<UTextBlock>& OutLabel, TObjectPtr<UTextBlock>& OutInfo);
 
 	//~ Always visible
 	UPROPERTY(Transient)
@@ -509,6 +546,41 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<USizeBox> BuildIconBoxes[MaxPaletteButtons];
+
+	//~ The shooters' drop-up: unfolds upwards from the shooters' button of the bar, one
+	// entry per shooter of UBDPlacementSettings::Shooters, so a new one joins the list
+	// without the menu changing.
+	static constexpr int32 MaxShooterEntries = 6;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBorder> ShooterBox;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UButton> ShooterButtons[MaxShooterEntries];
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ShooterLabels[MaxShooterEntries];
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> ShooterInfos[MaxShooterEntries];
+
+	UPROPERTY(Transient)
+	TObjectPtr<UImage> ShooterIcons[MaxShooterEntries];
+
+	UPROPERTY(Transient)
+	TObjectPtr<USizeBox> ShooterIconBoxes[MaxShooterEntries];
+
+	/** The shooters behind the entries, loaded once. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UBDPlaceableData>> ShooterData;
+
+	/** The bar button that opens the list; INDEX_NONE when the palette has none. */
+	int32 ShooterGroupIndex = INDEX_NONE;
+
+	bool bShootersOpen = false;
+
+	/** The piece in hand when the list unfolded: a change of hand folds it again. */
+	TWeakObjectPtr<UBDPlaceableData> HeldWhenOpened;
 
 	/** The side panels' width box and the candidate bar's, resized with the viewport. */
 	UPROPERTY(Transient)

@@ -82,6 +82,7 @@
 "HUD.Save","Save ({Count})"
 "HUD.Build","Build  (1-9, U for the urn)"
 "HUD.Build.Urn","Urn"
+"HUD.Build.Shooters","Shooters"
 "HUD.Build.Entry","{Key} · {Name}"
 "HUD.Build.Info","{Left} · {Cost}"
 "HUD.Build.Cost","{Cost}"

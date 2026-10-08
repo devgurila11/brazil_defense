@@ -59,6 +59,21 @@ public:
 	/** The wave after which a piece can be built: its entry in Unlocks, or 0. */
 	int32 GetUnlockWave(const UBDPlaceableData* Piece) const;
 
+	/**
+	 * The shooters of the platforms, in the order the drop-up of the item bar lists them.
+	 * The character piece of the palette is the button that opens the list; a shooter
+	 * added here joins it with nothing else to change. Empty, the character button takes
+	 * its own piece into the hand as any other.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Palette", meta = (AllowedClasses = "/Script/Brazil_Defense.BDPlaceableData"))
+	TArray<TSoftObjectPtr<UBDPlaceableData>> Shooters;
+
+	/** Whether a palette entry opens the shooters' list: a character piece, with shooters listed. */
+	bool IsShooterGroup(const UBDPlaceableData* Entry) const;
+
+	/** Whether a piece is one of the listed shooters. Compared by path, nothing loaded. */
+	bool IsListedShooter(const UBDPlaceableData* Piece) const;
+
 	//~ Input ----------------------------------------------------------------
 
 	/** Mapping context pushed while the player is on the board. */

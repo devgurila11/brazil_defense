@@ -336,9 +336,10 @@ void ABDPlayerController::SelectPaletteSlot(const int32 Index)
 
 	// Through the same door as the build bar: a key must not hand over a piece the bar
 	// shows greyed out, like a character with no platform slot to stand on.
+	// The shooters' key hands over the shooter last taken from their list.
 	if (UBDPlaceableData* Data = Settings.Palette[Index].LoadSynchronous())
 	{
-		PlacementComponent->TakeIntoHand(Data);
+		PlacementComponent->TakeIntoHand(PlacementComponent->ResolvePaletteEntry(Data));
 	}
 }
 
