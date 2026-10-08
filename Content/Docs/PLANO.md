@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-08 (campo limpo, sem obstáculos sorteados) — COMMIT** (desde 256380a):
+- **2026-10-08 (campo limpo, sem obstáculos sorteados) — b075c0f** (desde 256380a):
   - Briefing 2026-10-08 16:00. Decisão de design: o tabuleiro começa LIMPO. Os 20
     obstáculos por seed saíram: `bGenerateObstacles=false` (novo, padrão desligado) em
     Project Settings › Brazil Defense - Obstacles. O gerador ficou no código; desligado,
