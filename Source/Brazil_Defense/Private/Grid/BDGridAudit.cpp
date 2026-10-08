@@ -138,13 +138,13 @@ FBDGridAuditReport BDGridAudit::Run(UWorld& World)
 		}
 	}
 
-	// The generated obstacles are cells and nothing else: no actor is spawned for them.
+	// Generation is off and the board starts clean. Should it be switched back on, its cells
+	// are Blocked and nothing else, with no body: owned, but reported as nothing to see.
 	if (const UBDObstacleGenerator* Generator = World.GetSubsystem<UBDObstacleGenerator>())
 	{
 		for (const FBDCellCoord& Coord : Generator->GetGeneratedCells())
 		{
-			const bool bShown = Generator->IsObstacleShown(Coord);
-			Claim(Coord, FString::Printf(TEXT("generated obstacle (seed %d)"), Generator->GetLastSeed()), EBDCellState::Blocked, bShown);
+			Claim(Coord, FString::Printf(TEXT("generated obstacle (seed %d)"), Generator->GetLastSeed()), EBDCellState::Blocked, false);
 		}
 	}
 

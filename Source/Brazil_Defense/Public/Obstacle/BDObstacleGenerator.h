@@ -24,6 +24,9 @@ struct FRandomStream;
  *
  * Obstacles are written as Blocked: permanent scenery the player can never take back,
  * as opposed to the Platform cells and divider edges they place themselves.
+ *
+ * Off by default (UBDObstacleSettings::bGenerateObstacles): the board starts clean and a
+ * generation only hands back whatever an earlier one placed.
  */
 UCLASS()
 class BRAZIL_DEFENSE_API UBDObstacleGenerator : public UWorldSubsystem
@@ -60,9 +63,6 @@ public:
 	int32 GetLastPathLength() const { return LastPathLength; }
 	bool WasLastGenerationValidated() const { return bLastGenerationValidated; }
 
-	/** Whether this cell carries an obstacle body the player can see. */
-	bool IsObstacleShown(const FBDCellCoord& Coord) const;
-
 private:
 	/**
 	 * Cells that may receive an obstacle: currently Free and far enough from every Spawn
@@ -90,28 +90,9 @@ private:
 
 	const UBDPathfinder* GetPathfinder() const;
 
-	/**
-	 * Puts a body on every generated cell, in a game world: one instanced mesh for the
-	 * lot, no collision, because the cell is what blocks and the mesh only shows it.
-	 */
-	void ShowObstacles(const UBDGridSubsystem& Grid);
-
-	/** Takes every body off. */
-	void HideObstacles();
-
-	/** Floor height under a cell centre, ignoring the obstacles themselves. */
-	float ResolveGroundZ(const UBDGridSubsystem& Grid, const FVector& Point) const;
-
 	/** Cells currently held by this generator, so a regeneration can hand them back. */
 	UPROPERTY(Transient)
 	TArray<FBDCellCoord> GeneratedCells;
-
-	/** Holder of the obstacle bodies; spawned on the first layout of a game world. */
-	TWeakObjectPtr<AActor> VisualActor;
-	TWeakObjectPtr<class UInstancedStaticMeshComponent> VisualMesh;
-
-	/** Cells that got a body, in instance order. */
-	TArray<FBDCellCoord> ShownCells;
 
 	int32 LastSeed = 0;
 	int32 LastAttemptCount = 0;

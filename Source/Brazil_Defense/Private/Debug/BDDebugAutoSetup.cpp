@@ -349,8 +349,8 @@ void UBDDebugAutoSetup::Run(const int32 Seed, const int32 DefenderLevel)
 	ApplyDebugSwitches();
 	GatherPlaceables();
 
-	// The obstacles are part of the scenario: one number has to bring the whole board
-	// back, so the match's own random obstacle seed is replaced by this one.
+	// One number has to bring the whole run back (mouths, wander, candidate), so the
+	// match's own random seed is replaced by this one. No obstacle is laid: the board is clean.
 	Match->DebugRegenerateObstacles(LastSeed);
 
 	UE_LOG(LogBDDebug, Log, TEXT("Auto setup, seed %d. Repeat it with BD.Debug.AutoSetup.Seed %d (or -BDAutoSetupSeed=%d)."),

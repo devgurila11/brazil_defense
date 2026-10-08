@@ -263,6 +263,25 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-08 (campo limpo, sem obstáculos sorteados) — COMMIT** (desde 256380a):
+  - Briefing 2026-10-08 16:00. Decisão de design: o tabuleiro começa LIMPO. Os 20
+    obstáculos por seed saíram: `bGenerateObstacles=false` (novo, padrão desligado) em
+    Project Settings › Brazil Defense - Obstacles. O gerador ficou no código; desligado,
+    só devolve o que uma geração anterior tivesse posto.
+  - Blocos cinza de hoje removidos (malha instanciada e os campos `ObstacleMesh`,
+    `ObstacleMaterial`, `ObstacleFootprintRatio`, `ObstacleHeight`). Se a geração for
+    religada, o `BD.Grid.Audit` acusa cada obstáculo como "nothing to see".
+  - Dependências: a seed (`ObstacleSeed`, nome mantido por causa dos saves e relatórios)
+    segue sorteando bocas, wander, candidato e ondas; o gerador tinha stream próprio,
+    então nada disso muda. AutoSetup/simulador seguem fixando a seed. Rotas,
+    `WouldBlockPath` e o Agente não assumiam células de obstáculo. `ObstacleCount` dos
+    `DA_Difficulty` fica sem efeito.
+  - Mantidos `BD.Grid.Audit` e o check de abertura (toda célula ocupada tem dono
+    visível); check novo CELULAS "o campo começa limpo" (zero obstáculo gerado).
+    Regressão 79/79, os dois alvos compilados.
+  - §13: nota de que as Rodadas 1–5 foram medidas com obstáculos; sem recalibrar.
+  - **Dele:** §5 e §8 ainda citam o gerador e o número de obstáculos.
+
 - **2026-10-08 (células livres recusando colocação) — d30ad44** (desde 7c18da4):
   - Briefing 2026-10-08 15:00. **Causa:** os 20 obstáculos gerados por seed
     (`UBDObstacleGenerator`) eram só células `Blocked`, sem ator nem malha. Até a tarde a
@@ -2005,3 +2024,13 @@ GPU 6,7 ms (133 fps); com ~200 jumentos andando, Game 9,6–10,2 / Draw
 somem a sombra virtual Non-Nanite, o base pass e as velocidades dos
 esqueléticos; aparece `RayTracingDynamicGeometry` (~0,7 ms). Desligar a
 sombra dos personagens já não muda nada mensurável.
+
+### Nota — 2026-10-08 (campo limpo, sem obstáculos)
+
+As Rodadas 1 a 5 foram medidas COM os 20 obstáculos sorteados por seed. A
+partir do briefing 2026-10-08 16:00 o tabuleiro começa limpo
+(`bGenerateObstacles=false` em Brazil Defense - Obstacles): campo mais
+aberto, rota da horda mais curta se o jogador não cercar, e o AutoSetup
+tem mais células para escolher. Os números acima não valem mais como
+estão; não houve recalibração, só este registro. A próxima rodada mede o
+campo limpo.

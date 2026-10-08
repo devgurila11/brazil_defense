@@ -30,6 +30,7 @@
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
 #include "Objective/BDObjective.h"
+#include "Obstacle/BDObstacleGenerator.h"
 #include "Animation/AnimSequenceBase.h"
 #include "Day/BDDayCycleComponent.h"
 #include "Day/BDDaySettings.h"
@@ -352,11 +353,16 @@ void UBDRegressionSubsystem::CheckCellsComeBack(UBDPlaceableData* Tower, UBDPlac
 
 	// The board as the match dealt it, before the player touches it: every taken cell has
 	// something standing on it. The generated obstacles were Blocked cells with no body at
-	// all, so with the debug grid off the ghost went red over cells that looked free.
+	// all, so with the debug grid off the ghost went red over cells that looked free; they
+	// are off now, and the board starts clean.
 	const FBDGridAuditReport Opening = BDGridAudit::Run(*World);
 	if (!Opening.IsClean()) { BDGridAudit::LogReport(Opening); }
 	Check(TEXT("CELULAS"), TEXT("every taken cell of the board has something on it, and something to see"),
 		Opening.IsClean() && Opening.CellsTaken > 0, Opening.Summary());
+	const UBDObstacleGenerator* Generator = World->GetSubsystem<UBDObstacleGenerator>();
+	const int32 Obstacles = Generator != nullptr ? Generator->GetGeneratedCells().Num() : -1;
+	Check(TEXT("CELULAS"), TEXT("the board starts clean: no generated obstacle"), Obstacles == 0,
+		FString::Printf(TEXT("%d generated obstacle cell(s)"), Obstacles));
 
 	// Cells of a rectangle still taken, except those of another one the same size (where the piece went).
 	const auto CountTaken = [Grid](const FBDCellCoord& Origin, const FIntPoint& Span, const FBDCellCoord& SkipOrigin, const bool bSkip)

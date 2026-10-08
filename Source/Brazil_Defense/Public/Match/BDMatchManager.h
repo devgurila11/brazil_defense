@@ -516,7 +516,11 @@ public:
 	FBDOnVotesChanged OnVotesChanged;
 	FBDOnMoneyChanged OnMoneyChanged;
 
-	/** Seed the board was generated from, so a match can be handed over as a number. */
+	/**
+	 * Seed of the match, so it can be handed over as a number: mouths, the horde's wander and
+	 * the candidate draw from it. Named for the obstacles it once laid (generation is off now);
+	 * kept so saves and reports still read it.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Brazil Defense|Match")
 	int32 ObstacleSeed = 0;
 
@@ -529,7 +533,7 @@ public:
 	EBDDifficulty Difficulty = EBDDifficulty::Normal;
 
 private:
-	/** Board setup: apply the difficulty, then generate the obstacles over the layout. */
+	/** Board setup: draw the seed and hand it to the obstacle generator, which is off and leaves the board clean. */
 	void SetupBoard();
 
 	/** Moves to a phase and tells whoever is listening. */

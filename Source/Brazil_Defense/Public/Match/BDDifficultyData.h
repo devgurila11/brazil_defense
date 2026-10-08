@@ -98,7 +98,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Budget", meta = (ClampMin = "0", UIMin = "0"))
 	int32 StartingFunds = 2000;
 
-	/** Permanent obstacles scattered on the board before the player sees it. */
+	/** Permanent obstacles scattered on the board before the player sees it. Unused while UBDObstacleSettings::bGenerateObstacles is off (the default). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Board", meta = (ClampMin = "0", UIMin = "0"))
 	int32 ObstacleCount = 20;
 
