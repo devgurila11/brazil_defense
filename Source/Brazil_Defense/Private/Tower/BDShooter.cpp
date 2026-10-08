@@ -14,19 +14,24 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "Palace/BDAnimNotify_Shot.h"
+#include "SkeletalMeshComponentBudgeted.h"
 #include "Sound/SoundBase.h"
 #include "Tower/BDShooterData.h"
 #include "Tower/BDShotSound.h"
 
 ABDShooter::ABDShooter()
 {
+	// In the animation budget with the horde: fifty men on the platforms are a crowd too.
+	USkeletalMeshComponentBudgeted* Budgeted = CreateDefaultSubobject<USkeletalMeshComponentBudgeted>(TEXT("Body"));
+	Budgeted->SetAutoCalculateSignificance(true);
+	Body = Budgeted;
 	// On the weapon pivot: the whole man turns to aim, the actor keeps its slot's facing.
-	Body = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Body"));
 	Body->SetupAttachment(GetTurret());
 	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Body->SetGenerateOverlapEvents(false);
 	Body->SetCanEverAffectNavigation(false);
 	// The shot can wait on a notify of the gesture: the pose has to run on or off screen.
+	// The budget may tick it less often far away; the notify still fires on the next tick.
 	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPose;
 
 	Weapon = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Weapon"));

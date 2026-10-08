@@ -61,6 +61,7 @@
 #include "Objective/BDObjectiveSubsystem.h"
 #include "Placement/BDPlaceableData.h"
 #include "SkeletalMeshComponentBudgeted.h"
+#include "Grid/BDGridDebug.h"
 #include "Placement/BDPlacementComponent.h"
 #include "Placement/BDPlacementSettings.h"
 #include "Platform/BDPlatformComponent.h"
@@ -799,6 +800,26 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					: FString::Printf(TEXT("level %d, weapon of level %d (%s), %d weapons, hand socket '%s'"), Shooter->GetTowerLevel(), Shooter->GetWeaponLevel(),
 						Held != nullptr ? *Held->Name.ToString() : TEXT("none"), ShooterData != nullptr ? ShooterData->Weapons.Num() : 0,
 						ShooterData != nullptr ? *ShooterData->HandSocket.ToString() : TEXT("")));
+
+			// Fifty of them fill eight platforms: their bodies are in the animation budget with the horde's.
+			const USkeletalMeshComponentBudgeted* BudgetedBody = Shooter != nullptr ? Cast<USkeletalMeshComponentBudgeted>(Shooter->GetBody()) : nullptr;
+			Check(TEXT("ATIRADOR"), TEXT("a shooter's body is animated under the animation budget, like the horde's"),
+				BudgetedBody != nullptr && BudgetedBody->GetAutoCalculateSignificance(),
+				Shooter == nullptr ? TEXT("no shooter") : FString::Printf(TEXT("body is a %s"), *Shooter->GetBody()->GetClass()->GetName()));
+
+			// The slot spheres and the grid stay in the editor: in the game they cost a frame's worth.
+			{
+				IConsoleVariable* GridDebug = IConsoleManager::Get().FindConsoleVariable(TEXT("BD.Grid.Debug"));
+				const int32 Before = GridDebug != nullptr ? GridDebug->GetInt() : 0;
+				const bool bOffByDefault = Before >= 2 || !BDGridDebug::ShouldDrawInWorld(*World);
+				if (GridDebug != nullptr) { GridDebug->Set(2, ECVF_SetByCode); }
+				const bool bForced = BDGridDebug::ShouldDrawInWorld(*World);
+				if (GridDebug != nullptr) { GridDebug->Set(Before, ECVF_SetByCode); }
+				Check(TEXT("DESEMPENHO"), TEXT("the grid and the platform slots are not drawn in the game unless BD.Grid.Debug 2 asks"),
+					GridDebug != nullptr && bOffByDefault && bForced,
+					FString::Printf(TEXT("BD.Grid.Debug %d, drawn by default %s, with 2 %s"), Before,
+						BDGridDebug::ShouldDrawInWorld(*World) ? TEXT("yes") : TEXT("no"), bForced ? TEXT("yes") : TEXT("no")));
+			}
 
 			// A placeholder weapon fights with the level ladder; the pistol with its own numbers.
 			const float PistolDamage = ShooterData != nullptr ? ShooterData->Weapons[0].Damage : 0.0f;

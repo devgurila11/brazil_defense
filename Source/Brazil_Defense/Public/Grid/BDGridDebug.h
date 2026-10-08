@@ -20,7 +20,8 @@ namespace BDGridDebug
 
 	/**
 	 * Whether the grid debug may draw into this world: the console variable above plus
-	 * the bDrawInEditor / bDrawInGame setting matching the world type.
+	 * the bDrawInEditor / bDrawInGame setting matching the world type; BD.Grid.Debug 2
+	 * draws in the game even with bDrawInGame off.
 	 */
 	BRAZIL_DEFENSE_API bool ShouldDrawInWorld(const UWorld& World);
 

@@ -985,6 +985,19 @@ void ABDMatchManager::AdjustDividerBudget(const int32 Delta, const FString& Why)
 		Delta > 0 ? TEXT("+") : TEXT(""), Delta, *Why, Before, DividersRemaining);
 }
 
+void ABDMatchManager::AdjustPlatformBudget(const int32 Delta, const FString& Why)
+{
+	if (Delta == 0)
+	{
+		return;
+	}
+
+	const int32 Before = PlatformsRemaining;
+	PlatformsRemaining = FMath::Max(0, PlatformsRemaining + Delta);
+	UE_LOG(LogBDMatch, Log, TEXT("Platform ceiling %s%d (%s): %d -> %d."),
+		Delta > 0 ? TEXT("+") : TEXT(""), Delta, *Why, Before, PlatformsRemaining);
+}
+
 int32 ABDMatchManager::GetUpgradeCost(const ABDTowerBase* Tower) const
 {
 	return Tower != nullptr ? Tower->GetUpgradeCost() : 0;

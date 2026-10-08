@@ -74,16 +74,12 @@ void UBDPlatformComponent::TickComponent(const float DeltaTime, const ELevelTick
 	// against one cheap min over a handful of slots.
 	RefreshVisualLevel();
 
-	if (!BDGridDebug::IsEnabled())
+	if (!BDGridDebug::ShouldDrawInWorld(*World))
 	{
 		return;
 	}
 
 	const UBDGridSettings& Settings = UBDGridSettings::Get();
-	if (World->IsGameWorld() ? !Settings.bDrawInGame : !Settings.bDrawInEditor)
-	{
-		return;
-	}
 
 	if (Settings.bDrawPlatformSlots)
 	{

@@ -263,6 +263,25 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-08 (desempenho com plataformas cheias) — COMMIT** (desde 5b0cc5f):
+  - Briefing de GPU com 8 plataformas cheias (~50 atiradores). Medido renderizado, números
+    e reprodução na seção 13, Rodada 6. Sem horda o frame era preso na render thread, não
+    na GPU: o debug da grade, ligado no jogo, desenhava uma esfera de linhas grossas e uma
+    seta por slot (~15 mil linhas por frame). Sombras de atirador e plataforma, postes (24
+    luzes, nenhuma com sombra) e Lumen não eram a causa.
+  - **Grade e slots fora do jogo:** `bDrawInGame=False` no `DefaultGame.ini`; no editor
+    seguem. Os slots da plataforma seguem a mesma regra da grade (`ShouldDrawInWorld`).
+    `BD.Grid.Debug 2` força o desenho no jogo numa sessão. Mesma cena: 74 → 125 fps.
+  - **Atirador no budget de animação:** o corpo do `ABDShooter` é um
+    `USkeletalMeshComponentBudgeted` com significância automática, como o da horda.
+  - Ferramentas de medição: `BD.Debug.PerfScene [arquib.] [palanques] [caminhões] [corpo
+    emprestado]`, `BD.Debug.PerfSample [frames] [rótulo]` (stat unit e censo de sombras e
+    luzes no log), `BD.Debug.PerfCastShadow` e `BD.Debug.PerfHide <grupo> <0|1>`;
+    `ABDMatchManager::AdjustPlatformBudget`.
+  - Regressão 76/76 (checks novos: corpo do atirador no budget; grade fora do jogo).
+  - **A decidir por ele:** Nanite nos esqueléticos (jumento, atiradores) e sombra da horda
+    (~1,8 ms de GPU com ~200 jumentos), se a GPU apertar nas ondas.
+
 - **2026-10-08 (primeiro atirador de plataforma) — 7df91c5** (desde 0552671):
   - Briefing 2026-10-08 10:00. Toda a estrutura com slots vazios; os assets entram depois.
   - **Atirador (`ABDShooter`, dado `UBDShooterData`):** filho de `ABDTowerBase`, então a
@@ -1897,3 +1916,51 @@ memória de renderização não entra. O que se via na partida real da onda
 150 tinha ainda o log de áudio a cada frame, já corrigido. A próxima
 partida na tela grava `MemUsedMB` no WaveLog e confirma o resultado com
 renderização.
+
+### Rodada 6 — 2026-10-08 (performance com 8 plataformas cheias)
+
+**O que é.** Jogo renderizado em janela 1920x1080 (`UnrealEditor.exe ... -game
+-windowed -ResX=1920 -ResY=1080 -BDSkipFrontEnd`), VSync e limite de FPS
+desligados, de dia (`BD.Day.SetAlpha 0.28`) com o relógio parado. A cena é
+`BD.Debug.PerfScene 4 3 1 [0|1]`: 4 arquibancadas, 3 palanques e 1 caminhão,
+50 atiradores. Com `1`, os atiradores sem corpo vestem o jumento animado
+(só na sessão), porque o `DA_Shooter_Pistol` ainda não tem `BodyMesh`. Cada
+número é a média de `BD.Debug.PerfSample 300` (stat unit no log); os A/B são
+`BD.Debug.PerfCastShadow`, `BD.Debug.PerfHide`, `BD.Grid.Debug` e cvars do
+Lumen, ligados e desligados na mesma sessão.
+
+| cena | Game ms | Draw ms | GPU ms | fps |
+|---|---|---|---|---|
+| tabuleiro vazio | 3,2 | 7,7 | 6,7 | 130 |
+| 8 plataformas, atirador cone, grade de debug ligada (padrão) | 3,8 | 13,6 | 7,3 | 74 |
+| igual, `BD.Grid.Debug 0` | 3,4 | 8,2 | 6,3 | 122 |
+| igual, também sem alcances e HUD | 2,4–3,2 | 7,9 | 6,8–7,0 | 125 |
+| 8 plataformas, atirador esquelético, grade desligada | 4,8 | 9,0 | 7,5 | 112 |
+| + horda (~200 jumentos andando) | 13–16 | 11–12 | 12,2 | 64–71 |
+| + horda, sem sombra dos personagens | 13–14 | 11 | 10,4 | 68–73 |
+| + horda, com a grade de debug ligada | 22 | 19 | 16 | 46 |
+
+**Leitura.** Sem horda, o frame é preso na render thread, não na GPU. O
+que sobe com as plataformas é o debug da grade (`BD.Grid.Debug`, ligado
+por padrão no jogo): cada slot desenha uma esfera de linhas grossas e uma
+seta, ~15 mil linhas por frame com 50 slots; desligá-la devolve ~5 ms de
+Draw e ~1 ms de GPU. Sombra dos atiradores e das plataformas, luzes dos
+postes (24, nenhuma com sombra) e o dia/noite não mudam a medição. Lumen
+desligado (GI e reflexos) poupa ~0,5 ms de GPU e ~1,3 ms de Draw; Lumen
+por software em vez de hardware não muda nada. O maior custo fixo de GPU
+é o TSR (1,5–2 ms, histórico em 3840x2160). Com a horda o gargalo passa
+para a game thread (animação ~4 ms, tick de atores ~3,4 ms num frame do
+CSV), e na GPU pesam a sombra virtual dos esqueléticos (Non-Nanite ~2 ms),
+o base pass, as velocidades e o skin cache; sombra dos personagens
+desligada poupa ~1,8 ms de GPU com ~200 jumentos.
+
+**Limites.** Os 50 atiradores do repositório são cone + arma, e o corpo
+esquelético foi o jumento emprestado, não o modelo dele. A horda cresce
+durante a amostra, então os A/B de sombra com horda foram alternados duas
+vezes (liga/desliga/liga/desliga) e a diferença repetiu.
+
+**Depois.** A grade e os slots saíram do jogo (`bDrawInGame=False` no
+`DefaultGame.ini`; no editor seguem). Mesma cena, padrão novo: vazio Draw
+6,9 / GPU 6,0 ms (144 fps), 8 plataformas cheias Draw 8,0 / GPU 5,9 ms
+(125 fps); forçando a grade com `BD.Grid.Debug 2`, Draw 12,6 / GPU 7,3 ms
+(79 fps).

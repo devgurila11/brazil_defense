@@ -21,7 +21,10 @@
 #include "Platform/BDPlatformComponent.h"
 #include "TimerManager.h"
 #include "Tower/BDTowerBase.h"
+#include "Tower/BDShooterData.h"
 #include "Tower/BDTowerData.h"
+#include "Enemy/BDEnemyData.h"
+#include "Wave/BDWaveSettings.h"
 #include "UObject/UObjectIterator.h"
 #include "Wave/BDWaveSubsystem.h"
 
@@ -406,6 +409,129 @@ void UBDDebugAutoSetup::Run(const int32 Seed, const int32 DefenderLevel)
 		Match->GetPlatformsRemaining(), Match->GetDividersRemaining(), Match->GetFreeCharacterSlots(), Match->GetPublicMoney());
 
 	LogDistribution();
+}
+
+int32 UBDDebugAutoSetup::BuildPerfScene(const int32 Bleachers, const int32 Palanques, const int32 Trucks, const bool bBorrowBody)
+{
+	UBDPlacementComponent* Placement = FindPlacement();
+	ABDMatchManager* Match = FindMatch();
+	if (Placement == nullptr || Match == nullptr)
+	{
+		UE_LOG(LogBDDebug, Error, TEXT("BD.Debug.PerfScene needs a match and a player."));
+		return 0;
+	}
+
+	GatherPlaceables();
+	FRandomStream Stream(4242);
+
+	// The money and the platform hand are not what is being measured.
+	Match->AddPublicMoney(10000000, TEXT("BD.Debug.PerfScene"));
+	const int32 Total = Bleachers + Palanques + Trucks;
+	Match->AdjustPlatformBudget(Total, TEXT("BD.Debug.PerfScene"));
+
+	Placement->SetRefusalLogging(false);
+	if (Match->GetBudgetRemaining(EBDPieceKind::Objective) > 0)
+	{
+		PlaceObjective(*Placement, Stream);
+	}
+	// Every platform unlocked: the urn has to go in first, a late wave refuses it.
+	if (Match->GetCurrentWave() < 60)
+	{
+		Match->DebugSetWave(60);
+	}
+
+	const auto FindPiece = [this](const TCHAR* Part) -> UBDPlaceableData*
+	{
+		for (UBDPlaceableData* Piece : PlatformPieces)
+		{
+			if (Piece->GetName().Contains(Part))
+			{
+				return Piece;
+			}
+		}
+		return nullptr;
+	};
+
+	TArray<UBDPlaceableData*> Wanted;
+	for (int32 Index = 0; Index < Bleachers; ++Index) { Wanted.Add(FindPiece(TEXT("Bleachers"))); }
+	for (int32 Index = 0; Index < Palanques; ++Index) { Wanted.Add(FindPiece(TEXT("Palanque"))); }
+	for (int32 Index = 0; Index < Trucks; ++Index) { Wanted.Add(FindPiece(TEXT("Truck"))); }
+
+	TArray<FBDCellCoord> Targets;
+	BuildCorridorTargets(Total * 3, Stream, Targets);
+	UE_LOG(LogBDDebug, Log, TEXT("BD.Debug.PerfScene: %d spot(s) along the routes, %d platform kind(s) known."), Targets.Num(), PlatformPieces.Num());
+	Placement->SetRefusalLogging(true);
+
+	// Each platform walks the ranked spots until one takes it.
+	int32 Platforms = 0;
+	int32 NextTarget = 0;
+	for (UBDPlaceableData* Piece : Wanted)
+	{
+		for (; Piece != nullptr && NextTarget < Targets.Num(); ++NextTarget)
+		{
+			if (TryPlaceCellPieceNear(*Placement, Piece, Targets[NextTarget], Stream))
+			{
+				++Platforms;
+				++NextTarget;
+				break;
+			}
+		}
+	}
+
+	// Shooters only: the crowd being measured is the platform shooters.
+	TArray<UBDPlaceableData*> Shooters;
+	for (UBDPlaceableData* Piece : CharacterPieces)
+	{
+		if (UBDShooterData* Shooter = Cast<UBDShooterData>(Piece->TowerData.LoadSynchronous()))
+		{
+			Shooters.Add(Piece);
+			UE_LOG(LogBDDebug, Log, TEXT("BD.Debug.PerfScene: shooter %s, body '%s', idle '%s'."), *Shooter->GetPathName(), *Shooter->BodyMesh.ToString(), *Shooter->IdleAnimation.ToString());
+			if (bBorrowBody && Shooter->BodyMesh.LoadSynchronous() == nullptr)
+			{
+				const UBDEnemyData* Enemy = UBDWaveSettings::Get().ResolveWaveEnemy();
+				if (Enemy != nullptr && !Enemy->SkeletalMesh.IsNull())
+				{
+					Shooter->BodyMesh = Enemy->SkeletalMesh;
+					Shooter->IdleAnimation = Enemy->MoveAnimation;
+					Shooter->BodyScale = Enemy->MeshScale.X;
+					UE_LOG(LogBDDebug, Warning, TEXT("BD.Debug.PerfScene: %s has no body; wearing %s and %s for this session only."),
+						*Shooter->GetName(), *Enemy->SkeletalMesh.ToString(), *Enemy->MoveAnimation.ToString());
+				}
+			}
+		}
+	}
+	if (Shooters.Num() == 0)
+	{
+		for (UBDPlaceableData* Piece : CharacterPieces) { Shooters.Add(Piece); }
+	}
+
+	int32 Manned = 0;
+	for (TObjectIterator<UBDPlatformComponent> It; It; ++It)
+	{
+		if (It->GetWorld() != GetWorld() || !IsValid(It->GetOwner()) || Shooters.Num() == 0)
+		{
+			continue;
+		}
+		for (int32 Slot = 0; Slot < It->Slots.Num(); ++Slot)
+		{
+			if (!It->IsSlotFree(Slot))
+			{
+				continue;
+			}
+			Placement->SelectPlaceable(Shooters[Manned % Shooters.Num()]);
+			Placement->SetHoveredSlotDirect(*It, Slot);
+			if (Placement->IsCurrentPlacementValid() && Placement->TryPlaceAtHovered())
+			{
+				++Manned;
+			}
+		}
+	}
+
+	Placement->CancelSelection();
+	Placement->SetRefusalLogging(true);
+	UE_LOG(LogBDDebug, Log, TEXT("BD.Debug.PerfScene: %d of %d platform(s) placed (%d bleachers, %d palanques, %d trucks asked), %d shooter(s) manned."),
+		Platforms, Total, Bleachers, Palanques, Trucks, Manned);
+	return Manned;
 }
 
 int32 UBDDebugAutoSetup::BuildGrantedBudget()
@@ -1152,6 +1278,20 @@ namespace BDAutoSetupCommands
 		TEXT("BD.Debug.AutoSetup.Run"),
 		TEXT("BD.Debug.AutoSetup.Run [seed] [level]: builds the automatic defense now, every defender at that level."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecRun));
+
+	static void ExecPerfScene(const TArray<FString>& Args, UWorld* World)
+	{
+		if (UBDDebugAutoSetup* Setup = Find(World))
+		{
+			Setup->BuildPerfScene(Args.Num() > 0 ? FCString::Atoi(*Args[0]) : 4, Args.Num() > 1 ? FCString::Atoi(*Args[1]) : 3,
+				Args.Num() > 2 ? FCString::Atoi(*Args[2]) : 1, Args.Num() > 3 && FCString::Atoi(*Args[3]) != 0);
+		}
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdPerfScene(
+		TEXT("BD.Debug.PerfScene"),
+		TEXT("BD.Debug.PerfScene [bleachers=4] [palanques=3] [trucks=1] [borrow body 0|1]: a board of full platforms for measuring, past the budget; 1 dresses bodiless shooters in the horde's skinned mesh."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPerfScene));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdClearAll(
 		TEXT("BD.Debug.ClearAll"),

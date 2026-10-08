@@ -50,6 +50,16 @@ public:
 	void ClearAll();
 
 	/**
+	 * Measurement only: a board of platforms of the kinds asked, past the difficulty's
+	 * budget, every slot manned by a shooter, and no towers or fences to muddy the reading.
+	 * With bBorrowBody, a shooter whose data has no body yet wears the horde's skinned mesh
+	 * and walk loop, in memory only, so the cost of a crowd of animated shooters can be
+	 * measured before their assets exist.
+	 * @return how many shooters went up.
+	 */
+	int32 BuildPerfScene(int32 Bleachers, int32 Palanques, int32 Trucks, bool bBorrowBody);
+
+	/**
 	 * Spends whatever the board has gained since it was built: platforms still in hand,
 	 * slots left empty, and the public money the bosses paid in. Called between waves by the
 	 * simulation, because a defense that never reinvests its income is not the defense a

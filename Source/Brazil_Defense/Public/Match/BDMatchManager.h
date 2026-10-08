@@ -483,6 +483,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
 	void AdjustDividerBudget(int32 Delta, const FString& Why);
 
+	/** Debug and measurement only: more platforms in hand, for building a board bigger than the difficulty allows. */
+	void AdjustPlatformBudget(int32 Delta, const FString& Why);
+
 	//~ Selling ------------------------------------------------------------------
 	// Nothing on the board is permanent: any piece can be sold, and the price of having
 	// been wrong is the part of what it was bought for that does not come back. All of it

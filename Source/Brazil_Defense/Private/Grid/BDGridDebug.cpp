@@ -22,7 +22,7 @@ namespace BDGridDebug
 	static FAutoConsoleVariableRef CVarGridDebug(
 		TEXT("BD.Grid.Debug"),
 		GGridDebugEnabled,
-		TEXT("Brazil Defense grid debug drawing: grid lines, cell states, platform footprints and slots. 0 to disable."),
+		TEXT("Brazil Defense grid debug drawing: grid lines, cell states, platform footprints and slots. 0 to disable; 1 draws where BDGridSettings allows (the editor, not the game by default); 2 also forces it in the game."),
 		ECVF_Cheat);
 
 	bool IsEnabled()
@@ -37,8 +37,10 @@ namespace BDGridDebug
 			return false;
 		}
 
+		// Off in the game by default: fifty slot spheres of thick lines cost the render
+		// thread ~5 ms a frame (PLANO, section 13, round 6). 2 brings it back for a session.
 		const UBDGridSettings& Settings = UBDGridSettings::Get();
-		return World.IsGameWorld() ? Settings.bDrawInGame : Settings.bDrawInEditor;
+		return World.IsGameWorld() ? (Settings.bDrawInGame || GGridDebugEnabled >= 2) : Settings.bDrawInEditor;
 	}
 
 	/** The grid of a world, or null when there is none to draw. */
