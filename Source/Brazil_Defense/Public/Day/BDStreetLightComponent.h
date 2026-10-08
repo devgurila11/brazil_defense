@@ -71,6 +71,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Brazil Defense|Day")
 	bool bOccupiesCell = true;
 
+	/** The cell this light marked Blocked. @return false when it marked none. */
+	bool GetOccupiedCell(FBDCellCoord& OutCoord) const
+	{
+		OutCoord = OccupiedCell;
+		return bHasOccupiedCell;
+	}
+
 private:
 	/** Marks the cell under the owner as permanent scenery. */
 	void MarkCellBlocked();

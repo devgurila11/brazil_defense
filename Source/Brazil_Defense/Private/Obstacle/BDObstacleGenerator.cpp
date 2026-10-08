@@ -3,6 +3,11 @@
 #include "Obstacle/BDObstacleGenerator.h"
 
 #include "BDLog.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "GameFramework/Actor.h"
+#include "Materials/MaterialInterface.h"
+#include "Placement/BDPlacementSettings.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Grid/BDGridSubsystem.h"
@@ -177,6 +182,8 @@ bool UBDObstacleGenerator::IsLayoutPlayable(const UBDGridSubsystem& Grid, const 
 
 int32 UBDObstacleGenerator::ClearGeneratedObstacles(UBDGridSubsystem* Grid)
 {
+	HideObstacles();
+
 	if (Grid == nullptr || GeneratedCells.Num() == 0)
 	{
 		GeneratedCells.Reset();
@@ -271,6 +278,7 @@ bool UBDObstacleGenerator::GenerateObstacles(UBDGridSubsystem* Grid, const int32
 		{
 			GeneratedCells = Picked;
 			bLastGenerationValidated = true;
+			ShowObstacles(*Grid);
 
 			UE_LOG(LogBDObstacle, Log,
 				TEXT("Seed %d: %d obstacle(s) accepted on attempt %d of %d. Shortest route %d cells."),
@@ -299,6 +307,7 @@ bool UBDObstacleGenerator::GenerateObstacles(UBDGridSubsystem* Grid, const int32
 
 	WriteCells(*Grid, Fallback, EBDCellState::Blocked);
 	GeneratedCells = Fallback;
+	ShowObstacles(*Grid);
 
 	if (Fallback.Num() == 0)
 	{
@@ -313,6 +322,126 @@ bool UBDObstacleGenerator::GenerateObstacles(UBDGridSubsystem* Grid, const int32
 
 	UE_LOG(LogBDObstacle, Warning, TEXT("Authored fallback placed %d obstacle(s)."), Fallback.Num());
 	return false;
+}
+
+bool UBDObstacleGenerator::IsObstacleShown(const FBDCellCoord& Coord) const
+{
+	const AActor* Actor = VisualActor.Get();
+	const UInstancedStaticMeshComponent* Mesh = VisualMesh.Get();
+	return Actor != nullptr && !Actor->IsHidden() && Mesh != nullptr && Mesh->GetStaticMesh() != nullptr
+		&& Mesh->IsVisible() && ShownCells.Contains(Coord);
+}
+
+float UBDObstacleGenerator::ResolveGroundZ(const UBDGridSubsystem& Grid, const FVector& Point) const
+{
+	const UWorld* World = GetWorld();
+	const float PlaneZ = Grid.GetOrigin().Z;
+	if (World == nullptr)
+	{
+		return PlaneZ;
+	}
+
+	const UBDPlacementSettings& Settings = UBDPlacementSettings::Get();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BDObstacleGround), /*bTraceComplex*/ false);
+	if (const AActor* Actor = VisualActor.Get())
+	{
+		Params.AddIgnoredActor(Actor);
+	}
+
+	FHitResult Hit;
+	const FVector Start(Point.X, Point.Y, PlaneZ + Settings.GroundTraceDistance);
+	const FVector End(Point.X, Point.Y, PlaneZ - Settings.GroundTraceDistance);
+	return World->LineTraceSingleByChannel(Hit, Start, End, Settings.GroundTraceChannel, Params) ? Hit.ImpactPoint.Z : PlaneZ;
+}
+
+void UBDObstacleGenerator::ShowObstacles(const UBDGridSubsystem& Grid)
+{
+	HideObstacles();
+
+	UWorld* World = GetWorld();
+	if (World == nullptr || !World->IsGameWorld() || GeneratedCells.Num() == 0)
+	{
+		return;
+	}
+
+	const UBDObstacleSettings& Settings = UBDObstacleSettings::Get();
+	UStaticMesh* StaticMesh = Settings.ObstacleMesh.LoadSynchronous();
+	if (StaticMesh == nullptr)
+	{
+		UE_LOG(LogBDObstacle, Error, TEXT("No obstacle mesh (%s): the %d obstacle(s) stand invisible and the ghost refuses cells that look free."),
+			*Settings.ObstacleMesh.ToString(), GeneratedCells.Num());
+		return;
+	}
+
+	UInstancedStaticMeshComponent* Mesh = VisualMesh.Get();
+	if (Mesh == nullptr)
+	{
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Name = MakeUniqueObjectName(World->PersistentLevel, AActor::StaticClass(), TEXT("BDObstacles"));
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnParams.ObjectFlags |= RF_Transient;
+		AActor* Actor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, SpawnParams);
+		if (Actor == nullptr)
+		{
+			return;
+		}
+
+		Mesh = NewObject<UInstancedStaticMeshComponent>(Actor, TEXT("ObstacleMesh"));
+		Mesh->SetMobility(EComponentMobility::Movable);
+		Actor->SetRootComponent(Mesh);
+		Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Mesh->SetCanEverAffectNavigation(false);
+		Mesh->RegisterComponent();
+		Actor->AddInstanceComponent(Mesh);
+
+		VisualActor = Actor;
+		VisualMesh = Mesh;
+	}
+
+	Mesh->SetStaticMesh(StaticMesh);
+	if (UMaterialInterface* Material = Settings.ObstacleMaterial.LoadSynchronous())
+	{
+		for (int32 Slot = 0; Slot < Mesh->GetNumMaterials(); ++Slot)
+		{
+			Mesh->SetMaterial(Slot, Material);
+		}
+	}
+
+	// Fitted from the bounds, so a cube pivoted at its centre and an asset pivoted at its
+	// base both end up standing on the floor and filling the same share of the cell.
+	const FBox Bounds = StaticMesh->GetBoundingBox();
+	const FVector Size = Bounds.GetSize();
+	const float Across = Grid.GetCellSize() * Settings.ObstacleFootprintRatio;
+	const FVector Scale(
+		Across / FMath::Max(Size.X, 1.0f),
+		Across / FMath::Max(Size.Y, 1.0f),
+		Settings.ObstacleHeight / FMath::Max(Size.Z, 1.0f));
+
+	TArray<FTransform> Instances;
+	Instances.Reserve(GeneratedCells.Num());
+	for (const FBDCellCoord& Coord : GeneratedCells)
+	{
+		FVector Location = Grid.CellToWorld(Coord);
+		Location.Z = ResolveGroundZ(Grid, Location) - Bounds.Min.Z * Scale.Z;
+		// Centred on the cell whatever the mesh's own pivot is across.
+		Location.X -= Bounds.GetCenter().X * Scale.X;
+		Location.Y -= Bounds.GetCenter().Y * Scale.Y;
+		Instances.Emplace(FQuat::Identity, Location, Scale);
+		ShownCells.Add(Coord);
+	}
+	Mesh->AddInstances(Instances, /*bShouldReturnIndices*/ false, /*bWorldSpace*/ true);
+
+	UE_LOG(LogBDObstacle, Log, TEXT("%d obstacle(s) shown as %s, %.0f cm across and %.0f cm tall."),
+		ShownCells.Num(), *StaticMesh->GetName(), Across, Settings.ObstacleHeight);
+}
+
+void UBDObstacleGenerator::HideObstacles()
+{
+	if (UInstancedStaticMeshComponent* Mesh = VisualMesh.Get())
+	{
+		Mesh->ClearInstances();
+	}
+	ShownCells.Reset();
 }
 
 namespace BDObstacleCommands

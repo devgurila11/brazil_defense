@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
 #include "Grid/BDGridTypes.h"
+#include "Materials/MaterialInterface.h"
+#include "Engine/StaticMesh.h"
 #include "BDObstacleSettings.generated.h"
 
 /**
@@ -63,4 +65,25 @@ public:
 	 */
 	UPROPERTY(config, EditAnywhere, Category = "Validation")
 	TArray<FBDCellCoord> FallbackObstacles;
+
+	/**
+	 * What stands on every obstacle cell in the game. An obstacle is a Blocked cell and
+	 * nothing else, so without a body it is a free-looking cell the ghost refuses. Fitted
+	 * to the cell from its bounds, so any pivot works. A grey engine cube until the
+	 * obstacle has an asset of its own.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Look")
+	TSoftObjectPtr<UStaticMesh> ObstacleMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Engine/BasicShapes/Cube.Cube")));
+
+	/** Material over the whole mesh. None keeps the mesh's own. */
+	UPROPERTY(config, EditAnywhere, Category = "Look")
+	TSoftObjectPtr<UMaterialInterface> ObstacleMaterial;
+
+	/** Share of the cell the obstacle covers across, so neighbours read as separate blocks. */
+	UPROPERTY(config, EditAnywhere, Category = "Look", meta = (ClampMin = "0.1", ClampMax = "1.0", UIMin = "0.1", UIMax = "1.0"))
+	float ObstacleFootprintRatio = 0.8f;
+
+	/** Height of the obstacle in centimetres. */
+	UPROPERTY(config, EditAnywhere, Category = "Look", meta = (ClampMin = "1.0", UIMin = "1.0"))
+	float ObstacleHeight = 200.0f;
 };

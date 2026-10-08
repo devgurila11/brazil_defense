@@ -263,6 +263,30 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-08 (células livres recusando colocação) — COMMIT** (desde 7c18da4):
+  - Briefing 2026-10-08 15:00. **Causa:** os 20 obstáculos gerados por seed
+    (`UBDObstacleGenerator`) eram só células `Blocked`, sem ator nem malha. Até a tarde a
+    grade de debug os pintava; desde `bDrawInGame=False` ficaram invisíveis, e o preview
+    ficava vermelho sobre células que pareciam livres. Na partida do log (seed 13062), as
+    recusas em 27,7 e 35,14 eram obstáculos; 41,7 era um poste (visível); 35,9 era o
+    próprio palanque recém-construído. Nenhuma célula fantasma de remoção: vender e mover
+    torre, palanque, palácio 2×2 e separador devolvem todas as células e arestas. Urna "só
+    pela frente" não existe no código; spawn/goal e layout autorado batem.
+  - **Correção:** cada obstáculo gerado ganha um corpo visível, uma malha instanciada única
+    sem colisão (a célula é que bloqueia), ajustada à célula pelos bounds:
+    `ObstacleMesh` (padrão o cubo da engine, cinza, até ele ter um asset),
+    `ObstacleMaterial`, `ObstacleFootprintRatio` 0,8, `ObstacleHeight` 200 cm, em Project
+    Settings › Brazil Defense - Obstacles. Some e volta junto com a regeneração por seed.
+  - **`BD.Grid.Audit [X Y ...]`:** varre o grid e cruza cada célula com quem a ocupa
+    (peça colocada, carimbo de plataforma, poste, obstáculo, boca, urna, layout autorado).
+    Lista fantasmas (ocupada sem dono), invisíveis (dono sem nada a ver) e divergências
+    (dono diz outro estado, Free incluso); com coordenadas, diz quem ocupa cada uma.
+    Auditados 5 tabuleiros (seeds sorteadas, 1, 777, 13062, 424242): limpos.
+  - Regressão 77/77 (checks CELULAS novos: tabuleiro aberto sem célula fantasma nem
+    invisível; construir, mover e vender torre, plataforma, palácio e separador devolve
+    tudo, com auditoria a cada passo). Sem malha de obstáculo, o check falha (conferido).
+  - **Dele:** um asset de obstáculo no lugar do cubo, se quiser.
+
 - **2026-10-08 (Nanite nos esqueléticos) — f9fb015** (desde d8c47dc):
   - Nanite ligado em `SKM_Jumento` e `SMK_Mito`. Com ~200 jumentos e 50 atiradores
     esqueléticos: 64–71 → 97–100 fps, GPU ~12,2 → ~8 ms (seção 13, Rodada 6). Visto na

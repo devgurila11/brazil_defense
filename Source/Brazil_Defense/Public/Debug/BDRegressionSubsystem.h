@@ -66,6 +66,15 @@ private:
 	/** Places the held fence on an edge, turned the way the edge runs. */
 	bool PlaceFence(const FBDEdgeCoord& Edge);
 
+	/** Drops the piece lifted for a move on the first cell near a point that takes it, never its own. */
+	bool MoveNear(const FBDCellCoord& Near, int32 Radius, FBDCellCoord& OutCell);
+
+	/**
+	 * Builds, moves and sells one of each piece and holds the grid against the board after
+	 * every step: no cell left taken by a piece that went, none taken with nothing to see.
+	 */
+	void CheckCellsComeBack(UBDPlaceableData* Tower, UBDPlaceableData* Platform, UBDPlaceableData* Divider);
+
 	/** The defender standing that was not in a list taken before. */
 	ABDTowerBase* FindNewTower(const TArray<ABDTowerBase*>& Before) const;
 

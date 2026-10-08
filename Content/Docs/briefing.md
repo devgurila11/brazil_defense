@@ -1,114 +1,64 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-08 10:00**
+**Versão: 2026-10-08 15:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Primeiro ATIRADOR de plataforma — estrutura completa
+# BUG — células livres recusando colocação (preview vermelho)
 
-O usuário vai criar/importar: modelo do personagem, arma (separada),
-animações (Idle, Shooting), 4 sons de disparo, partículas no Niagara
-(muzzle flash, impacto) e textura de sangue (decal). O terminal monta
-TODA A ESTRUTURA com os encaixes PRONTOS e slots vazios, para o usuário
-preencher conforme cria. Nada do terminal espera os assets — deixar
-tudo plugável.
+Existem células do grid que estão LIVRES (nada posicionado) mas o
+preview de colocação as mostra como VERMELHO (recusadas), como se
+estivessem ocupadas. Isso não pode acontecer.
 
-Este é o PRIMEIRO atirador de verdade — substitui o placeholder atual
-de personagem de plataforma (vira o padrão). Single shot, como as
-defesas protótipo atuais.
+## Varrer e achar a causa (não é o usuário que inspeciona célula a célula)
 
----
+Varrer o grid inteiro por script e encontrar onde o estado LÓGICO
+diverge do que deveria estar livre:
 
-## 1. O atirador (personagem de plataforma)
+1. Varredura de consistência: para cada célula, comparar o estado
+   registrado no UBDGridSubsystem (Free/Tower/Platform/Divider/
+   Blocked/Spawn/Goal) com o que REALMENTE ocupa aquela célula (há um
+   ator posicionado ali? uma aresta? nada?). Listar as células cujo
+   estado registrado diz "ocupada/bloqueada" mas NÃO há nada
+   ocupando-as de fato. Essas são as fantasmas.
 
-- Novo personagem de plataforma: fica no slot, Idle quando sem alvo,
-  Shooting quando NPC entra no raio.
-- Mira: mesma regra das defesas de disparo (mais adiantado no próprio
-  alcance, reavaliado a cada tiro, sem prioridade de candidato — o que
-  já vale para plataformas).
-- Single shot (cadência de pistola por enquanto).
-- Slot de MESH do personagem pronto (placeholder até o usuário importar
-  o modelo). Slots de ANIMAÇÃO: Idle e Shooting (apontar quando
-  importar).
+2. Causas prováveis a checar (reportar qual é):
+   - RESÍDUO DE REMOÇÃO: peça vendida/movida que não liberou a célula
+     de volta para Free. Especialmente peças 2×2 (palácio, plataformas)
+     — conferir se a liberação das 4 células funciona.
+   - CÉLULAS 2×2: construir/vender/mover palácio e plataformas marca e
+     desmarca TODAS as células certas?
+   - URNA SÓ-FRENTE: a mudança recente (urna aceita só pela frente)
+     marcou células demais como bloqueadas? Conferir as células ao
+     redor da urna.
+   - SPAWN/GOAL: células de spawn/goal que ficaram marcadas após o
+     ônibus/boca se mover, ou após a urna ser reposicionada.
+   - AUTORAÇÃO: o layout salvo tem células marcadas erradas de origem?
 
-## 2. Arma SEPARADA + socket na mão (base da evolução)
+3. Determinístico: rodar a varredura em vários tabuleiros sorteados
+   (seeds) para ver se é sempre nas mesmas células (autoração/layout)
+   ou após ações (resíduo de remoção).
 
-- A arma é um ator/mesh SEPARADO, anexado a um SOCKET na mão do
-  personagem (empunhadura). O usuário vai criar o socket na mão no
-  editor de skeletal; deixar o código/anexo pronto para usar o socket
-  (ex: nome "hand_r" ou o que o usuário definir — confirmar o nome).
-- Evolução = TROCAR A ARMA: array de armas por nível (nível 0-5), cada
-  uma com: modelo da arma, dano, cadência, muzzle flash (Niagara), som
-  de disparo. Só a arma base (pistola) preenchida; as outras 4-5 como
-  placeholder.
-- Subir de nível (estrela) troca o modelo da arma no socket e os
-  parâmetros (dano/cadência maiores). Preparar isso já, mesmo com só a
-  pistola existindo.
+## Corrigir a raiz
+- Depois de achar: corrigir o ponto que deixa a célula marcada sem
+  ocupante (a liberação que falha, o off-by-one, etc.).
+- Garantir que vender/mover/remover QUALQUER peça devolve TODAS as
+  células dela para Free.
 
-## 3. Muzzle flash no cano (Niagara — slot pronto)
+## Blindar no regression
+- Adicionar invariante: após construir e depois VENDER/MOVER cada tipo
+  de peça (incluindo 2×2), todas as células dela voltam a Free — nenhuma
+  célula fantasma. Rodar para palácio, plataformas, torre, separador.
+- Invariante de consistência: nenhuma célula marcada como ocupada sem
+  um ator/aresta real ocupando-a.
 
-- Socket no CANO da arma (muzzle) para o flash sair da ponta.
-- Slot para um Niagara System de muzzle flash, disparado a cada tiro,
-  sincronizado com a animação Shooting (Anim Notify) e a cadência.
-- O usuário cria o Niagara; deixar o ponto de disparo e o socket
-  prontos. Placeholder vazio até ele criar.
-
-## 4. Partícula de impacto no NPC (Niagara — slot pronto)
-
-- Quando o tiro ACERTA o NPC, disparar um Niagara System de impacto na
-  posição do acerto.
-- Slot pronto, placeholder vazio. O usuário cria o efeito.
-
-## 5. Decal de sangue VERDE no chão
-
-- Quando um NPC é ABATIDO, aplicar um DECAL de sangue verde no chão, na
-  posição da queda.
-- A textura vem do usuário (gera no Nano); deixar o slot de textura
-  pronto.
-- O decal some após alguns segundos (DecalFadeTime, ex: 4-6s,
-  ajustável) — fade out, não corte seco — para NÃO acumular memória com
-  muitos NPCs mortos.
-- Limite de decais simultâneos (pool, como os corpos da morte): acima
-  do teto, o mais antigo some. Numa onda densa, não encher o chão de
-  decais nem pesar.
-
-## 6. Som de disparo (4 variações — slot pronto)
-
-- Cue de disparo single shot com 4 variações (Random), disparado a cada
-  tiro, sincronizado com a animação/cadência.
-- 3D na posição da arma, atenuação por câmera, SC_Effects, concurrency
-  (como os outros sons de tiro). Slot vazio até o usuário importar os 4.
-- Reusar/estender o sistema de som de tiro que já existe (o FireSound
-  por arma do Agente).
-
-## 7. Menu DROP-UP de seleção de atiradores
-
-- Na barra de peças, ao selecionar "atiradores/personagens", sobe um
-  SUBMENU (drop-up — expande PARA CIMA a partir do botão) listando os
-  tipos de atirador disponíveis.
-- Hoje só este primeiro atirador, mas o menu já é PREPARADO para vários
-  (lista que cresce). Cada entrada: ícone, nome, custo.
-- Selecionar um no submenu põe ele "na mão" para posicionar no slot.
-- Estruturar para novos atiradores entrarem na lista sem refazer o
-  menu.
-
----
-
-## Notas
-- Tudo com SLOT VAZIO / placeholder, plugável quando o usuário importar
-  (modelo, arma, animações, Niagara, sons, textura de sangue).
-- O que o terminal faz AGORA: a lógica, os sockets, os pontos de
-  disparo, o array de armas, o sistema de decal com pool, o menu
-  drop-up, o roteamento de som. Os ASSETS o usuário pluga depois.
-- Confirmar nomes de socket (mão e cano) com o usuário quando ele criar
-  no skeletal.
+## Comando útil
+- Se ajudar, um BD.Grid.Audit que roda a varredura e lista as células
+  fantasmas (estado ocupado sem ocupante real), para diagnóstico rápido
+  no futuro.
 
 ## Entregável
-- Atirador de plataforma funcional (placeholder de mesh/anim), mira
-  correta, single shot.
-- Arma separada no socket da mão; array de armas por nível (pistola
-  preenchida), troca ao evoluir.
-- Slots prontos: muzzle (cano), impacto (NPC), som (4 tiros), textura
-  de sangue (decal com pool e fade).
-- Menu drop-up de atiradores, preparado para vários.
-- BD.Test.Regression passa; compilar os dois alvos; commit.
+- Causa das células fantasmas encontrada e corrigida na raiz.
+- Vender/mover/remover libera todas as células (inclusive 2×2).
+- Regression com invariante de consistência de células.
+- Compilar os dois alvos; commit.

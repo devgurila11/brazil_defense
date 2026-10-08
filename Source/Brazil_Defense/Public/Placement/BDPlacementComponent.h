@@ -214,6 +214,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Placement")
 	bool TrySellActor(AActor* Actor);
 
+	/** Every cell a placed piece covers, with that piece. What BD.Grid.Audit holds the grid against. */
+	const TMap<FBDCellCoord, FBDPlacedPiece>& GetPlacedByCell() const { return PlacedByCell; }
+
 	/** The placeable a placed actor was spawned from, or null when the actor is not a placed piece. For the HUD to price a sale. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Placement")
 	const UBDPlaceableData* FindPlaceableOfActor(const AActor* Actor) const;

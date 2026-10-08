@@ -22,6 +22,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "Grid/BDGridAudit.h"
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformMisc.h"
@@ -315,6 +316,188 @@ bool UBDRegressionSubsystem::PlaceNear(UBDPlaceableData* Piece, const FBDCellCoo
 	return false;
 }
 
+bool UBDRegressionSubsystem::MoveNear(const FBDCellCoord& Near, const int32 Radius, FBDCellCoord& OutCell)
+{
+	UBDPlacementComponent* Placement = GetPlacement();
+	for (int32 Ring = 1; Ring <= Radius; ++Ring)
+	{
+		for (int32 DY = -Ring; DY <= Ring; ++DY)
+		{
+			for (int32 DX = -Ring; DX <= Ring; ++DX)
+			{
+				if (FMath::Max(FMath::Abs(DX), FMath::Abs(DY)) != Ring)
+				{
+					continue;
+				}
+				const FBDCellCoord Cell(Near.X + DX, Near.Y + DY);
+				Placement->SetHoveredCellDirect(Cell);
+				if (Placement->IsCurrentPlacementValid() && Placement->TryPlaceAtHovered())
+				{
+					OutCell = Cell;
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+void UBDRegressionSubsystem::CheckCellsComeBack(UBDPlaceableData* Tower, UBDPlaceableData* Platform, UBDPlaceableData* Divider)
+{
+	using namespace BDRegressionPrivate;
+
+	UWorld* World = GetWorld();
+	UBDPlacementComponent* Placement = GetPlacement();
+	UBDGridSubsystem* Grid = UBDGridSubsystem::Get(World);
+
+	// The board as the match dealt it, before the player touches it: every taken cell has
+	// something standing on it. The generated obstacles were Blocked cells with no body at
+	// all, so with the debug grid off the ghost went red over cells that looked free.
+	const FBDGridAuditReport Opening = BDGridAudit::Run(*World);
+	if (!Opening.IsClean()) { BDGridAudit::LogReport(Opening); }
+	Check(TEXT("CELULAS"), TEXT("every taken cell of the board has something on it, and something to see"),
+		Opening.IsClean() && Opening.CellsTaken > 0, Opening.Summary());
+
+	// Cells of a rectangle still taken, except those of another one the same size (where the piece went).
+	const auto CountTaken = [Grid](const FBDCellCoord& Origin, const FIntPoint& Span, const FBDCellCoord& SkipOrigin, const bool bSkip)
+	{
+		int32 Taken = 0;
+		for (int32 Y = 0; Y < Span.Y; ++Y)
+		{
+			for (int32 X = 0; X < Span.X; ++X)
+			{
+				const FBDCellCoord Cell(Origin.X + X, Origin.Y + Y);
+				const bool bInSkip = bSkip && Cell.X >= SkipOrigin.X && Cell.X < SkipOrigin.X + Span.X
+					&& Cell.Y >= SkipOrigin.Y && Cell.Y < SkipOrigin.Y + Span.Y;
+				Taken += !bInSkip && Grid->GetCellState(Cell) != EBDCellState::Free ? 1 : 0;
+			}
+		}
+		return Taken;
+	};
+
+	int32 Left = 0;
+	int32 Dirty = 0;
+	int32 Done = 0;
+	FString Trail;
+	const auto Audit = [&Dirty, World]()
+	{
+		const FBDGridAuditReport Report = BDGridAudit::Run(*World);
+		if (!Report.IsClean())
+		{
+			++Dirty;
+			BDGridAudit::LogReport(Report);
+		}
+	};
+
+	UBDPlaceableData* Pieces[] = { Tower, Platform, FindPiece(EBDPieceKind::Palace) };
+	for (UBDPlaceableData* Piece : Pieces)
+	{
+		FBDCellCoord Cell;
+		if (Piece == nullptr || !PlaceNear(Piece, UrnCell, 12, Cell))
+		{
+			Trail += FString::Printf(TEXT(" %s not built;"), *GetNameSafe(Piece));
+			Placement->CancelSelection();
+			continue;
+		}
+		Placement->CancelSelection();
+		const FBDPlacedPiece* Placed = Placement->GetPlacedByCell().Find(Cell);
+		if (Placed == nullptr)
+		{
+			Trail += FString::Printf(TEXT(" %s built but not on its cell;"), *Piece->GetName());
+			continue;
+		}
+		const FBDCellCoord From = Placed->Origin;
+		const FIntPoint Span(FMath::Max(1, Placed->Footprint.X), FMath::Max(1, Placed->Footprint.Y));
+		Audit();
+
+		// Lifted from its far corner, so a wide piece is picked up by any of its cells.
+		Placement->SetHoveredCellDirect(FBDCellCoord(From.X + Span.X - 1, From.Y + Span.Y - 1));
+		FBDCellCoord To = From;
+		bool bMoved = false;
+		if (Placement->TryBeginMoveAtHovered())
+		{
+			bMoved = MoveNear(From, 12, To);
+			if (!bMoved)
+			{
+				Placement->CancelMove();
+			}
+		}
+		const FBDPlacedPiece* Moved = Placement->GetPlacedByCell().Find(To);
+		To = Moved != nullptr ? Moved->Origin : To;
+		Left += bMoved ? CountTaken(From, Span, To, true) : 0;
+		Audit();
+
+		AActor* Actor = Moved != nullptr && Moved->Actors.Num() > 0 ? Moved->Actors[0].Get() : nullptr;
+		const bool bSold = Actor != nullptr && Placement->TrySellActor(Actor);
+		Left += CountTaken(To, Span, To, false);
+		Audit();
+
+		Done += bMoved && bSold ? 1 : 0;
+		Trail += FString::Printf(TEXT(" %s %dx%d %s -> %s %s;"), *Piece->GetName(), Span.X, Span.Y, *From.ToString(),
+			bMoved ? *To.ToString() : TEXT("(not moved)"), bSold ? TEXT("sold") : TEXT("NOT SOLD"));
+	}
+
+	// The divider lives on edges: built, moved and sold, every edge it held goes free.
+	{
+		TArray<FBDEdgeCoord> BlockedBefore;
+		Grid->GetBlockedEdges(BlockedBefore);
+		bool bBuilt = false;
+		FBDEdgeCoord Edge;
+		if (Divider != nullptr && Placement->TakeIntoHand(Divider))
+		{
+			for (int32 DX = 3; DX <= 12 && !bBuilt; ++DX)
+			{
+				Edge = FBDEdgeCoord(FBDCellCoord(UrnCell.X - DX, UrnCell.Y), FBDEdgeCoord::DirectionY);
+				bBuilt = PlaceFence(Edge);
+			}
+		}
+		Placement->CancelSelection();
+		bool bMoved = false;
+		bool bSold = false;
+		if (bBuilt)
+		{
+			Placement->SetHoveredEdgeDirect(Edge);
+			if (Placement->TryBeginMoveAtHovered())
+			{
+				for (int32 DY = 2; DY <= 6 && !bMoved; ++DY)
+				{
+					Placement->SetHoveredEdgeDirect(FBDEdgeCoord(FBDCellCoord(Edge.Cell.X, Edge.Cell.Y + DY), Edge.Direction));
+					bMoved = Placement->IsCurrentPlacementValid() && Placement->TryPlaceAtHovered();
+				}
+				if (!bMoved)
+				{
+					Placement->CancelMove();
+				}
+			}
+			Audit();
+
+			// Sold by whatever edge it ended up on: every edge blocked now that was not before.
+			TArray<FBDEdgeCoord> Now;
+			Grid->GetBlockedEdges(Now);
+			for (const FBDEdgeCoord& Each : Now)
+			{
+				if (!BlockedBefore.Contains(Each))
+				{
+					Placement->SetHoveredEdgeDirect(Each);
+					bSold = Placement->TryRemoveAtHovered() || bSold;
+				}
+			}
+		}
+		TArray<FBDEdgeCoord> After;
+		Grid->GetBlockedEdges(After);
+		const int32 EdgesLeft = After.Num() - BlockedBefore.Num();
+		Left += FMath::Max(0, EdgesLeft);
+		Done += bMoved && bSold && EdgesLeft == 0 ? 1 : 0;
+		Trail += FString::Printf(TEXT(" %s %s %s, %d edge(s) left;"), *GetNameSafe(Divider),
+			bBuilt ? *Edge.ToString() : TEXT("not built"), bMoved ? TEXT("moved and sold") : TEXT("NOT MOVED"), EdgesLeft);
+		Audit();
+	}
+
+	Check(TEXT("CELULAS"), TEXT("building, moving and selling a tower, a platform, the palace and a divider gives every cell and edge back"),
+		Done == 4 && Left == 0 && Dirty == 0,
+		FString::Printf(TEXT("%d of 4 pieces through, %d cell(s)/edge(s) left taken, %d audit(s) dirty:%s"), Done, Left, Dirty, *Trail));
+}
+
 ABDTowerBase* UBDRegressionSubsystem::FindNewTower(const TArray<ABDTowerBase*>& Before) const
 {
 	for (TActorIterator<ABDTowerBase> It(GetWorld()); It; ++It)
@@ -599,6 +782,8 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Placement->SetHoveredEdgeDirect(Sides[Side]);
 			Placement->TryRemoveAtHovered();
 		}
+
+		CheckCellsComeBack(Tower, Platform, Divider);
 		WaitTicks = 1;
 		break;
 	}

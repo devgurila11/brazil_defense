@@ -128,6 +128,9 @@ public:
 	/** Whether this platform is currently lifted off the board and stamps nothing. */
 	bool IsLifted() const { return bLifted; }
 
+	/** Cells this platform has written as Platform right now, each with the state it had before. */
+	const TArray<TPair<FBDCellCoord, EBDCellState>>& GetStampedCells() const { return StampedCells; }
+
 	/** Bottom-left cell of the footprint: the placed origin, or the cell under the owner location. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Platform")
 	bool GetFootprintOrigin(FBDCellCoord& OutCoord) const;
