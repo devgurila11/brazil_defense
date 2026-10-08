@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-08 (células livres recusando colocação) — COMMIT** (desde 7c18da4):
+- **2026-10-08 (células livres recusando colocação) — d30ad44** (desde 7c18da4):
   - Briefing 2026-10-08 15:00. **Causa:** os 20 obstáculos gerados por seed
     (`UBDObstacleGenerator`) eram só células `Blocked`, sem ator nem malha. Até a tarde a
     grade de debug os pintava; desde `bDrawInGame=False` ficaram invisíveis, e o preview
