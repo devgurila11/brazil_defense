@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-08 (Nanite nos esqueléticos) — COMMIT** (desde d8c47dc):
+- **2026-10-08 (Nanite nos esqueléticos) — f9fb015** (desde d8c47dc):
   - Nanite ligado em `SKM_Jumento` e `SMK_Mito`. Com ~200 jumentos e 50 atiradores
     esqueléticos: 64–71 → 97–100 fps, GPU ~12,2 → ~8 ms (seção 13, Rodada 6). Visto na
     tela: horda com as skins e sombra, Mito normal. O corpo dos atiradores, quando vier,
