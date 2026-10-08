@@ -263,6 +263,15 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-08 (Nanite nos esqueléticos) — COMMIT** (desde d8c47dc):
+  - Nanite ligado em `SKM_Jumento` e `SMK_Mito`. Com ~200 jumentos e 50 atiradores
+    esqueléticos: 64–71 → 97–100 fps, GPU ~12,2 → ~8 ms (seção 13, Rodada 6). Visto na
+    tela: horda com as skins e sombra, Mito normal. O corpo dos atiradores, quando vier,
+    precisa do Nanite ligado no asset também.
+  - Check do Agente "walks free of the grid": falhava por sorteio quando a caminhada saía
+    a ~1° de um eixo. Agora passa fora das linhas centrais ou fora do eixo.
+  - Regressão 75–76 PASS, 0 FAIL (o check de cercar um creep só roda em alguns seeds).
+
 - **2026-10-08 (desempenho com plataformas cheias) — f087df2** (desde 5b0cc5f):
   - Briefing de GPU com 8 plataformas cheias (~50 atiradores). Medido renderizado, números
     e reprodução na seção 13, Rodada 6. Sem horda o frame era preso na render thread, não
@@ -1964,3 +1973,11 @@ vezes (liga/desliga/liga/desliga) e a diferença repetiu.
 6,9 / GPU 6,0 ms (144 fps), 8 plataformas cheias Draw 8,0 / GPU 5,9 ms
 (125 fps); forçando a grade com `BD.Grid.Debug 2`, Draw 12,6 / GPU 7,3 ms
 (79 fps).
+
+**Nanite nos esqueléticos.** `SKM_Jumento` e `SMK_Mito` com Nanite ligado.
+Mesma cena com os 50 atiradores vestindo o jumento: sem horda, Draw 7,5 /
+GPU 6,7 ms (133 fps); com ~200 jumentos andando, Game 9,6–10,2 / Draw
+8,7–9,3 / GPU 7,9–8,5 ms (97–100 fps), contra 64–71 fps antes. Na GPU
+somem a sombra virtual Non-Nanite, o base pass e as velocidades dos
+esqueléticos; aparece `RayTracingDynamicGeometry` (~0,7 ms). Desligar a
+sombra dos personagens já não muda nada mensurável.

@@ -1056,10 +1056,15 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				WorstOffAxis = FMath::Max(WorstOffAxis, FMath::Min(OffX, OffY));
 			}
 			const float Moved = FVector::Dist2D(WalkStart, Agent->GetActorLocation());
+			// The board is drawn anew every run, and a walk can run within a degree or two of an
+			// axis and keep near a centre line. A grid-bound walk would also face the axis
+			// exactly: off the lines, or off the axis, is free of the grid.
+			const float Yaw = Agent->GetActorRotation().Yaw;
+			const float OffAxisDegrees = FMath::Abs(FMath::FindDeltaAngleDegrees(Yaw, FMath::RoundToFloat(Yaw / 90.0f) * 90.0f));
 			Check(TEXT("AGENTE"), TEXT("the Agent walks free of the grid: off both centre lines of a cell, at any angle"),
-				WalkingTicks > 0 && WorstOffAxis > Cell * 0.05f,
-				FString::Printf(TEXT("%d walking tick(s), %.0f cm off the nearer centre line at most (cell %.0f), moved %.0f cm, yaw %.1f"),
-					WalkingTicks, WorstOffAxis, Cell, Moved, Agent->GetActorRotation().Yaw));
+				WalkingTicks > 0 && (WorstOffAxis > Cell * 0.05f || OffAxisDegrees > 0.5f),
+				FString::Printf(TEXT("%d walking tick(s), %.0f cm off the nearer centre line at most (cell %.0f), moved %.0f cm, yaw %.1f (%.1f deg off the axis)"),
+					WalkingTicks, WorstOffAxis, Cell, Moved, Yaw, OffAxisDegrees));
 		}
 
 		// One weapon a level, the pistol designed, the kill bonus 1 s down 0.15 s a star.
