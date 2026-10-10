@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-10 (som do tiro da pistola) — COMMIT** (desde 267dfde):
+- **2026-10-10 (som do tiro da pistola) — 1e78c6e** (desde 267dfde):
   - Briefing 14:00. Os 4 disparos dele chegaram como `.wav` soltos em
     `Content/audio/Effects` (`Single_pistol_gunshot[_1/_2/_3].wav`, estéreo, 48 kHz, 1 s,
     os quatro diferentes). Originais movidos para `SourceAudio/Effects` como
