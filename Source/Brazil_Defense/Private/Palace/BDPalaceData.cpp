@@ -4,6 +4,7 @@
 
 #include "Animation/AnimSequenceBase.h"
 #include "Engine/SkeletalMesh.h"
+#include "Sound/SoundBase.h"
 
 UBDPalaceData::UBDPalaceData()
 {
@@ -38,14 +39,32 @@ const FBDAgentWeapon* UBDPalaceData::GetWeapon(const int32 PalaceLevel) const
 	return Weapons.Num() > 0 ? &Weapons[FMath::Clamp(PalaceLevel, 0, Weapons.Num() - 1)] : nullptr;
 }
 
+namespace BDPalaceDataPrivate
+{
+	/** The slot of a level's weapon, or of the nearest entry below that has one. */
+	template <typename TSlot, typename TGetter>
+	static TSlot ResolveDown(const TArray<FBDAgentWeapon>& Weapons, const int32 PalaceLevel, TGetter Get)
+	{
+		for (int32 Index = FMath::Clamp(PalaceLevel, 0, Weapons.Num() - 1); Index >= 0; --Index)
+		{
+			const TSlot& Slot = Get(Weapons[Index]);
+			if (!Slot.IsNull())
+			{
+				return Slot;
+			}
+		}
+		return TSlot();
+	}
+}
+
 TSoftObjectPtr<UStaticMesh> UBDPalaceData::ResolveWeaponMesh(const int32 PalaceLevel) const
 {
-	for (int32 Index = FMath::Clamp(PalaceLevel, 0, Weapons.Num() - 1); Index >= 0; --Index)
-	{
-		if (!Weapons[Index].Mesh.IsNull())
-		{
-			return Weapons[Index].Mesh;
-		}
-	}
-	return TSoftObjectPtr<UStaticMesh>();
+	return BDPalaceDataPrivate::ResolveDown<TSoftObjectPtr<UStaticMesh>>(Weapons, PalaceLevel,
+		[](const FBDAgentWeapon& Weapon) -> const TSoftObjectPtr<UStaticMesh>& { return Weapon.Mesh; });
+}
+
+TSoftObjectPtr<USoundBase> UBDPalaceData::ResolveFireSound(const int32 PalaceLevel) const
+{
+	return BDPalaceDataPrivate::ResolveDown<TSoftObjectPtr<USoundBase>>(Weapons, PalaceLevel,
+		[](const FBDAgentWeapon& Weapon) -> const TSoftObjectPtr<USoundBase>& { return Weapon.FireSound; });
 }

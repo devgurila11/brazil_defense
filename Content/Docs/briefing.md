@@ -1,48 +1,38 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-10 12:00**
+**Versão: 2026-10-10 14:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Ajustes do atirador: altura, nome no menu, giro da arma
+# Montar o Cue de som de disparo da pistola
 
-Animações e sincronia de disparo da Nicole estão ÓTIMAS. Faltam três
-ajustes de acabamento.
+O usuário importou os sons de DISPARO da pistola em:
+C:\Users\rafag\Documents\Unreal\Brazil_Defense\Content\audio\Effects
 
-## 1. Atiradores flutuando ~1,5m acima do deck da plataforma
+ATENÇÃO: essa pasta JÁ tem outros sons (ambiência AMB_*, motor
+S_Bus_Engine_*, buzina S_Bus_Horn_*). Identificar os NOVOS (os
+disparos de pistola) pelos arquivos recém-adicionados / nome / tipo —
+não misturar com os que já existem.
 
-- Os atiradores (Nicole) ficam ~1,5m ACIMA do piso da plataforma —
-  flutuando, não pisando no deck.
-- Acontece no PALANQUE e no CAMINHÃO (e provavelmente arquibancada) —
-  é geral dos slots de plataforma, não de uma só.
-- Corrigir a altura (Z) do atirador no slot para ele PISAR no deck da
-  plataforma, não flutuar acima.
-- Verificar nos três tipos (palanque, caminhão, arquibancada) e nos
-  andares de evolução (quando a plataforma sobe de nível, o atirador
-  acompanha o deck).
-
-## 2. Menu drop-up mostra "Shooter" em vez de "Nicole"
-
-- Ao clicar em Atiradores, o item no drop-up aparece como "Shooter"
-  (nome genérico). Deve aparecer o nome do PERSONAGEM: "Nicole".
-- Ajustar o DisplayName do DA_Shooter_Pistol para "Nicole" (FText,
-  pt/en). O menu lê o DisplayName de cada atirador — quando entrarem
-  outros, cada um mostra o seu nome.
-
-## 3. Arma precisa de leve giro para a direita (alinhar com a linha de tiro)
-
-- A pistola está quase alinhada, mas precisa de um leve giro para a
-  DIREITA (lado de fora da mão) para o cano ficar alinhado com a linha
-  de tiro.
-- Ajuste fino no campo GRIP do nível 0 (um pequeno yaw à direita), nos
-  DataAssets da Nicole (DA_Shooter_Pistol) e do Mito (DA_PalaceData) —
-  a mesma correção provavelmente serve para os dois, já que usam a
-  mesma pistola.
-- Conferir pelo frame do BD Shot que o cano aponta na direção do tiro.
+## Fazer
+1. Identificar os ~4 sons de disparo novos. Renomear num padrão limpo:
+   S_Pistola_Tiro_01 ... _04 (ou o padrão do projeto). Se ficar
+   ambíguo qual é disparo, listar para o usuário confirmar.
+2. Montar o Cue SCue_Pistola_Tiro com as 4 variações (Random, leve
+   variação de pitch), como os outros Cues de tiro.
+   - Reusar o BDBuildSoundCue: SCue em /Game/BD/Audio/SCue_Pistola_Tiro.
+3. Apontar o SCue_Pistola_Tiro no FireSound da arma NÍVEL 0 (pistola)
+   nos DOIS DataAssets:
+   - DA_Shooter_Pistol (Nicole)
+   - DA_PalaceData (Mito)
+4. O som do tiro deve sair no frame do BD Shot (já sincronizado),
+   3D na posição da arma, atenuação por câmera, SC_Effects, com o
+   concurrency dos sons de tiro que já existe.
 
 ## Entregável
-- Atiradores pisando no deck das plataformas (todos os tipos e níveis).
-- Menu drop-up mostrando "Nicole" (DisplayName).
-- Arma alinhada com a linha de tiro (giro fino na Grip).
-- BD.Test.Regression passa; compilar os dois alvos; commit (inclui o
-  que ficou da auditoria anterior).
+- Sons de disparo identificados e renomeados, sem misturar com
+  ambiência/motor/buzina.
+- SCue_Pistola_Tiro montado e apontado no FireSound nível 0 da Nicole
+  e do Mito.
+- Tiro com som (sincronizado com a animação), 3D, atenuado, concurrency.
+- BD.Test.Regression passa; compilar os dois alvos; commit.

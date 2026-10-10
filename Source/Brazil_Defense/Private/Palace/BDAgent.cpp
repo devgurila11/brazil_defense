@@ -894,7 +894,8 @@ void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 	// The sound of the weapon, on the same instant as the flash and the gesture.
 	if (UBDShotSoundSubsystem* Shots = World != nullptr ? World->GetSubsystem<UBDShotSoundSubsystem>() : nullptr)
 	{
-		Shots->PlayShot(Weapon.FireSound.LoadSynchronous(), GetMuzzleLocation());
+		const UBDPalaceData* Data = GetData();
+		Shots->PlayShot(Data != nullptr ? Data->ResolveFireSound(HeldWeaponLevel).LoadSynchronous() : Weapon.FireSound.LoadSynchronous(), GetMuzzleLocation());
 	}
 	UE_LOG(LogBDTower, Verbose, TEXT("%s fires %s at %s: %.0f damage."), *GetName(), *Weapon.Name.ToString(), *Target->GetName(), Weapon.Damage);
 

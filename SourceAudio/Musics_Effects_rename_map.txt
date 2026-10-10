@@ -28,3 +28,7 @@ S_Bus_Engine_01.wav <- Old_diesel_bus_engin_#1-1791030748429.wav
 S_Bus_Engine_02.wav <- Old_diesel_bus_engin_#2-1791030750787.wav
 S_Bus_Engine_03.wav <- Old_diesel_bus_engin_#3-1791030754691.wav
 S_Bus_Engine_04.wav <- Old_diesel_bus_engin_#4-1791030758185.wav
+S_Pistola_Tiro_01.wav <- Single_pistol_gunshot.wav
+S_Pistola_Tiro_02.wav <- Single_pistol_gunshot_1.wav
+S_Pistola_Tiro_03.wav <- Single_pistol_gunshot_2.wav
+S_Pistola_Tiro_04.wav <- Single_pistol_gunshot_3.wav

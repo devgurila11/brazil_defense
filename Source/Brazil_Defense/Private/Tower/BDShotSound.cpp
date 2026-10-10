@@ -3,7 +3,9 @@
 #include "Tower/BDShotSound.h"
 
 #include "Components/AudioComponent.h"
+#include "BDLog.h"
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundClass.h"
@@ -77,4 +79,24 @@ bool UBDShotSoundSubsystem::PlayShot(USoundBase* Sound, const FVector& Where)
 	Audio->Play();
 	++ShotsPlayed;
 	return true;
+}
+
+namespace BDShotSoundCommands
+{
+	static void ExecStatus(const TArray<FString>& Args, UWorld* World)
+	{
+		const UBDShotSoundSubsystem* Shots = World != nullptr ? World->GetSubsystem<UBDShotSoundSubsystem>() : nullptr;
+		if (Shots == nullptr)
+		{
+			UE_LOG(LogBDDebug, Warning, TEXT("BD.Shot.Status: no shot sound in this world."));
+			return;
+		}
+		UE_LOG(LogBDDebug, Log, TEXT("BD.Shot.Status: %d shot(s) asked for a sound, %d played, %d silent (empty slot)."),
+			Shots->GetShotsRequested(), Shots->GetShotsPlayed(), Shots->GetShotsSilent());
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(
+		TEXT("BD.Shot.Status"),
+		TEXT("BD.Shot.Status: how many shots asked for a sound, how many played it and how many had none."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecStatus));
 }

@@ -77,9 +77,9 @@ struct FBDAgentWeapon
 	float KillBonusSeconds = 1.0f;
 
 	/**
-	 * Played at every shot, through UBDShotSoundSubsystem. Empty fires in silence: the
-	 * slot waits for a cue of two or three variations (see UBDShotSoundSettings for how
-	 * to build one).
+	 * Played at every shot, through UBDShotSoundSubsystem. Empty takes the one below; none
+	 * at all fires in silence. A cue of a few variations under a Random node (see
+	 * UBDShotSoundSettings for how to build one).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TSoftObjectPtr<USoundBase> FireSound;
@@ -288,6 +288,7 @@ public:
 	/** The weapon of a palace level, clamped to the authored entries. Null when there are none. */
 	const FBDAgentWeapon* GetWeapon(int32 PalaceLevel) const;
 
-	/** The model of a palace level: its own, or the nearest entry below with one. */
+	/** The model and the shot sound of a palace level: its own, or the nearest entry below with one. */
 	TSoftObjectPtr<UStaticMesh> ResolveWeaponMesh(int32 PalaceLevel) const;
+	TSoftObjectPtr<USoundBase> ResolveFireSound(int32 PalaceLevel) const;
 };

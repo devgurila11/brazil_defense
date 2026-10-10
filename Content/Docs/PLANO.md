@@ -263,6 +263,24 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-10 (som do tiro da pistola) — COMMIT** (desde 267dfde):
+  - Briefing 14:00. Os 4 disparos dele chegaram como `.wav` soltos em
+    `Content/audio/Effects` (`Single_pistol_gunshot[_1/_2/_3].wav`, estéreo, 48 kHz, 1 s,
+    os quatro diferentes). Originais movidos para `SourceAudio/Effects` como
+    `S_Pistola_Tiro_01..04.wav` (mapa em `Musics_Effects_rename_map.txt`) e importados em
+    `/Game/audio/Effects/S_Pistola_Tiro_01..04`, classe SC_Effects como a buzina ao lado.
+    Ambiência, motor e buzina não foram tocados.
+  - `SCue_Pistola_Tiro` em `/Game/BD/Audio` pelo `BDBuildSoundCue`: Random sem repetição,
+    pitch ±5%, volume -10%, SC_Effects. Apontado no FireSound do nível 0 do
+    `DA_Shooter_Pistol` (Nicole) e do `DA_PalaceData` (Mito).
+  - O Mito agora herda o som da arma de baixo como já herdava a malha
+    (`UBDPalaceData::ResolveFireSound`): sem isso ficaria mudo a partir da 1ª estrela.
+  - Toca pelo caminho que já existia (`UBDShotSoundSubsystem`): 3D no Muzzle, atenuação
+    contra a câmera, concurrency de 8, SC_Effects. Medido em partida com áudio: 82 tiros,
+    82 sons, 0 mudos, todos a 18–21% do gesto (o BD Shot a 0,21 s de 1,17 s).
+  - `BD.Shot.Status` (tiros, sons tocados, mudos) e check novo ATIRADOR: todo nível da
+    Nicole e do Mito tem som. Regressão 79/79, os dois alvos compilados.
+
 - **2026-10-10 (Nicole na plataforma, pistola na mão do Mito) — d7cca92** (desde df1ad53):
   - Assets dele: Nicole (`SMK_Nicole`, esqueleto próprio `Nicole_Skeleton` com socket
     `hand_r`, `Nicole_Pistol_Idle`, `Nicole_Shooting` com BD Shot a 0,21 s), pistola

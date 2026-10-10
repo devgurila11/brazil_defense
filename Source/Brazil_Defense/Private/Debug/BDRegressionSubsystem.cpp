@@ -992,6 +992,27 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						Held != nullptr ? *Held->Name.ToString() : TEXT("none"), ShooterData != nullptr ? ShooterData->Weapons.Num() : 0,
 						ShooterData != nullptr ? *ShooterData->HandSocket.ToString() : TEXT("")));
 
+			// The pistol's cue is on level 1 and every weapon above holds it until it has its own,
+			// for the platform shooter and for the Agent alike.
+			{
+				int32 ShooterSilent = 0;
+				for (int32 Level = 1; ShooterData != nullptr && Level <= UBDTowerData::MaxLevels; ++Level)
+				{
+					ShooterSilent += ShooterData->ResolveFireSound(Level).IsNull() ? 1 : 0;
+				}
+				int32 AgentSilent = 0;
+				const UBDPalaceData* PalaceData = LoadObject<UBDPalaceData>(nullptr, TEXT("/Game/BD/Data/DA_PalaceData.DA_PalaceData"));
+				for (int32 Level = 0; PalaceData != nullptr && Level <= UBDPalaceData::MaxLevel; ++Level)
+				{
+					AgentSilent += PalaceData->ResolveFireSound(Level).IsNull() ? 1 : 0;
+				}
+				Check(TEXT("ATIRADOR"), TEXT("every level of the shooter's and the Agent's weapons fires with a sound"),
+					ShooterData != nullptr && PalaceData != nullptr && ShooterSilent == 0 && AgentSilent == 0,
+					FString::Printf(TEXT("shooter level 1 '%s', %d silent level(s); Agent level 0 '%s', %d silent level(s)"),
+						ShooterData != nullptr ? *ShooterData->ResolveFireSound(1).GetAssetName() : TEXT("no data"), ShooterSilent,
+						PalaceData != nullptr ? *PalaceData->ResolveFireSound(0).GetAssetName() : TEXT("no data"), AgentSilent));
+			}
+
 			// Fifty of them fill eight platforms: their bodies are in the animation budget with the horde's.
 			const USkeletalMeshComponentBudgeted* BudgetedBody = Shooter != nullptr ? Cast<USkeletalMeshComponentBudgeted>(Shooter->GetBody()) : nullptr;
 			Check(TEXT("ATIRADOR"), TEXT("a shooter's body is animated under the animation budget, like the horde's"),
