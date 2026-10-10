@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-10 (fala: horda, volume, prioridade, ducking; especiais em dobro) — COMMIT** (desde 9131fe4):
+- **2026-10-10 (fala: horda, volume, prioridade, ducking; especiais em dobro) — e961e37** (desde 9131fe4):
   - Briefing 21:00. **A1** — `UBDCreepSoundSubsystem::GetSpeechShare`: a fatia de falas
     de cada creep é `SpeechShare x alvo x intervalo médio / creeps vivos`, com piso, para
     a horda inteira pedir `SpeechTargetPerSecond` (0,4/s = uma a cada 2,5 s) com 20 ou
