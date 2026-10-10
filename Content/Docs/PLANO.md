@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-10 (Nicole na plataforma, pistola na mão do Mito) — COMMIT** (desde df1ad53):
+- **2026-10-10 (Nicole na plataforma, pistola na mão do Mito) — d7cca92** (desde df1ad53):
   - Assets dele: Nicole (`SMK_Nicole`, esqueleto próprio `Nicole_Skeleton` com socket
     `hand_r`, `Nicole_Pistol_Idle`, `Nicole_Shooting` com BD Shot a 0,21 s), pistola
     (`SM_Pistol` com socket `Muzzle`, cano no -X da malha), `MI_Nicole`, `MI_Pistol`,
