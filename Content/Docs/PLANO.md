@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-10 (Fase B: falas de comemoração por personagem) — COMMIT** (desde 17ab49c):
+- **2026-10-10 (Fase B: falas de comemoração por personagem) — c96d052** (desde 17ab49c):
   - Briefing 16:30. 17 MP3 da Nicole (ElevenLabs, todos diferentes — o "(1)" não é
     cópia) → WAV 16-bit 44,1 kHz mono com PyAV, `Content/audio/Nicole/VO_Nicole_01..17`
     em ordem de gravação, importados (SC_Effects); MP3 originais em
