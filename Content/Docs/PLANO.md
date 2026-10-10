@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-10 (falas do Mito: comemoração e chute) — COMMIT** (desde 48d9a4b):
+- **2026-10-10 (falas do Mito: comemoração e chute) — ced33a1** (desde 48d9a4b):
   - Briefing 18:00. 24 MP3 do Mito → WAV mono 44,1 kHz 16-bit (PyAV): 14 de comemoração
     (`Content/audio/Mito/VO_Mito_Festejo_01..14`) e 10 de chute
     (`Content/audio/Mito/Kick/VO_Mito_Chute_01..10`), em ordem de gravação, importados
