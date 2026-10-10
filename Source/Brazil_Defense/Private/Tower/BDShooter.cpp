@@ -9,6 +9,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Enemy/BDCreepSoundSubsystem.h"
 #include "Enemy/BDEnemyBase.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
@@ -216,6 +217,17 @@ void ABDShooter::CommitPendingShot()
 		return;
 	}
 	CommitShot(Target, *LevelStats);
+}
+
+void ABDShooter::NotifyKill()
+{
+	Super::NotifyKill();
+	const UBDShooterData* Shooter = GetShooterData();
+	UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(this);
+	if (Shooter != nullptr && Sounds != nullptr)
+	{
+		Sounds->TryCelebrate(*this, Shooter->CelebrationSound);
+	}
 }
 
 void ABDShooter::Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats)

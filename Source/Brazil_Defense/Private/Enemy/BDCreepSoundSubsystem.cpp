@@ -241,6 +241,92 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 	return true;
 }
 
+UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::GateCelebration(const AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank,
+	const double Now, const float Roll) const
+{
+	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
+	if (Bank.IsNull())
+	{
+		return ECelebration::NoBank;
+	}
+	const double* Last = LastCelebration.Find(&Speaker);
+	if (Last != nullptr && Now - *Last < Settings.CelebrationMinInterval)
+	{
+		return ECelebration::TooSoon;
+	}
+	if (Now - LastCelebrationAny < Settings.CelebrationGlobalGap)
+	{
+		return ECelebration::BoardBusy;
+	}
+	return Roll < Settings.CelebrationChance ? ECelebration::Said : ECelebration::Unlucky;
+}
+
+void UBDCreepSoundSubsystem::NoteCelebration(const AActor& Speaker, const double Now)
+{
+	LastCelebration.Add(&Speaker, Now);
+	LastCelebrationAny = Now;
+}
+
+UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::TryCelebrate(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank, const float Roll)
+{
+	++CelebrationsAsked;
+	const ECelebration Outcome = TryCelebrateCounted(Speaker, Bank, Roll);
+	++CelebrationOutcomes[static_cast<int32>(Outcome)];
+	return Outcome;
+}
+
+UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::TryCelebrateCounted(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank, const float Roll)
+{
+	const UWorld* World = GetWorld();
+	const double Now = World != nullptr ? World->GetTimeSeconds() : 0.0;
+	const ECelebration Gate = GateCelebration(Speaker, Bank, Now, Roll >= 0.0f ? Roll : FMath::FRand());
+	if (Gate != ECelebration::Said || World == nullptr)
+	{
+		return Gate;
+	}
+
+	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
+	USoundBase* Words = BDCreepSoundPrivate::Resolve(Bank);
+	if (Words == nullptr || !BDCreepSoundPrivate::InRange(*World, Speaker.GetActorLocation(), Settings.VoiceInnerRadius + Settings.VoiceFalloffDistance))
+	{
+		return ECelebration::Unheard;
+	}
+	EnsureObjects();
+
+	// The militants' rule for words: few at once, one an ear. The nearest win a full budget.
+	TWeakObjectPtr<UAudioComponent> Replace;
+	if (!CanSpeak(Speaker.GetActorLocation(), Replace))
+	{
+		++SpeechHeldBack;
+		return ECelebration::HeldBack;
+	}
+	if (UAudioComponent* Old = Replace.Get())
+	{
+		Old->Stop();
+	}
+
+	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAttached(Words, Speaker.GetRootComponent(), NAME_None,
+		FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, /*bStopWhenAttachedToDestroyed*/ false,
+		Settings.CelebrationVolume, 1.0f, 0.0f, SpeechAttenuation.Get(), nullptr, /*bAutoDestroy*/ true);
+	if (Audio == nullptr)
+	{
+		return ECelebration::Unheard;
+	}
+
+	// Taken as said: his interval and the board's gap run from now.
+	NoteCelebration(Speaker, Now);
+	++CelebrationsSaid;
+	Voices.Add(Audio);
+	Sentences.Add(Audio);
+	PeakSentences = FMath::Max(PeakSentences, Sentences.Num());
+	if (UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(&Speaker))
+	{
+		Marks->NoteSpeech(Speaker, *Audio);
+	}
+	UE_LOG(LogBDWave, Verbose, TEXT("%s celebrates a kill: %s."), *Speaker.GetName(), *Words->GetName());
+	return ECelebration::Said;
+}
+
 bool UBDCreepSoundSubsystem::PlayFootstep(const ABDEnemyBase& Creep)
 {
 	const UBDEnemyData* Data = Creep.GetData();
@@ -431,6 +517,12 @@ namespace BDCreepSoundDebug
 			Sounds->GetVoicesRequested(), Sounds->GetVoicesInRange(), Sounds->GetVoicesStarted(),
 			Sounds->GetStepsRequested(), Sounds->GetStepsPlayed(), Sounds->GetDeathsRequested(), Sounds->GetDeathsPlayed(),
 			Sounds->GetFallsRequested(), Sounds->GetFallsPlayed());
+		using ECelebration = UBDCreepSoundSubsystem::ECelebration;
+		UE_LOG(LogBDWave, Display, TEXT("Celebrations: %d kill(s) by the player's people, %d line(s) said; kept quiet: %d no bank, %d too soon, %d board busy, %d unlucky, %d held back by the speech rule, %d unheard."),
+			Sounds->GetCelebrationsAsked(), Sounds->GetCelebrationsSaid(), Sounds->GetCelebrationOutcomes(ECelebration::NoBank),
+			Sounds->GetCelebrationOutcomes(ECelebration::TooSoon), Sounds->GetCelebrationOutcomes(ECelebration::BoardBusy),
+			Sounds->GetCelebrationOutcomes(ECelebration::Unlucky), Sounds->GetCelebrationOutcomes(ECelebration::HeldBack),
+			Sounds->GetCelebrationOutcomes(ECelebration::Unheard));
 
 		const TArray<float>& Seconds = Sounds->GetSecondsAtCount();
 		float Total = 0.0f;

@@ -7,6 +7,8 @@
 #include "Bribe/BDBribeSubsystem.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Enemy/BDCandidate.h"
+#include "Enemy/BDCreepSoundSettings.h"
+#include "Enemy/BDCreepSoundSubsystem.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "Enemy/BDEnemyData.h"
 #include "Engine/Engine.h"
@@ -1050,6 +1052,54 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					FString::Printf(TEXT("sides %s, colours %s (red %s, blue %s, black %s), %d mark(s) after two sentences, %d once not sounding"),
 						bSides ? TEXT("ok") : TEXT("WRONG"), bColours ? TEXT("ok") : TEXT("WRONG"), *Red.ToFColor(true).ToHex(), *Blue.ToFColor(true).ToHex(),
 						*Black.ToFColor(true).ToHex(), HeldAfterTwo, LiveAfter));
+			}
+
+			// Each character speaks from his own bank, only now and then when he kills: his
+			// interval, the board's gap, the chance, in that order. Nobody shares a voice.
+			if (UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(World))
+			{
+				using ECelebration = UBDCreepSoundSubsystem::ECelebration;
+				const UBDPalaceData* AgentData = LoadObject<UBDPalaceData>(nullptr, TEXT("/Game/BD/Data/DA_PalaceData.DA_PalaceData"));
+				const UBDEnemyData* Militant = UBDWaveSettings::Get().ResolveWaveEnemy();
+				const TSoftObjectPtr<USoundBase> Bank = ShooterData != nullptr ? ShooterData->CelebrationSound : TSoftObjectPtr<USoundBase>();
+				const bool bOwnBanks = !Bank.IsNull() && Bank.GetAssetName() == TEXT("SCue_Nicole_Festejo") && AgentData != nullptr
+					&& AgentData->AgentCelebrationSound.IsNull() && (Militant == nullptr || Militant->SpeechSound != Bank);
+
+				ABDEnemyBase* Other = Waves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), 0);
+				const UBDCreepSoundSettings& Voice = UBDCreepSoundSettings::Get();
+				const double T = World->GetTimeSeconds() + 1000.0;
+				const ECelebration Unlucky = Shooter != nullptr ? Sounds->GateCelebration(*Shooter, Bank, T, Voice.CelebrationChance + 0.01f) : ECelebration::NoBank;
+				const ECelebration Lucky = Shooter != nullptr ? Sounds->GateCelebration(*Shooter, Bank, T, 0.0f) : ECelebration::NoBank;
+				const ECelebration NoBank = Shooter != nullptr ? Sounds->GateCelebration(*Shooter, TSoftObjectPtr<USoundBase>(), T, 0.0f) : ECelebration::Said;
+				ECelebration Again = ECelebration::Said, Busy = ECelebration::Said, Later = ECelebration::NoBank;
+				if (Shooter != nullptr && Other != nullptr)
+				{
+					Sounds->NoteCelebration(*Shooter, T);
+					Again = Sounds->GateCelebration(*Shooter, Bank, T + Voice.CelebrationMinInterval * 0.5, 0.0f);
+					Busy = Sounds->GateCelebration(*Other, Bank, T + Voice.CelebrationGlobalGap * 0.5, 0.0f);
+					Later = Sounds->GateCelebration(*Other, Bank, T + Voice.CelebrationGlobalGap + 0.1, 0.0f);
+				}
+				if (Other != nullptr)
+				{
+					Other->Destroy();
+				}
+
+				// The kill is what asks, not the shot.
+				const int32 AskedBefore = Sounds->GetCelebrationsAsked();
+				if (Shooter != nullptr)
+				{
+					Shooter->NotifyKill();
+				}
+				const int32 AskedByKill = Sounds->GetCelebrationsAsked() - AskedBefore;
+
+				const bool bGates = Unlucky == ECelebration::Unlucky && Lucky == ECelebration::Said && NoBank == ECelebration::NoBank
+					&& Again == ECelebration::TooSoon && Busy == ECelebration::BoardBusy && Later == ECelebration::Said;
+				Check(TEXT("FALA"), TEXT("a kill sometimes makes a character say a line from his own bank: chance, his interval, the board's gap"),
+					bOwnBanks && bGates && AskedByKill == 1 && Voice.CelebrationChance > 0.0f && Voice.CelebrationChance < 0.5f,
+					FString::Printf(TEXT("banks %s (shooter '%s', Agent '%s'), gates %d/%d/%d/%d/%d/%d (Unlucky Said NoBank TooSoon BoardBusy Said wanted), %d ask per kill, chance %.2f, interval %.0f s, gap %.0f s"),
+						bOwnBanks ? TEXT("own") : TEXT("WRONG"), *Bank.GetAssetName(), AgentData != nullptr ? *AgentData->AgentCelebrationSound.GetAssetName() : TEXT("no data"),
+						static_cast<int32>(Unlucky), static_cast<int32>(Lucky), static_cast<int32>(NoBank), static_cast<int32>(Again), static_cast<int32>(Busy), static_cast<int32>(Later),
+						AskedByKill, Voice.CelebrationChance, Voice.CelebrationMinInterval, Voice.CelebrationGlobalGap));
 			}
 
 			// Fifty of them fill eight platforms: their bodies are in the animation budget with the horde's.

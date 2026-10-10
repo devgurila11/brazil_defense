@@ -117,6 +117,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shooter|Animation")
 	TSoftObjectPtr<UAnimSequenceBase> ShootAnimation;
 
+	/**
+	 * His own lines, said now and then when he downs a creep (see the Celebration settings
+	 * of the creep sound). A cue of his voice only: each character has his bank, none is
+	 * shared. Empty keeps him quiet.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shooter|Voice")
+	TSoftObjectPtr<USoundBase> CelebrationSound;
+
 	/** Seconds without a shot before he goes back to the idle loop. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Shooter|Animation", meta = (ClampMin = "0.0", ForceUnits = "s"))
 	float IdleAfter = 0.6f;

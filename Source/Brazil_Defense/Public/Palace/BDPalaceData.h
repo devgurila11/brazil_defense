@@ -159,6 +159,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Look")
 	FName HandSocket = TEXT("hand_r");
 
+	/**
+	 * His own lines, said now and then when he downs a creep, as the shooters' (see the
+	 * Celebration settings of the creep sound). His voice only; empty keeps him quiet.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Voice")
+	TSoftObjectPtr<USoundBase> AgentCelebrationSound;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Animation")
 	TSoftObjectPtr<UAnimSequenceBase> WalkAnimation;
 

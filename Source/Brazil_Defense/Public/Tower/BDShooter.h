@@ -40,6 +40,9 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void InitializeTower(const UBDTowerData* InData) override;
 
+	/** A kill of his: now and then he says a line of his own (UBDCreepSoundSubsystem::TryCelebrate). */
+	virtual void NotifyKill() override;
+
 	/** The shooter's own data, or null when the tower data is a plain tower's. */
 	const UBDShooterData* GetShooterData() const;
 

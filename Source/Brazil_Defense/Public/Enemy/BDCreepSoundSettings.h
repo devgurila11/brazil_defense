@@ -97,6 +97,28 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
 	float SpeechStereoSpread = 2000.0f;
 
+	//~ Celebration ------------------------------------------------------------
+	// The player's people say a line of their own, now and then, when one of them downs a
+	// creep: each from his own bank (the celebration sound on his data), never another's.
+	// Sparingly: a kill is only a chance, a character who spoke waits his interval, any two
+	// celebrations on the board keep a gap, and the sentence still has to pass the speech
+	// rule above, shared with the militants.
+
+	/** Chance a kill makes its shooter say a line, once his interval has passed. */
+	UPROPERTY(config, EditAnywhere, Category = "Celebration", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float CelebrationChance = 0.18f;
+
+	/** Seconds a character keeps quiet after a line of his own, whatever he kills. */
+	UPROPERTY(config, EditAnywhere, Category = "Celebration", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float CelebrationMinInterval = 15.0f;
+
+	/** Seconds between any two celebrations on the board: eight shooters are not a choir. */
+	UPROPERTY(config, EditAnywhere, Category = "Celebration", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float CelebrationGlobalGap = 4.0f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Celebration", meta = (ClampMin = "0.0", ClampMax = "4.0", UIMin = "0.0", UIMax = "4.0"))
+	float CelebrationVolume = 1.0f;
+
 	//~ Death ------------------------------------------------------------------
 
 	/**

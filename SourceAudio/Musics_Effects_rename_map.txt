@@ -32,3 +32,20 @@ S_Pistola_Tiro_01.wav <- Single_pistol_gunshot.wav
 S_Pistola_Tiro_02.wav <- Single_pistol_gunshot_1.wav
 S_Pistola_Tiro_03.wav <- Single_pistol_gunshot_2.wav
 S_Pistola_Tiro_04.wav <- Single_pistol_gunshot_3.wav
+VO_Nicole_01.wav <- ElevenLabs_2026-10-10T16_02_16_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_02.wav <- ElevenLabs_2026-10-10T16_03_10_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_03.wav <- ElevenLabs_2026-10-10T16_03_36_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_04.wav <- ElevenLabs_2026-10-10T16_04_18_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_05.wav <- ElevenLabs_2026-10-10T16_04_37_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_06.wav <- ElevenLabs_2026-10-10T16_04_58_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_07.wav <- ElevenLabs_2026-10-10T16_05_19_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_08.wav <- ElevenLabs_2026-10-10T16_05_44_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_09.wav <- ElevenLabs_2026-10-10T16_06_03_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_10.wav <- ElevenLabs_2026-10-10T16_06_40_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_11.wav <- ElevenLabs_2026-10-10T16_06_55_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_12.wav <- ElevenLabs_2026-10-10T16_06_55_Nicole_BD_ivc_sp100_s50_sb75_v4 (1).mp3
+VO_Nicole_13.wav <- ElevenLabs_2026-10-10T16_07_43_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_14.wav <- ElevenLabs_2026-10-10T16_10_04_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_15.wav <- ElevenLabs_2026-10-10T16_10_39_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_16.wav <- ElevenLabs_2026-10-10T16_10_59_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3
+VO_Nicole_17.wav <- ElevenLabs_2026-10-10T16_11_19_Nicole_BD_ivc_sp100_s50_sb75_v4.mp3

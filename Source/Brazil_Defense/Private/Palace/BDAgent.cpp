@@ -13,6 +13,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Sound/SoundBase.h"
+#include "Enemy/BDCreepSoundSubsystem.h"
 #include "Enemy/BDEnemyBase.h"
 #include "Grid/BDGridDebug.h"
 #include "Grid/BDGridSubsystem.h"
@@ -916,6 +917,13 @@ void ABDAgent::NotifyKill()
 {
 	++Kills;
 	++KillsOnPatrol;
+	if (const UBDPalaceData* Voice = GetData())
+	{
+		if (UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(this))
+		{
+			Sounds->TryCelebrate(*this, Voice->AgentCelebrationSound);
+		}
+	}
 	const FBDAgentWeapon* Weapon = GetWeapon();
 	if (Weapon == nullptr || State == EBDAgentState::Sleeping || bGoingHome)
 	{

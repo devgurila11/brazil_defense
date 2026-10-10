@@ -1,47 +1,56 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-10 15:30**
+**Versão: 2026-10-10 16:30**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Balão de exclamação acima de quem FALA (por lado, colorido)
+# FASE B: Falas de comemoração por personagem (originalidade)
 
-Com falas vindo de NPCs e dos personagens, não dá para saber de quem
-veio a frase engraçada. Solução: uma EXCLAMAÇÃO colorida acima de quem
-está falando, com a cor indicando o LADO. Dá leitura instantânea de
-origem + lado, sem precisar mapear texto.
+Cada personagem tem VOZ e FALAS PRÓPRIAS — a Nicole fala as dela com a
+voz dela, o Mito as dele com a voz dele, e os próximos atiradores idem.
+Nunca cruzam. A estrutura é POR PERSONAGEM, não um banco global.
 
-## Quando aparece
-- SÓ em FALAS (as frases com voz). NÃO em relincho, casco, tiro, zurro
-  — só quando o personagem solta uma FALA.
-- Aparece no instante em que a fala COMEÇA.
-- SOME quando a fala TERMINA — sem fade, corte direto ao acabar o áudio.
+Áudios da Nicole já importados em:
+C:\Users\rafag\Documents\Unreal\Brazil_Defense\Content\audio\Nicole
+(CONVERTER para WAV antes de renomear.)
 
-## Cor por lado (de quem fala)
-- VERMELHO: militantes e CANDIDATOS (lado adversário).
-- AZUL: personagens do jogador — Nicole, Mito, e os próximos atiradores.
-- PRETO: ministros (preto da toga) — para a Fatia 3 (ministros ainda
-  não existem; deixar a cor preta JÁ mapeada para quando entrarem).
+## 1. Converter e renomear (lote, como as falas do jumento)
+- Converter os áudios da Nicole para WAV, depois renomear:
+  VO_Nicole_01 ... _NN. Originais para SourceAudio, anotar no rename
+  map, como o padrão do projeto.
 
-## Visual
-- Ícone de EXCLAMAÇÃO ("!") acima da cabeça de quem fala.
-- BILLBOARD: sempre virado para a câmera.
-- SOME/encolhe no zoom afastado (como a barra de vida do creep) — não
-  poluir a visão geral.
-- PULSA ao aparecer: um pop rápido de escala para chamar o olho.
-- Levemente EMISSIVO: brilha um pouco, para destacar no meio da ação e
-  à noite (com os postes). Emissivo LEVE, não um farol.
+## 2. Banco de falas POR PERSONAGEM (estrutura)
+- Cada personagem (atirador, Agente) tem seu PRÓPRIO conjunto de falas
+  de comemoração — campo no DataAsset dele apontando o Cue/banco dele.
+- NÃO um banco global compartilhado. Nicole usa só as da Nicole.
+- Montar o Cue da Nicole (SCue_Nicole_Festejo) com as falas dela
+  (Random sem repetir a anterior, leve pitch), roteado para SC_Effects
+  (ou uma class de voz), 3D na posição do personagem, atenuação por
+  câmera, concurrency.
+- Apontar no DataAsset da Nicole (DA_Shooter_Pistol).
+- Deixar o slot do MITO pronto (DA_PalaceData), VAZIO — o usuário gera
+  as falas dele depois (voz própria). Quando apontar, funciona igual.
+- Estruturar para novos atiradores: cada um aponta seu banco, sem
+  refazer o sistema.
 
-## Poluição / limites
-- As falas já têm concurrency (poucas tocam juntas), então poucos
-  balões por vez — ok. Mas garantir: um personagem só mostra UMA
-  exclamação por vez (não empilha).
-- Billboard + fade por distância evita sopa de ícones no zoom out.
+## 3. Gatilho: só ao ABATER, frequência curta
+- A fala dispara SÓ quando o personagem ABATE um NPC (derruba), NÃO a
+  cada tiro.
+- Frequência CURTA / esporádica: NÃO a cada abate. Só de vez em quando
+  (ex: chance ~15-20% por abate, com intervalo mínimo entre falas do
+  mesmo personagem e concurrency global — como as falas dos militantes,
+  para não virar tagarelice). Expor a chance e o intervalo em settings.
+
+## 4. Liga na exclamação AZUL (já existe)
+- Quando a Nicole/Mito solta a fala, disparar a marca de exclamação
+  AZUL acima dele (o sistema de exclamação por lado já existe; o código
+  da fala do personagem precisa avisar o sistema, como o terminal
+  deixou indicado).
 
 ## Entregável
-- Exclamação acima de quem fala, cor por lado (vermelho militante/
-  candidato, azul personagem do jogador, preto ministro-futuro).
-- Aparece ao começar a fala, some seco ao terminar.
-- Billboard, some no zoom afastado, pulsa, levemente emissiva.
-- Reusar o sistema de billboard das barras/estrelas.
+- Falas da Nicole convertidas/renomeadas; Cue montado e apontado só no
+  DataAsset dela.
+- Sistema de falas POR PERSONAGEM (slot do Mito pronto e vazio).
+- Fala só ao abater, esporádica (chance + intervalo + concurrency).
+- Exclamação azul disparada junto com a fala.
 - BD.Test.Regression passa; compilar os dois alvos; commit.

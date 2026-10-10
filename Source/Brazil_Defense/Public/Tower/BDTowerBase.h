@@ -146,7 +146,8 @@ public:
 	bool IsReloading() const { return ReloadRemaining > 0.0f; }
 
 	/** Credited by the creep that died to a shot of this tower. Not meant to be called directly. */
-	void NotifyKill() { ++Kills; }
+	/** Credited by a creep that died to this tower's shot. */
+	virtual void NotifyKill() { ++Kills; }
 
 	/** Where a projectile of this tower lands: applies the damage by the damage type of the data. Called by the projectile. */
 	void ApplyHit(ABDEnemyBase* HitTarget, const FVector& HitLocation, float Damage);

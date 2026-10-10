@@ -263,6 +263,31 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-10 (Fase B: falas de comemoração por personagem) — COMMIT** (desde 17ab49c):
+  - Briefing 16:30. 17 MP3 da Nicole (ElevenLabs, todos diferentes — o "(1)" não é
+    cópia) → WAV 16-bit 44,1 kHz mono com PyAV, `Content/audio/Nicole/VO_Nicole_01..17`
+    em ordem de gravação, importados (SC_Effects); MP3 originais em
+    `SourceAudio/Nicole_mp3/`, mapa em `Musics_Effects_rename_map.txt`. Mesmo padrão dos
+    militantes.
+  - `SCue_Nicole_Festejo` (`BDBuildSoundCue`): 17 falas, Random sem repetição, pitch ±4%,
+    SC_Effects. Apontado SÓ no `DA_Shooter_Pistol`.
+  - Banco por personagem: `UBDShooterData::CelebrationSound` (cada atirador aponta o
+    seu) e `UBDPalaceData::AgentCelebrationSound` (Mito, VAZIO até as falas dele). Nada
+    global: vazio = calado.
+  - Gatilho só no abate: `ABDTowerBase::NotifyKill` virou virtual; `ABDShooter` e
+    `ABDAgent::NotifyKill` chamam `UBDCreepSoundSubsystem::TryCelebrate`. Portões, em
+    ordem: banco, intervalo do personagem (15 s), espaço entre quaisquer duas
+    comemorações no tabuleiro (4 s), chance (18%) e, por fim, a mesma regra de falas dos
+    militantes (`CanSpeak`: até 2 frases, uma de cada lado da tela). Ajustes em Project
+    Settings › Brazil Defense - Creep Sound › Celebration. 3D preso ao personagem, com a
+    atenuação das falas. Dita, a exclamação AZUL sobe (`NoteSpeech`).
+  - Medido (18 Nicoles em 3 plataformas, 60 s de onda, com áudio): 187 abates, 4 falas
+    (todas com marca azul, cada marca do tamanho da fala). Calaram: 97 no sorteio, 60
+    pelo espaço de 4 s, 6 pelo intervalo de 15 s, 20 porque o orçamento de falas estava
+    tomado pelos militantes. `BD.Sound.Stats` mostra essa conta.
+  - Check novo FALA (bancos próprios, portões, um pedido por abate). Regressão 81/81, os
+    dois alvos compilados.
+
 - **2026-10-10 (exclamação sobre quem fala) — f158067** (desde 3735ae1):
   - Briefing 15:30. `UBDSpeechMarkSubsystem` (Audio/BDSpeechMarks): uma marca por
     personagem, presa ao componente de áudio da frase; vale enquanto ele toca e sai no

@@ -53,6 +53,30 @@ public:
 	/** The creep says something or makes its call, as its data shares them out. False when nothing was played. */
 	bool PlayVocal(ABDEnemyBase& Creep);
 
+	/** Why a kill did or did not become a line, for the log and the regression. */
+	enum class ECelebration : uint8 { Said, NoBank, TooSoon, BoardBusy, Unlucky, HeldBack, Unheard };
+
+	/**
+	 * One of the player's people downed a creep: maybe he says a line from his own bank.
+	 * Only by chance, after his own interval and the board's gap, and under the speech
+	 * rule shared with the militants. Said, the blue exclamation goes up over him.
+	 * @param Roll the chance's draw, 0..1; negative draws one here.
+	 */
+	ECelebration TryCelebrate(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank, float Roll = -1.0f);
+
+	/** The gates before a line is tried: his bank, his interval, the board's gap, the chance. Changes nothing. */
+	ECelebration GateCelebration(const AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank, double Now, float Roll) const;
+
+	/** Takes a line as said by Speaker at Now: his interval and the board's gap start from here. */
+	void NoteCelebration(const AActor& Speaker, double Now);
+
+
+	int32 GetCelebrationsAsked() const { return CelebrationsAsked; }
+	int32 GetCelebrationsSaid() const { return CelebrationsSaid; }
+
+	/** How the kills ended, by ECelebration: said, no bank, too soon, board busy, unlucky, held back, unheard. */
+	int32 GetCelebrationOutcomes(ECelebration Outcome) const { return CelebrationOutcomes[static_cast<int32>(Outcome)]; }
+
 	/** A foot of the creep landed. False when nothing was played. */
 	bool PlayFootstep(const ABDEnemyBase& Creep);
 
@@ -92,6 +116,9 @@ public:
 	void ResetStats();
 
 private:
+	/** TryCelebrate without the counting. */
+	ECelebration TryCelebrateCounted(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank, float Roll);
+
 	/** Builds the concurrency and attenuation objects once, from the settings at that moment. */
 	void EnsureObjects();
 
@@ -131,6 +158,13 @@ private:
 	TArray<TWeakObjectPtr<UAudioComponent>> Voices;
 
 	TArray<float> SecondsAtCount;
+
+	/** When each character last said a line, and when anyone did. */
+	TMap<TWeakObjectPtr<const AActor>, double> LastCelebration;
+	double LastCelebrationAny = -1.0e9;
+	int32 CelebrationsAsked = 0;
+	int32 CelebrationsSaid = 0;
+	int32 CelebrationOutcomes[7] = { 0, 0, 0, 0, 0, 0, 0 };
 
 	int32 PeakVoices = 0;
 	int32 VoicesRequested = 0;
