@@ -263,6 +263,36 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-10 (fala: horda, volume, prioridade, ducking; especiais em dobro) — COMMIT** (desde 9131fe4):
+  - Briefing 21:00. **A1** — `UBDCreepSoundSubsystem::GetSpeechShare`: a fatia de falas
+    de cada creep é `SpeechShare x alvo x intervalo médio / creeps vivos`, com piso, para
+    a horda inteira pedir `SpeechTargetPerSecond` (0,4/s = uma a cada 2,5 s) com 20 ou
+    200; os turnos que não viram fala são o zurro, como antes. Sem isso, 200 pediriam
+    8,6/s. Medido: 16–20 frases pedidas por minuto de onda com até ~130 creeps.
+  - **A2** — as 17 falas da Nicole reprocessadas dos MP3 (PyAV + numpy): RMS levado a
+    -16,6 dBFS (o das outras) com limitador de pico em -1 dBFS (lookahead 5 ms, release
+    60 ms); ganhos de +2,4 a +6,8 dB; a 11 e a 12 ficaram em -18,9/-17,6 de RMS (picos
+    fortes). Reimportadas sobre os mesmos assets.
+  - **A3** — comemoração com o orçamento cheio toma a vaga da frase de militante mais
+    distante (`TakeSlotFromOpponent`); se as vagas são de personagens do jogador,
+    espera. Medido: 0 comemorações seguradas pelo orçamento, 4–5 vagas tomadas por minuto.
+  - **B ducking** — `SC_Voice` nova, FILHA de `SC_Effects` (o slider de efeitos e o
+    mudo continuam valendo); as 4 Cues de fala e as 66 waves de voz nela. `SC_Voice`
+    tem o mix passivo `SMix_Speech_Duck`: `SC_Effects` a 55% SEM as filhas (a voz não se
+    abaixa), música intocada, fade 0,4 s nos dois sentidos. Valores em Project Settings
+    › Creep Sound › Ducking (escritos no mix ao começar o mundo). Medido pela lista de
+    mixes ativos do dispositivo: 22,4 s abaixado em 22,6 s de fala. O ambiente também
+    é efeito, então também abaixa.
+  - **C tamanho** — Mito ×2 (`AgentMeshScale` 2, `SleepLift` 28, `WalkAnimRate` 0,5 para
+    o pé não deslizar na mesma velocidade); arma, barra, exclamação e tiro seguem o corpo
+    (conferido renderizado; pés no chão pelo check da regressão). Candidato: cubo
+    3×3×4 → 6×6×8 (a barra dele é do painel do HUD). **Ministros não existem ainda** —
+    quando entrarem, já no dobro da escala que teriam.
+  - `BD.Sound.Stats` ganhou frases pedidas, vagas tomadas e o tempo abaixado;
+    `BD.Debug.LookAt` enquadra também corpo de malha estática (o cubo do candidato).
+    Checks novos FALA (alvo por horda, ducking) e TAMANHO; o check SOM aceita a classe
+    filha de efeitos. Regressão 86/86, os dois alvos compilados.
+
 - **2026-10-10 (falas do Mito: comemoração e chute) — ced33a1** (desde 48d9a4b):
   - Briefing 18:00. 24 MP3 do Mito → WAV mono 44,1 kHz 16-bit (PyAV): 14 de comemoração
     (`Content/audio/Mito/VO_Mito_Festejo_01..14`) e 10 de chute

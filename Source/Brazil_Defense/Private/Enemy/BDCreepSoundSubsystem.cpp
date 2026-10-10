@@ -21,6 +21,8 @@
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundConcurrency.h"
+#include "Wave/BDWaveSubsystem.h"
+#include "Sound/SoundMix.h"
 
 namespace BDCreepSoundPrivate
 {
@@ -133,11 +135,29 @@ void UBDCreepSoundSubsystem::Tick(const float DeltaTime)
 		SecondsAtCount.SetNumZeroed(Count + 1);
 	}
 	const UWorld* World = GetWorld();
-	SecondsAtCount[Count] += World != nullptr ? World->GetDeltaSeconds() / FMath::Max(KINDA_SMALL_NUMBER, World->GetWorldSettings()->GetEffectiveTimeDilation()) : DeltaTime;
+	const float Seconds = World != nullptr ? World->GetDeltaSeconds() / FMath::Max(KINDA_SMALL_NUMBER, World->GetWorldSettings()->GetEffectiveTimeDilation()) : DeltaTime;
+	SecondsAtCount[Count] += Seconds;
+
+	// Whether the words really push the duck: the device's own list of mixes in force.
+	const bool bSpeaking = Sentences.ContainsByPredicate([](const TWeakObjectPtr<UAudioComponent>& Sentence)
+	{
+		return Sentence.IsValid() && Sentence->IsPlaying();
+	});
+	if (bSpeaking && World != nullptr)
+	{
+		SecondsSpeaking += Seconds;
+		const FAudioDeviceHandle Device = World->GetAudioDevice();
+		const USoundMix* Duck = UBDCreepSoundSettings::Get().SpeechDuckMix.Get();
+		if (Device.IsValid() && Duck != nullptr && Device->GetSoundMixModifiers().Contains(Duck))
+		{
+			SecondsDucked += Seconds;
+		}
+	}
 }
 
 void UBDCreepSoundSubsystem::EnsureObjects()
 {
+	ApplyDuckSettings();
 	if (VoiceConcurrency != nullptr)
 	{
 		return;
@@ -184,7 +204,9 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 	// Words or the call, as the data shares them; whichever one the data lacks, the other.
 	USoundBase* Speech = BDCreepSoundPrivate::Resolve(Data->SpeechSound);
 	USoundBase* Call = BDCreepSoundPrivate::Resolve(Data->CallSound);
-	const bool bSpeak = Speech != nullptr && (Call == nullptr || FMath::FRand() < Data->SpeechShare);
+	// Words by the horde's share: the more creeps alive, the rarer each one's; the call is the rest.
+	const bool bSpeak = Speech != nullptr && (Call == nullptr || FMath::FRand() < GetSpeechShare(*Data));
+	SentencesAsked += bSpeak ? 1 : 0;
 	USoundBase* Sound = bSpeak ? Speech : Call;
 	if (Sound == nullptr)
 	{
@@ -241,6 +263,81 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 	return true;
 }
 
+float UBDCreepSoundSubsystem::GetSpeechShare(const UBDEnemyData& Data, int32 CreepsAlive) const
+{
+	if (CreepsAlive < 0)
+	{
+		const UWorld* World = GetWorld();
+		const UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+		CreepsAlive = Waves != nullptr ? Waves->GetLivingEnemiesRef().Num() : 1;
+	}
+
+	// Each creep takes a turn every mean interval; SpeechShare of the turns are words. The
+	// horde then asks Creeps x Share / Interval sentences a second: scaled to the target.
+	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
+	const float Low = FMath::Max(0.5f, Data.VocalIntervalMin);
+	const float MeanInterval = 0.5f * (Low + FMath::Max(Low, Data.VocalIntervalMax));
+	const float Asked = FMath::Max(1, CreepsAlive) * Data.SpeechShare / MeanInterval;
+	const float Scale = Asked > 0.0f ? FMath::Clamp(Settings.SpeechTargetPerSecond / Asked, Settings.SpeechHordeFloor, 1.0f) : 1.0f;
+	return Data.SpeechShare * Scale;
+}
+
+bool UBDCreepSoundSubsystem::TakeSlotFromOpponent()
+{
+	const UWorld* World = GetWorld();
+	const APlayerController* Player = World != nullptr ? World->GetFirstPlayerController() : nullptr;
+	FVector Listener = FVector::ZeroVector, Front, Right;
+	if (Player != nullptr)
+	{
+		Player->GetAudioListenerPosition(Listener, Front, Right);
+	}
+
+	int32 Farthest = INDEX_NONE;
+	double FarthestDistance = -1.0;
+	for (int32 Index = 0; Index < Sentences.Num(); ++Index)
+	{
+		const UAudioComponent* Sentence = Sentences[Index].Get();
+		if (Sentence == nullptr || !Sentence->IsPlaying() || !Cast<ABDEnemyBase>(Sentence->GetOwner()))
+		{
+			continue;
+		}
+		const double Distance = FVector::DistSquared(Listener, Sentence->GetComponentLocation());
+		if (Distance > FarthestDistance)
+		{
+			FarthestDistance = Distance;
+			Farthest = Index;
+		}
+	}
+	if (Farthest == INDEX_NONE)
+	{
+		return false;
+	}
+	Sentences[Farthest]->Stop();
+	Sentences.RemoveAt(Farthest);
+	++SlotsTaken;
+	return true;
+}
+
+void UBDCreepSoundSubsystem::ApplyDuckSettings()
+{
+	if (bDuckApplied)
+	{
+		return;
+	}
+	bDuckApplied = true;
+	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
+	USoundMix* Duck = Settings.SpeechDuckMix.LoadSynchronous();
+	if (Duck == nullptr || Duck->SoundClassEffects.IsEmpty())
+	{
+		UE_LOG(LogBDWave, Warning, TEXT("No speech duck mix with an effects adjuster (Project Settings > Brazil Defense - Creep Sound > Ducking): the effects will not step back for the words."));
+		return;
+	}
+	Duck->SoundClassEffects[0].VolumeAdjuster = Settings.DuckEffectsVolume;
+	Duck->SoundClassEffects[0].bApplyToChildren = false;
+	Duck->FadeInTime = Settings.DuckFadeSeconds;
+	Duck->FadeOutTime = Settings.DuckFadeSeconds;
+}
+
 UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::GateCelebration(const AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank,
 	const double Now, const float Roll) const
 {
@@ -293,9 +390,10 @@ UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::TryCelebrateCounted
 	}
 	EnsureObjects();
 
-	// The militants' rule for words: few at once, one an ear. The nearest win a full budget.
+	// The militants' rule for words: few at once, one an ear. The nearest win a full budget,
+	// and the player's people take a militant's place before they would wait.
 	TWeakObjectPtr<UAudioComponent> Replace;
-	if (!CanSpeak(Speaker.GetActorLocation(), Replace))
+	if (!CanSpeak(Speaker.GetActorLocation(), Replace) && !TakeSlotFromOpponent())
 	{
 		++SpeechHeldBack;
 		return ECelebration::HeldBack;
@@ -572,6 +670,10 @@ namespace BDCreepSoundDebug
 			Sounds->GetCelebrationOutcomes(ECelebration::Unlucky), Sounds->GetCelebrationOutcomes(ECelebration::HeldBack),
 			Sounds->GetCelebrationOutcomes(ECelebration::Unheard));
 		UE_LOG(LogBDWave, Display, TEXT("Lines always said (the kick): %d asked, %d said."), Sounds->GetAlwaysAsked(), Sounds->GetAlwaysSaid());
+		UE_LOG(LogBDWave, Display, TEXT("Sentences: the creeps asked %d (target %.2f/s), the player's people took %d place(s) from a militant."),
+			Sounds->GetSentencesAsked(), UBDCreepSoundSettings::Get().SpeechTargetPerSecond, Sounds->GetSlotsTaken());
+		UE_LOG(LogBDWave, Display, TEXT("Ducking: a sentence sounded %.1f s, the effects were ducked for %.1f s of them."),
+			Sounds->GetSecondsSpeaking(), Sounds->GetSecondsDucked());
 
 		const TArray<float>& Seconds = Sounds->GetSecondsAtCount();
 		float Total = 0.0f;

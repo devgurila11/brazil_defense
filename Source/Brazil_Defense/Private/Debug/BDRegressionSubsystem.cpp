@@ -20,6 +20,7 @@
 #include "UI/BDUISettings.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundClass.h"
+#include "Sound/SoundMix.h"
 #include "Animation/AnimSequenceBase.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -1103,6 +1104,59 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						AskedByKill, Voice.CelebrationChance, Voice.CelebrationMinInterval, Voice.CelebrationGlobalGap));
 			}
 
+			// A horde of any size asks about the same sentences a second; the words duck the effects,
+			// not the music; the special figures stand twice as tall as before.
+			if (UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(World))
+			{
+				const UBDCreepSoundSettings& Voice = UBDCreepSoundSettings::Get();
+				const UBDEnemyData* Militant = UBDWaveSettings::Get().ResolveWaveEnemy();
+				float RateSmall = 0.0f, RateLarge = 0.0f;
+				if (Militant != nullptr)
+				{
+					const float Low = FMath::Max(0.5f, Militant->VocalIntervalMin);
+					const float Mean = 0.5f * (Low + FMath::Max(Low, Militant->VocalIntervalMax));
+					RateSmall = 20 * Sounds->GetSpeechShare(*Militant, 20) / Mean;
+					RateLarge = 200 * Sounds->GetSpeechShare(*Militant, 200) / Mean;
+				}
+				const bool bSteady = Militant != nullptr && RateSmall <= Voice.SpeechTargetPerSecond * 1.05f
+					&& FMath::IsNearlyEqual(RateLarge, Voice.SpeechTargetPerSecond, Voice.SpeechTargetPerSecond * 0.05f);
+				Check(TEXT("FALA"), TEXT("the militants ask about the same sentences a second with 20 or 200 of them"), bSteady,
+					FString::Printf(TEXT("%.2f/s with 20, %.2f/s with 200, target %.2f/s (unscaled the 200 would ask %.2f/s)"), RateSmall, RateLarge,
+						Voice.SpeechTargetPerSecond, Militant != nullptr ? 200 * Militant->SpeechShare / (0.5f * (FMath::Max(0.5f, Militant->VocalIntervalMin) + Militant->VocalIntervalMax)) : 0.0f));
+
+				const USoundClass* Effects = UBDUISettings::Get().EffectsSoundClass.LoadSynchronous();
+				const USoundClass* Music = UBDUISettings::Get().MusicSoundClass.LoadSynchronous();
+				const USoundBase* Words = Militant != nullptr ? Militant->SpeechSound.LoadSynchronous() : nullptr;
+				const USoundClass* VoiceClass = Words != nullptr ? Words->GetSoundClass() : nullptr;
+				const USoundMix* Duck = Voice.SpeechDuckMix.LoadSynchronous();
+				const bool bPassive = VoiceClass != nullptr && VoiceClass->PassiveSoundMixModifiers.ContainsByPredicate(
+					[Duck](const FPassiveSoundMixModifier& Modifier) { return Modifier.SoundMix == Duck; });
+				bool bEffectsOnly = Duck != nullptr && Duck->SoundClassEffects.Num() > 0;
+				for (const FSoundClassAdjuster& Adjuster : Duck != nullptr ? Duck->SoundClassEffects : TArray<FSoundClassAdjuster>())
+				{
+					bEffectsOnly &= Adjuster.SoundClassObject == Effects && !Adjuster.bApplyToChildren && Adjuster.SoundClassObject != Music;
+				}
+				const bool bDucking = VoiceClass != nullptr && VoiceClass != Effects && VoiceClass->ParentClass == Effects && bPassive && bEffectsOnly
+					&& Duck->FadeOutTime > 0.0f;
+				Check(TEXT("FALA"), TEXT("a line with a voice ducks the effects, never the music nor itself, and they come back faded"), bDucking,
+					FString::Printf(TEXT("words in %s (under %s), duck %s: %s, fade %.2f/%.2f s"), *GetNameSafe(VoiceClass),
+						VoiceClass != nullptr ? *GetNameSafe(VoiceClass->ParentClass) : TEXT("-"), *GetNameSafe(Duck),
+						Duck != nullptr && Duck->SoundClassEffects.Num() > 0
+							? *FString::Printf(TEXT("%s to %.2f%s"), *GetNameSafe(Duck->SoundClassEffects[0].SoundClassObject), Duck->SoundClassEffects[0].VolumeAdjuster,
+								Duck->SoundClassEffects[0].bApplyToChildren ? TEXT(" with children") : TEXT(""))
+							: TEXT("no adjuster"),
+						Duck != nullptr ? Duck->FadeInTime : 0.0f, Duck != nullptr ? Duck->FadeOutTime : 0.0f));
+
+				const UBDPalaceData* Palace = LoadObject<UBDPalaceData>(nullptr, TEXT("/Game/BD/Data/DA_PalaceData.DA_PalaceData"));
+				const UBDEnemyData* Candidate = LoadObject<UBDEnemyData>(nullptr, TEXT("/Game/BD/Data/DA_Candidate.DA_Candidate"));
+				const bool bTall = Palace != nullptr && FMath::IsNearlyEqual(Palace->AgentMeshScale, 2.0f) && FMath::IsNearlyEqual(Palace->WalkAnimRate, 0.5f)
+					&& Candidate != nullptr && Candidate->MeshScale.Equals(FVector(6.0f, 6.0f, 8.0f)) && Militant != nullptr && Militant->MeshScale.Z < Candidate->MeshScale.Z;
+				Check(TEXT("TAMANHO"), TEXT("the Agent and the candidates stand twice their old size; the militants as they were"), bTall,
+					FString::Printf(TEXT("Agent x%.2f (walk loop at %.2f), candidate %s, militant %s"), Palace != nullptr ? Palace->AgentMeshScale : 0.0f,
+						Palace != nullptr ? Palace->WalkAnimRate : 0.0f, Candidate != nullptr ? *Candidate->MeshScale.ToCompactString() : TEXT("-"),
+						Militant != nullptr ? *Militant->MeshScale.ToCompactString() : TEXT("-")));
+			}
+
 			// Fifty of them fill eight platforms: their bodies are in the animation budget with the horde's.
 			const USkeletalMeshComponentBudgeted* BudgetedBody = Shooter != nullptr ? Cast<USkeletalMeshComponentBudgeted>(Shooter->GetBody()) : nullptr;
 			Check(TEXT("ATIRADOR"), TEXT("a shooter's body is animated under the animation budget, like the horde's"),
@@ -1693,7 +1747,9 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					if (const USoundBase* Sound = Each.LoadSynchronous())
 					{
 						++Sounds;
-						Routed += Sound->GetSoundClass() == Effects ? 1 : 0;
+						// Under the effects class: itself, or the voice class that hangs from it.
+						const USoundClass* Class = Sound->GetSoundClass();
+						Routed += Class != nullptr && (Class == Effects || Class->ParentClass == Effects) ? 1 : 0;
 					}
 				}
 				int32 Steps = 0;

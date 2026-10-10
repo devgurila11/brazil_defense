@@ -9,6 +9,7 @@
 class ABDCreepCorpse;
 class ABDEnemyBase;
 class UAudioComponent;
+class UBDEnemyData;
 class USoundAttenuation;
 class USoundBase;
 class USoundConcurrency;
@@ -50,6 +51,13 @@ public:
 	virtual TStatId GetStatId() const override;
 	//~ End FTickableGameObject interface
 
+	/**
+	 * The share of a creep's turns that are words, with the horde as big as it is now:
+	 * its data's SpeechShare, cut so the whole horde asks SpeechTargetPerSecond sentences,
+	 * never under the floor. Creeps alive passed in, or counted when negative.
+	 */
+	float GetSpeechShare(const UBDEnemyData& Data, int32 CreepsAlive = -1) const;
+
 	/** The creep says something or makes its call, as its data shares them out. False when nothing was played. */
 	bool PlayVocal(ABDEnemyBase& Creep);
 
@@ -84,6 +92,14 @@ public:
 	int32 GetAlwaysSaid() const { return AlwaysSaid; }
 
 	int32 GetCelebrationsAsked() const { return CelebrationsAsked; }
+
+	/** Sentences the creeps asked for (words, not calls), and celebrations that took a militant's place. */
+	int32 GetSentencesAsked() const { return SentencesAsked; }
+	int32 GetSlotsTaken() const { return SlotsTaken; }
+
+	/** Seconds with a sentence sounding, and of those, seconds the audio device had the duck mix on. */
+	float GetSecondsSpeaking() const { return SecondsSpeaking; }
+	float GetSecondsDucked() const { return SecondsDucked; }
 	int32 GetCelebrationsSaid() const { return CelebrationsSaid; }
 
 	/** How the kills ended, by ECelebration: said, no bank, too soon, board busy, unlucky, held back, unheard. */
@@ -128,6 +144,17 @@ public:
 	void ResetStats();
 
 private:
+	/**
+	 * The player's people come first: when the speech budget is full and a militant is
+	 * talking, the farthest militant sentence stops for the new line. A budget full of the
+	 * player's own people is left alone. @return whether a place was made.
+	 */
+	bool TakeSlotFromOpponent();
+
+	/** Writes the ducking settings on the duck mix, once a world. */
+	void ApplyDuckSettings();
+	bool bDuckApplied = false;
+
 	/** TryCelebrate without the counting. */
 	ECelebration TryCelebrateCounted(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank, float Roll);
 
@@ -176,6 +203,10 @@ private:
 	double LastCelebrationAny = -1.0e9;
 	int32 CelebrationsAsked = 0;
 	int32 AlwaysAsked = 0;
+	int32 SentencesAsked = 0;
+	int32 SlotsTaken = 0;
+	float SecondsSpeaking = 0.0f;
+	float SecondsDucked = 0.0f;
 	int32 AlwaysSaid = 0;
 	int32 CelebrationsSaid = 0;
 	int32 CelebrationOutcomes[7] = { 0, 0, 0, 0, 0, 0, 0 };

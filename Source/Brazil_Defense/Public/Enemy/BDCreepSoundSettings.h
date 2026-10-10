@@ -6,6 +6,8 @@
 #include "Engine/DeveloperSettings.h"
 #include "BDCreepSoundSettings.generated.h"
 
+class USoundMix;
+
 /**
  * The shared half of the creeps' sound: what every vocal creep obeys, whoever it is. The
  * other half, what a given creep says and how often, lives on its UBDEnemyData, so a new
@@ -85,6 +87,19 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "1", ClampMax = "4", UIMin = "1", UIMax = "4"))
 	int32 SpeechMaxConcurrent = 2;
 
+	/**
+	 * Sentences the whole horde asks for each second, however big it is: each creep's
+	 * share of words shrinks as the horde grows (SpeechShare x target x mean interval /
+	 * creeps alive), so twenty or two hundred militants talk about as often. Calls fill
+	 * the rest of their turns, as before. 0.4 is one sentence every two and a half seconds.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float SpeechTargetPerSecond = 0.4f;
+
+	/** The least a creep's share of words may fall to, as a fraction of its data's SpeechShare. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float SpeechHordeFloor = 0.02f;
+
 	/** Degrees, seen from the camera, that two sentences must be apart, on opposite sides of the middle of the screen. */
 	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", ClampMax = "180.0", UIMin = "0.0", UIMax = "180.0"))
 	float SpeechMinSeparation = 30.0f;
@@ -118,6 +133,24 @@ public:
 
 	UPROPERTY(config, EditAnywhere, Category = "Celebration", meta = (ClampMin = "0.0", ClampMax = "4.0", UIMin = "0.0", UIMax = "4.0"))
 	float CelebrationVolume = 1.0f;
+
+	//~ Ducking ----------------------------------------------------------------
+	// While any line with a voice sounds (the voice class, SC_Voice), the effects - shots,
+	// brays, hooves, hits, the ambience - step back so the words come through. The music
+	// does not move. The voice class pushes the duck mix by itself (a passive mix); these
+	// are its numbers, written on it when a world starts.
+
+	/** The duck mix the voice class pushes; its first adjuster is the effects class. */
+	UPROPERTY(config, EditAnywhere, Category = "Ducking", meta = (AllowedClasses = "/Script/Engine.SoundMix"))
+	TSoftObjectPtr<USoundMix> SpeechDuckMix;
+
+	/** Effects volume while a line sounds. */
+	UPROPERTY(config, EditAnywhere, Category = "Ducking", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float DuckEffectsVolume = 0.55f;
+
+	/** Seconds the effects take to step back, and to come back once the last line ends. */
+	UPROPERTY(config, EditAnywhere, Category = "Ducking", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float DuckFadeSeconds = 0.4f;
 
 	//~ Death ------------------------------------------------------------------
 

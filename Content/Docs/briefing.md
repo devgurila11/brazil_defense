@@ -1,54 +1,79 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-10 18:00**
+**Versão: 2026-10-10 21:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Falas do Mito: comemoração (abate) + chute (ministro)
+# Conserto de áudio de fala + ducking + tamanho dos especiais
 
-O Mito tem a MESMA VOZ em dois EVENTOS diferentes:
-- COMEMORAÇÃO ao abater militante (como a Nicole).
-- CHUTE ao chutar ministro (evento especial).
+Três frentes nesta leva.
 
-Áudios importados:
-- Comemoração: C:\...\Content\audio\Mito (raiz da pasta Mito)
-- Chute:       C:\...\Content\audio\Mito\Kick
-(CONVERTER para WAV antes de renomear, como sempre.)
+---
 
-## 1. Converter e renomear
-- Comemoração (pasta Mito, raiz): WAV, renomear VO_Mito_Festejo_01...
-- Chute (pasta Mito/Kick): WAV, renomear VO_Mito_Chute_01...
-- Originais para SourceAudio, anotar no rename map. Mesmo padrão das
-  falas da Nicole/jumento.
+## A) ÁUDIO DE FALA — 3 correções que se somam
 
-## 2. Dois Cues, mesma voz, eventos diferentes
-- SCue_Mito_Festejo: as falas de comemoração (Random sem repetir, leve
-  pitch).
-- SCue_Mito_Chute: as falas de chute.
-- Ambos 3D na posição do Mito, atenuação por câmera, class de voz/
-  efeitos, concurrency (as mesmas regras de fala).
-- Apontar os dois nos campos do DataAsset do Mito (DA_PalaceData): um
-  campo de fala de comemoração e um campo NOVO de fala de chute.
+Diagnóstico confirmado: a Nicole fica inaudível e os militantes falam
+demais. Corrigir as três:
 
-## 3. Gatilhos e frequência (DIFERENTES)
-- COMEMORAÇÃO (ao abater militante): MESMAS regras da Nicole —
-  esporádica (chance ~18%, intervalos, concurrency). Nada muda aqui.
-- CHUTE (ao chutar ministro): toca SEMPRE que o Mito chuta. É evento
-  raro e especial (o clímax cômico), então não precisa de chance nem
-  intervalo — chutou, falou. Não entope porque chutar é raro.
-  - Os MINISTROS ainda não existem (Fatia 3). Então: ligar o gancho
-    "ao chutar → SCue_Mito_Chute + exclamação azul" JÁ, testável com o
-    comando BD.Agent.Kick que já existe. Quando os ministros entrarem
-    (Fatia 3), o chute real já virá com voz, sem mexer mais.
+### A1. Militantes falam menos conforme a horda cresce (NÃO foi feito)
+- Hoje cada creep tenta falar a cada 8-20s sem olhar quantos há em
+  campo (168 tentativas em 40s numa onda pequena; com 200, 10+/s).
+- Corrigir: a chance de cada militante falar cai conforme a horda
+  cresce, mirando um NÚMERO FIXO de tentativas/s no tabuleiro inteiro
+  (alvo ~1 fala de militante a cada 2-3s no total, com 20 ou 200).
+- Fórmula: chance ∝ (alvo / militantes_vivos), com piso. Expor o alvo.
 
-## 4. Exclamação azul
-- As duas falas (comemoração e chute) disparam a exclamação AZUL do
-  Mito, como a da Nicole.
+### A2. Volume das falas da Nicole (+4 dB)
+- As falas da Nicole são ~4,4 dB mais baixas que as do Mito/militantes
+  (-21,0 vs -16,6 dBFS) — ficam encobertas.
+- Normalizar as 17 falas da Nicole para o nível das outras (~+4 dB),
+  reprocessando dos originais em SourceAudio. Pico abaixo de 0 dBFS.
+
+### A3. Prioridade das falas dos personagens do jogador
+- As falas dos SEUS personagens (Nicole, Mito) têm PRIORIDADE sobre as
+  dos militantes no limite de 2 vagas: se as 2 vagas estão ocupadas por
+  MILITANTES, o personagem toma a vaga (corta um militante); se por
+  outro personagem seu, respeita. Já acontece no chute do Mito;
+  estender para a comemoração.
+
+---
+
+## B) DUCKING — efeitos abaixam quando há fala
+
+- Quando QUALQUER fala toca (militante, Nicole, Mito, futuros), os
+  EFEITOS (tiro, relincho, casco, impacto, etc.) abaixam para ~55% do
+  volume, para a fala se destacar.
+- A MÚSICA NÃO abaixa (fica como está) — só os efeitos.
+- Abaixa enquanto houver QUALQUER fala tocando; volta ao normal quando
+  a última fala acaba, com transição SUAVE (~0,4s), não corte seco.
+- Usar Sound Class / Sound Mix (o projeto já usa SC_Effects): a classe
+  de fala aciona o ducking na classe de efeitos.
+- Valores (duck para 55%, fade 0,4s) ajustáveis em settings.
+
+---
+
+## C) TAMANHO — dobrar os especiais (NÃO os militantes)
+
+- DOBRAR a escala ATUAL de: Mito (Agente), Candidatos e Ministros.
+  Eles devem SOBRESSAIR sobre a horda de militantes — figuras especiais
+  visivelmente maiores.
+- Militantes NÃO mudam (ficam na escala atual).
+- Ao dobrar o Mito: garantir que TUDO acompanha a nova escala — a arma
+  no socket (escala junto, empunhadura certa), a barra de patrulha
+  (acima da cabeça nova), as animações, a exclamação, o raio/tiro.
+  Conferir que nada fica flutuando ou no lugar errado.
+- Candidatos e Ministros (cubos por enquanto): dobrar o cubo; quando os
+  modelos reais entrarem, já saem no tamanho dobrado.
+- A barra de vida e as marcas de exclamação desses especiais sobem para
+  a altura da nova escala.
+
+---
 
 ## Entregável
-- Falas do Mito convertidas/renomeadas (festejo e chute, separados).
-- Dois Cues (festejo e chute) apontados no DataAsset do Mito.
-- Comemoração esporádica (regras da Nicole); chute SEMPRE que chuta.
-- Chute testável agora com BD.Agent.Kick; pronto para os ministros.
-- Exclamação azul nos dois eventos.
+- Militantes falam menos com horda grande (alvo fixo/s).
+- Falas da Nicole normalizadas (+4 dB).
+- Prioridade das falas dos personagens do jogador.
+- Ducking: efeitos a 55% quando há fala, música intacta, fade 0,4s.
+- Mito, Candidatos e Ministros com o dobro do tamanho atual (militantes
+  não); tudo acompanhando (arma, barras, exclamações).
 - BD.Test.Regression passa; compilar os dois alvos; commit.

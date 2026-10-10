@@ -7,6 +7,7 @@
 #include "Audio/BDSpeechMarks.h"
 #include "Camera/CameraActor.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "BDLog.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -1333,8 +1334,12 @@ namespace BDAutoSetupCommands
 		}
 		for (AActor* Actor : Candidates)
 		{
-			const USkeletalMeshComponent* Body = Actor != nullptr ? Actor->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
-			if (Body == nullptr || Body->GetSkeletalMeshAsset() == nullptr || Skip-- > 0)
+			// The skinned body, or the placeholder block of one that has none yet (the candidate's cube).
+			const USkeletalMeshComponent* Skinned = Actor != nullptr ? Actor->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
+			const UStaticMeshComponent* Block = Actor != nullptr ? Actor->FindComponentByClass<UStaticMeshComponent>() : nullptr;
+			const UPrimitiveComponent* Body = Skinned != nullptr && Skinned->GetSkeletalMeshAsset() != nullptr ? static_cast<const UPrimitiveComponent*>(Skinned)
+				: Block != nullptr && Block->GetStaticMesh() != nullptr && Block->IsVisible() ? Block : nullptr;
+			if (Body == nullptr || Skip-- > 0)
 			{
 				continue;
 			}
@@ -1348,7 +1353,7 @@ namespace BDAutoSetupCommands
 			UE_LOG(LogBDDebug, Log, TEXT("BD.Debug.LookAt: %s from %s."), *Actor->GetName(), *Eye.ToString());
 			return;
 		}
-		UE_LOG(LogBDDebug, Warning, TEXT("BD.Debug.LookAt: no actor of a class with '%s' (or speaking, for Speaker) and a skinned body."), *Args[0]);
+		UE_LOG(LogBDDebug, Warning, TEXT("BD.Debug.LookAt: no actor of a class with '%s' (or speaking, for Speaker) and a body."), *Args[0]);
 	}
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdLookAt(
