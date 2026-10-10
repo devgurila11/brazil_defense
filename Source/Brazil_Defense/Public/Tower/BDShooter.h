@@ -43,6 +43,9 @@ public:
 	/** A kill of his: now and then he says a line of his own (UBDCreepSoundSubsystem::TryCelebrate). */
 	virtual void NotifyKill() override;
 
+	/** His celebration as a kill would ask it, the chance taken as won. @return whether he said it. */
+	bool DebugCelebrate();
+
 	/** The shooter's own data, or null when the tower data is a plain tower's. */
 	const UBDShooterData* GetShooterData() const;
 

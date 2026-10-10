@@ -230,6 +230,14 @@ void ABDShooter::NotifyKill()
 	}
 }
 
+bool ABDShooter::DebugCelebrate()
+{
+	const UBDShooterData* Shooter = GetShooterData();
+	UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(this);
+	return Shooter != nullptr && Sounds != nullptr
+		&& Sounds->TryCelebrate(*this, Shooter->CelebrationSound, /*Roll*/ 0.0f) == UBDCreepSoundSubsystem::ECelebration::Said;
+}
+
 void ABDShooter::Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats)
 {
 	const int32 Before = GetShotsFired();

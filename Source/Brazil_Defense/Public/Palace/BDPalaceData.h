@@ -166,6 +166,14 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Voice")
 	TSoftObjectPtr<USoundBase> AgentCelebrationSound;
 
+	/**
+	 * His line when he kicks: every kick, no chance and no interval, since a kick is rare
+	 * and the joke is in it. The same voice as his celebrations, other words. Empty keeps
+	 * the kick silent.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Voice")
+	TSoftObjectPtr<USoundBase> AgentKickSound;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Animation")
 	TSoftObjectPtr<UAnimSequenceBase> WalkAnimation;
 

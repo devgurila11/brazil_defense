@@ -934,6 +934,14 @@ void ABDAgent::NotifyKill()
 	BonusEarned += Weapon->KillBonusSeconds;
 }
 
+bool ABDAgent::DebugCelebrate()
+{
+	const UBDPalaceData* Data = GetData();
+	UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(this);
+	return Data != nullptr && Sounds != nullptr
+		&& Sounds->TryCelebrate(*this, Data->AgentCelebrationSound, /*Roll*/ 0.0f) == UBDCreepSoundSubsystem::ECelebration::Said;
+}
+
 bool ABDAgent::Kick()
 {
 	const UBDPalaceData* Data = GetData();
@@ -947,6 +955,12 @@ bool ABDAgent::Kick()
 	CurrentLoop = nullptr;
 	KickRemaining = Animation->GetPlayLength();
 	UE_LOG(LogBDTower, Log, TEXT("%s kicks: %.2fs."), *GetName(), KickRemaining);
+
+	// Every kick has its line, whoever it lands on: the ministers will bring nothing more.
+	if (UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(this))
+	{
+		Sounds->SayAlways(*this, Data->AgentKickSound);
+	}
 	return true;
 }
 

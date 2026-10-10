@@ -263,6 +263,32 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-10 (falas do Mito: comemoração e chute) — COMMIT** (desde 48d9a4b):
+  - Briefing 18:00. 24 MP3 do Mito → WAV mono 44,1 kHz 16-bit (PyAV): 14 de comemoração
+    (`Content/audio/Mito/VO_Mito_Festejo_01..14`) e 10 de chute
+    (`Content/audio/Mito/Kick/VO_Mito_Chute_01..10`), em ordem de gravação, importados
+    (SC_Effects); MP3 em `SourceAudio/Mito_mp3/` e `Mito_mp3/Kick/`, mapa no
+    `Musics_Effects_rename_map.txt` (UTF-8, os nomes têm acento).
+  - `SCue_Mito_Festejo` (14) e `SCue_Mito_Chute` (10), Random sem repetição, pitch ±4%,
+    SC_Effects. No `DA_PalaceData`: `AgentCelebrationSound` e o campo NOVO
+    `AgentKickSound`.
+  - Comemoração: as regras da Nicole, sem mudança. Chute: `ABDAgent::Kick` chama
+    `UBDCreepSoundSubsystem::SayAlways` — toda vez, sem chance nem intervalo; entra no
+    orçamento de falas, mas nunca espera (cheio, a frase mais antiga dá lugar) e zera o
+    intervalo de comemoração dele para não falar por cima. Exclamação azul nos dois.
+    Pronto para os ministros: o chute real (Fatia 3) passa pelo mesmo `Kick`.
+  - Como as outras falas, nada é disparado com a câmera além do alcance de voz (32000):
+    na visão geral (~33000) o Mito fica mudo; aproximando, fala. A câmera do
+    `BD.Debug.LookAt` não é o ouvinte do jogo: para testar som, `BD.Camera.Set`.
+  - Medido com áudio (câmera a 2500 sobre o palácio): 3 chutes → 3 falas de
+    `SCue_Mito_Chute`; comemorações forçadas → festejo, a 2ª em 3 s barrada pelo
+    intervalo de 15 s, a seguinte saiu; o chute falou 4 s depois de uma comemoração.
+    Cada marca azul durou a fala.
+  - `BD.Speech.Celebrate <BDShooter|BDAgent> [n]` (comemoração com a chance ganha, as
+    outras regras valendo); `BD.Sound.Stats` conta as falas de chute. Check novo FALA
+    (dois bancos do Mito, um pedido por abate e um por chute). Regressão 82/82, os dois
+    alvos compilados.
+
 - **2026-10-10 (Fase B: falas de comemoração por personagem) — c96d052** (desde 17ab49c):
   - Briefing 16:30. 17 MP3 da Nicole (ElevenLabs, todos diferentes — o "(1)" não é
     cópia) → WAV 16-bit 44,1 kHz mono com PyAV, `Content/audio/Nicole/VO_Nicole_01..17`

@@ -327,6 +327,54 @@ UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::TryCelebrateCounted
 	return ECelebration::Said;
 }
 
+bool UBDCreepSoundSubsystem::SayAlways(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank)
+{
+	++AlwaysAsked;
+	UWorld* World = GetWorld();
+	USoundBase* Words = BDCreepSoundPrivate::Resolve(Bank);
+	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
+	if (World == nullptr || Words == nullptr
+		|| !BDCreepSoundPrivate::InRange(*World, Speaker.GetActorLocation(), Settings.VoiceInnerRadius + Settings.VoiceFalloffDistance))
+	{
+		UE_LOG(LogBDWave, Verbose, TEXT("%s keeps a line to himself: %s."), *Speaker.GetName(),
+			Words == nullptr ? TEXT("no bank") : TEXT("the camera is out of earshot"));
+		return false;
+	}
+	EnsureObjects();
+
+	// Room made, never waited for: the oldest sentence still sounding gives way.
+	Sentences.RemoveAll([](const TWeakObjectPtr<UAudioComponent>& Sentence) { return !Sentence.IsValid() || !Sentence->IsPlaying(); });
+	if (Sentences.Num() >= FMath::Clamp(Settings.SpeechMaxConcurrent, 1, 4))
+	{
+		if (UAudioComponent* Oldest = Sentences[0].Get())
+		{
+			Oldest->Stop();
+		}
+		Sentences.RemoveAt(0);
+	}
+
+	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAttached(Words, Speaker.GetRootComponent(), NAME_None,
+		FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, /*bStopWhenAttachedToDestroyed*/ false,
+		Settings.CelebrationVolume, 1.0f, 0.0f, SpeechAttenuation.Get(), nullptr, /*bAutoDestroy*/ true);
+	if (Audio == nullptr)
+	{
+		UE_LOG(LogBDWave, Verbose, TEXT("%s keeps a line to himself: the audio device would not play %s."), *Speaker.GetName(), *Words->GetName());
+		return false;
+	}
+
+	NoteCelebration(Speaker, World->GetTimeSeconds());
+	++AlwaysSaid;
+	Voices.Add(Audio);
+	Sentences.Add(Audio);
+	PeakSentences = FMath::Max(PeakSentences, Sentences.Num());
+	if (UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(&Speaker))
+	{
+		Marks->NoteSpeech(Speaker, *Audio);
+	}
+	UE_LOG(LogBDWave, Verbose, TEXT("%s says %s."), *Speaker.GetName(), *Words->GetName());
+	return true;
+}
+
 bool UBDCreepSoundSubsystem::PlayFootstep(const ABDEnemyBase& Creep)
 {
 	const UBDEnemyData* Data = Creep.GetData();
@@ -523,6 +571,7 @@ namespace BDCreepSoundDebug
 			Sounds->GetCelebrationOutcomes(ECelebration::TooSoon), Sounds->GetCelebrationOutcomes(ECelebration::BoardBusy),
 			Sounds->GetCelebrationOutcomes(ECelebration::Unlucky), Sounds->GetCelebrationOutcomes(ECelebration::HeldBack),
 			Sounds->GetCelebrationOutcomes(ECelebration::Unheard));
+		UE_LOG(LogBDWave, Display, TEXT("Lines always said (the kick): %d asked, %d said."), Sounds->GetAlwaysAsked(), Sounds->GetAlwaysSaid());
 
 		const TArray<float>& Seconds = Sounds->GetSecondsAtCount();
 		float Total = 0.0f;

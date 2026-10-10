@@ -71,6 +71,18 @@ public:
 	void NoteCelebration(const AActor& Speaker, double Now);
 
 
+	/**
+	 * A line that is always said, the moment it is asked: the Agent's kick. It still sounds
+	 * like the other words (3D on him, the speech falloff) and still counts in their budget,
+	 * but it never waits: a full budget gives up its oldest sentence for it. It also starts
+	 * his celebration interval, so a kill in the same breath does not talk over it.
+	 * @return false when there is no bank, no audio, or the camera is out of earshot.
+	 */
+	bool SayAlways(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank);
+
+	int32 GetAlwaysAsked() const { return AlwaysAsked; }
+	int32 GetAlwaysSaid() const { return AlwaysSaid; }
+
 	int32 GetCelebrationsAsked() const { return CelebrationsAsked; }
 	int32 GetCelebrationsSaid() const { return CelebrationsSaid; }
 
@@ -163,6 +175,8 @@ private:
 	TMap<TWeakObjectPtr<const AActor>, double> LastCelebration;
 	double LastCelebrationAny = -1.0e9;
 	int32 CelebrationsAsked = 0;
+	int32 AlwaysAsked = 0;
+	int32 AlwaysSaid = 0;
 	int32 CelebrationsSaid = 0;
 	int32 CelebrationOutcomes[7] = { 0, 0, 0, 0, 0, 0, 0 };
 

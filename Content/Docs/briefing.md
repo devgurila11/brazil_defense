@@ -1,56 +1,54 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-10 16:30**
+**Versão: 2026-10-10 18:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# FASE B: Falas de comemoração por personagem (originalidade)
+# Falas do Mito: comemoração (abate) + chute (ministro)
 
-Cada personagem tem VOZ e FALAS PRÓPRIAS — a Nicole fala as dela com a
-voz dela, o Mito as dele com a voz dele, e os próximos atiradores idem.
-Nunca cruzam. A estrutura é POR PERSONAGEM, não um banco global.
+O Mito tem a MESMA VOZ em dois EVENTOS diferentes:
+- COMEMORAÇÃO ao abater militante (como a Nicole).
+- CHUTE ao chutar ministro (evento especial).
 
-Áudios da Nicole já importados em:
-C:\Users\rafag\Documents\Unreal\Brazil_Defense\Content\audio\Nicole
-(CONVERTER para WAV antes de renomear.)
+Áudios importados:
+- Comemoração: C:\...\Content\audio\Mito (raiz da pasta Mito)
+- Chute:       C:\...\Content\audio\Mito\Kick
+(CONVERTER para WAV antes de renomear, como sempre.)
 
-## 1. Converter e renomear (lote, como as falas do jumento)
-- Converter os áudios da Nicole para WAV, depois renomear:
-  VO_Nicole_01 ... _NN. Originais para SourceAudio, anotar no rename
-  map, como o padrão do projeto.
+## 1. Converter e renomear
+- Comemoração (pasta Mito, raiz): WAV, renomear VO_Mito_Festejo_01...
+- Chute (pasta Mito/Kick): WAV, renomear VO_Mito_Chute_01...
+- Originais para SourceAudio, anotar no rename map. Mesmo padrão das
+  falas da Nicole/jumento.
 
-## 2. Banco de falas POR PERSONAGEM (estrutura)
-- Cada personagem (atirador, Agente) tem seu PRÓPRIO conjunto de falas
-  de comemoração — campo no DataAsset dele apontando o Cue/banco dele.
-- NÃO um banco global compartilhado. Nicole usa só as da Nicole.
-- Montar o Cue da Nicole (SCue_Nicole_Festejo) com as falas dela
-  (Random sem repetir a anterior, leve pitch), roteado para SC_Effects
-  (ou uma class de voz), 3D na posição do personagem, atenuação por
-  câmera, concurrency.
-- Apontar no DataAsset da Nicole (DA_Shooter_Pistol).
-- Deixar o slot do MITO pronto (DA_PalaceData), VAZIO — o usuário gera
-  as falas dele depois (voz própria). Quando apontar, funciona igual.
-- Estruturar para novos atiradores: cada um aponta seu banco, sem
-  refazer o sistema.
+## 2. Dois Cues, mesma voz, eventos diferentes
+- SCue_Mito_Festejo: as falas de comemoração (Random sem repetir, leve
+  pitch).
+- SCue_Mito_Chute: as falas de chute.
+- Ambos 3D na posição do Mito, atenuação por câmera, class de voz/
+  efeitos, concurrency (as mesmas regras de fala).
+- Apontar os dois nos campos do DataAsset do Mito (DA_PalaceData): um
+  campo de fala de comemoração e um campo NOVO de fala de chute.
 
-## 3. Gatilho: só ao ABATER, frequência curta
-- A fala dispara SÓ quando o personagem ABATE um NPC (derruba), NÃO a
-  cada tiro.
-- Frequência CURTA / esporádica: NÃO a cada abate. Só de vez em quando
-  (ex: chance ~15-20% por abate, com intervalo mínimo entre falas do
-  mesmo personagem e concurrency global — como as falas dos militantes,
-  para não virar tagarelice). Expor a chance e o intervalo em settings.
+## 3. Gatilhos e frequência (DIFERENTES)
+- COMEMORAÇÃO (ao abater militante): MESMAS regras da Nicole —
+  esporádica (chance ~18%, intervalos, concurrency). Nada muda aqui.
+- CHUTE (ao chutar ministro): toca SEMPRE que o Mito chuta. É evento
+  raro e especial (o clímax cômico), então não precisa de chance nem
+  intervalo — chutou, falou. Não entope porque chutar é raro.
+  - Os MINISTROS ainda não existem (Fatia 3). Então: ligar o gancho
+    "ao chutar → SCue_Mito_Chute + exclamação azul" JÁ, testável com o
+    comando BD.Agent.Kick que já existe. Quando os ministros entrarem
+    (Fatia 3), o chute real já virá com voz, sem mexer mais.
 
-## 4. Liga na exclamação AZUL (já existe)
-- Quando a Nicole/Mito solta a fala, disparar a marca de exclamação
-  AZUL acima dele (o sistema de exclamação por lado já existe; o código
-  da fala do personagem precisa avisar o sistema, como o terminal
-  deixou indicado).
+## 4. Exclamação azul
+- As duas falas (comemoração e chute) disparam a exclamação AZUL do
+  Mito, como a da Nicole.
 
 ## Entregável
-- Falas da Nicole convertidas/renomeadas; Cue montado e apontado só no
-  DataAsset dela.
-- Sistema de falas POR PERSONAGEM (slot do Mito pronto e vazio).
-- Fala só ao abater, esporádica (chance + intervalo + concurrency).
-- Exclamação azul disparada junto com a fala.
+- Falas do Mito convertidas/renomeadas (festejo e chute, separados).
+- Dois Cues (festejo e chute) apontados no DataAsset do Mito.
+- Comemoração esporádica (regras da Nicole); chute SEMPRE que chuta.
+- Chute testável agora com BD.Agent.Kick; pronto para os ministros.
+- Exclamação azul nos dois eventos.
 - BD.Test.Regression passa; compilar os dois alvos; commit.

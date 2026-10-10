@@ -143,6 +143,9 @@ public:
 	/** Wakes him on a full bar wherever he is. */
 	void DebugWake();
 
+	/** His celebration as a kill would ask it, the chance taken as won. @return whether he said it. */
+	bool DebugCelebrate();
+
 	/** One line on his state, for the console and the regression. */
 	FString Describe() const;
 

@@ -10,7 +10,9 @@
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
 #include "Kismet/GameplayStatics.h"
+#include "Palace/BDAgent.h"
 #include "Sound/SoundBase.h"
+#include "Tower/BDShooter.h"
 
 UBDSpeechMarkSubsystem* UBDSpeechMarkSubsystem::Get(const UObject* WorldContextObject)
 {
@@ -139,6 +141,41 @@ namespace BDSpeechMarkCommands
 		TEXT("BD.Speech.Say"),
 		TEXT("BD.Speech.Say <class text> [side -1 his own, 0 opponent, 1 player, 2 minister] [nth=0]: the nth such actor says a sentence, near silent, with the mark of the side (his own by default)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSay));
+
+	/** The nth shooter or Agent celebrates now, from his own bank, the chance taken as won. */
+	static void ExecCelebrate(const TArray<FString>& Args, UWorld* World)
+	{
+		if (World == nullptr || Args.Num() < 1)
+		{
+			UE_LOG(LogBDDebug, Error, TEXT("BD.Speech.Celebrate <BDShooter|BDAgent> [nth=0]."));
+			return;
+		}
+		int32 Skip = Args.Num() > 1 ? FCString::Atoi(*Args[1]) : 0;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			if (!It->GetClass()->GetName().Contains(Args[0]) || Skip-- > 0)
+			{
+				continue;
+			}
+			bool bSaid = false;
+			if (ABDShooter* Shooter = Cast<ABDShooter>(*It))
+			{
+				bSaid = Shooter->DebugCelebrate();
+			}
+			else if (ABDAgent* Agent = Cast<ABDAgent>(*It))
+			{
+				bSaid = Agent->DebugCelebrate();
+			}
+			UE_LOG(LogBDDebug, Log, TEXT("BD.Speech.Celebrate: %s %s."), *It->GetName(), bSaid ? TEXT("says his line") : TEXT("keeps quiet (BD.Sound.Stats tells why)"));
+			return;
+		}
+		UE_LOG(LogBDDebug, Warning, TEXT("BD.Speech.Celebrate: no actor of a class with '%s'."), *Args[0]);
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdCelebrate(
+		TEXT("BD.Speech.Celebrate"),
+		TEXT("BD.Speech.Celebrate <BDShooter|BDAgent> [nth=0]: the nth such character says a celebration from his own bank now, as a kill whose chance came up (his interval and the board's gap still hold)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecCelebrate));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(
 		TEXT("BD.Speech.Status"),

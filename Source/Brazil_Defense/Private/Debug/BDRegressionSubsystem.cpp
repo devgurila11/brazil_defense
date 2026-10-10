@@ -1063,7 +1063,8 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				const UBDEnemyData* Militant = UBDWaveSettings::Get().ResolveWaveEnemy();
 				const TSoftObjectPtr<USoundBase> Bank = ShooterData != nullptr ? ShooterData->CelebrationSound : TSoftObjectPtr<USoundBase>();
 				const bool bOwnBanks = !Bank.IsNull() && Bank.GetAssetName() == TEXT("SCue_Nicole_Festejo") && AgentData != nullptr
-					&& AgentData->AgentCelebrationSound.IsNull() && (Militant == nullptr || Militant->SpeechSound != Bank);
+					&& !AgentData->AgentCelebrationSound.IsNull() && AgentData->AgentCelebrationSound != Bank
+					&& (Militant == nullptr || Militant->SpeechSound != Bank);
 
 				ABDEnemyBase* Other = Waves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), 0);
 				const UBDCreepSoundSettings& Voice = UBDCreepSoundSettings::Get();
@@ -1384,10 +1385,24 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		if (Agent != nullptr)
 		{
 			// A kill puts the pistol's second back; the bar runs out and he heads home.
+			UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(World);
+			const int32 CelebrationsBefore = Sounds != nullptr ? Sounds->GetCelebrationsAsked() : 0;
+			const int32 KickLinesBefore = Sounds != nullptr ? Sounds->GetAlwaysAsked() : 0;
 			const float Before = Agent->GetPatrolRemaining();
 			Agent->NotifyKill();
 			const float Earned = Agent->GetPatrolRemaining() - Before;
 			const bool bKicked = Agent->Kick();
+			const int32 CelebrationsAsked = Sounds != nullptr ? Sounds->GetCelebrationsAsked() - CelebrationsBefore : 0;
+			const int32 KickLinesAsked = Sounds != nullptr ? Sounds->GetAlwaysAsked() - KickLinesBefore : 0;
+
+			// One voice, two events: a celebration that may come on a kill, a line on every kick.
+			const bool bVoice = PalaceData != nullptr && PalaceData->AgentCelebrationSound.GetAssetName() == TEXT("SCue_Mito_Festejo")
+				&& PalaceData->AgentKickSound.GetAssetName() == TEXT("SCue_Mito_Chute");
+			Check(TEXT("FALA"), TEXT("the Agent's kill asks for a celebration and every kick asks for its own line, from his two banks"),
+				bVoice && bKicked && CelebrationsAsked == 1 && KickLinesAsked == 1,
+				FString::Printf(TEXT("banks '%s' / '%s', %d celebration ask(s) on the kill, %d kick line ask(s) on the kick"),
+					PalaceData != nullptr ? *PalaceData->AgentCelebrationSound.GetAssetName() : TEXT("no data"),
+					PalaceData != nullptr ? *PalaceData->AgentKickSound.GetAssetName() : TEXT("no data"), CelebrationsAsked, KickLinesAsked));
 			Agent->DebugSetPatrolRemaining(0.0f);
 			const EBDAgentState AfterDrain = Agent->GetState();
 			Check(TEXT("AGENTE"), TEXT("a kill adds 1 s, the kick plays, an empty bar sends him home"),
