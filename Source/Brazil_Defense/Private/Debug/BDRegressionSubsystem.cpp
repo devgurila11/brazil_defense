@@ -62,6 +62,9 @@
 #include "Placement/BDInspection.h"
 #include "Palace/BDPalace.h"
 #include "Palace/BDPalaceData.h"
+#include "Palace/BDMinisterSubsystem.h"
+#include "Palace/BDMinisterSettings.h"
+#include "Palace/BDMinister.h"
 #include "Components/StaticMeshComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Objective/BDObjectiveSettings.h"
@@ -1522,6 +1525,84 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				Killed != nullptr && Leaked != nullptr && Match->GetVotesBlue() == BlueBeforeBody + 1 && Match->GetVotesRed() == RedBeforeBody + 1,
 				FString::Printf(TEXT("blue %d -> %d, red %d -> %d, creep of %.0f hp"), BlueBeforeBody, Match->GetVotesBlue(), RedBeforeBody, Match->GetVotesRed(),
 					Killed != nullptr ? Killed->GetMaxHealth() : 0.0f));
+		}
+
+		// The ministers (slice 3a): out of the STF door on the edge with no mouth, black and
+		// twice a man, free on the board; the Agent runs at one, kicks, and he flies, cries,
+		// falls and runs back.
+		if (UBDMinisterSubsystem* Ministers = UBDMinisterSubsystem::Get(World))
+		{
+			const UBDMinisterSettings& MinisterSettings = UBDMinisterSettings::Get();
+			FBDCellCoord Door;
+			FVector Outside;
+			const AActor* Stf = nullptr;
+			const bool bDoor = Ministers->FindDoor(Door, Outside, Stf);
+			const bool bOnEdge = bDoor && (Door.X == 0 || Door.X == Grid->GetSizeX() - 1 || Door.Y == 0 || Door.Y == Grid->GetSizeY() - 1);
+			bool bMouthOnEdge = false;
+			for (const FBDSpawnPoint& Mouth : Waves->GetSpawnPoints())
+			{
+				bMouthOnEdge |= (Door.X == 0 && Mouth.AnchorExit.X == 0) || (Door.X == Grid->GetSizeX() - 1 && Mouth.AnchorExit.X == Grid->GetSizeX() - 1)
+					|| (Door.Y == 0 && Mouth.AnchorExit.Y == 0) || (Door.Y == Grid->GetSizeY() - 1 && Mouth.AnchorExit.Y == Grid->GetSizeY() - 1);
+			}
+			const int32 Before = Ministers->GetMinisters().Num();
+			const int32 Spawned = Ministers->SpawnMinisters(1);
+			TArray<ABDMinister*> Out = Ministers->GetMinisters();
+			ABDMinister* Minister = Out.Num() > Before ? Out.Last() : nullptr;
+			const UStaticMeshComponent* Block = Minister != nullptr ? Minister->FindComponentByClass<UStaticMeshComponent>() : nullptr;
+			Check(TEXT("MINISTRO"), TEXT("the STF lets a black minister out of its door on the board edge no mouth opens on, twice a man"),
+				bOnEdge && !bMouthOnEdge && Spawned == 1 && Minister != nullptr && Block != nullptr && Block->GetRelativeScale3D().Equals(FVector(4.0f, 4.0f, 8.0f))
+					&& MinisterSettings.BlockColor.GetLuminance() < 0.05f,
+				FString::Printf(TEXT("STF %s, door %s (on an edge %s, a mouth on it %s), %d out, block %s"), Stf != nullptr ? TEXT("found") : TEXT("missing"),
+					*Door.ToString(), bOnEdge ? TEXT("yes") : TEXT("no"), bMouthOnEdge ? TEXT("yes") : TEXT("no"), Spawned,
+					Block != nullptr ? *Block->GetRelativeScale3D().ToCompactString() : TEXT("-")));
+
+			// He strolls: from the door, ten seconds of ticks move him over cells he may stand on.
+			ABDAgent* Kicker = nullptr;
+			for (TActorIterator<ABDAgent> It(World); It; ++It)
+			{
+				Kicker = *It;
+			}
+			if (Minister != nullptr && Kicker != nullptr)
+			{
+				FMath::RandInit(20261010);
+				Minister->DebugPlaceOnBoard(Grid->CellToWorld(Door));
+				const FVector StrollStart = Minister->GetActorLocation();
+				FBDCellCoord Under;
+				bool bStood = true;
+				for (int32 Frame = 0; Frame < 300; ++Frame)
+				{
+					Minister->Tick(1.0f / 30.0f);
+					bStood &= Grid->WorldToCell(Minister->GetActorLocation(), Under) && Grid->GetCellState(Under) != EBDCellState::Blocked;
+				}
+				const float Strolled = FVector::Dist2D(StrollStart, Minister->GetActorLocation());
+				Check(TEXT("MINISTRO"), TEXT("a minister strolls the board free of the grid, never on a blocked cell"),
+					Strolled > 50.0f && bStood, FString::Printf(TEXT("%.0f cm in 10 s, %s"), Strolled, *Minister->Describe()));
+
+				// The Agent sees him in reach, runs at him and kicks; the foot sends him flying.
+				UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(World);
+				UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(World);
+				const int32 KickLinesBefore = Sounds != nullptr ? Sounds->GetAlwaysAsked() : 0;
+				const int32 BlackBefore = Marks != nullptr ? Marks->GetMarksStarted(EBDSpeakerSide::Minister) : 0;
+				Kicker->DebugWake();
+				Minister->DebugPlaceOnBoard(Kicker->GetActorLocation() + Kicker->GetActorForwardVector() * Grid->GetCellSize() * 2.0f);
+				for (int32 Frame = 0; Frame < 240 && Kicker->GetMinistersKicked() == 0; ++Frame)
+				{
+					Kicker->Tick(1.0f / 30.0f);
+				}
+				const bool bKicked = Kicker->GetMinistersKicked() > 0 && Minister->GetState() == EBDMinisterState::Flying;
+				for (int32 Frame = 0; Frame < 300 && Minister->GetState() != EBDMinisterState::Fleeing; ++Frame)
+				{
+					Minister->Tick(1.0f / 30.0f);
+				}
+				const bool bFled = Minister->GetState() == EBDMinisterState::Fleeing;
+				const int32 KickLines = Sounds != nullptr ? Sounds->GetAlwaysAsked() - KickLinesBefore : 0;
+				const int32 BlackMarks = Marks != nullptr ? Marks->GetMarksStarted(EBDSpeakerSide::Minister) - BlackBefore : 0;
+				Check(TEXT("MINISTRO"), TEXT("the Agent runs at a minister in reach and kicks: he flies, cries out in black, falls and runs for the STF"),
+					bKicked && Minister->GetLastFlightPeak() > MinisterSettings.FlightHeight * 0.9f && bFled && KickLines == 1 && BlackMarks == 1,
+					FString::Printf(TEXT("kicked %s, flight peak %.0f cm, %s, kick line asked %d, black mark %d"), bKicked ? TEXT("yes") : TEXT("no"),
+						Minister->GetLastFlightPeak(), *Minister->Describe(), KickLines, BlackMarks));
+				Minister->Destroy();
+			}
 		}
 
 		// With a piece in hand, the right button and Escape put it back, and sell nothing:

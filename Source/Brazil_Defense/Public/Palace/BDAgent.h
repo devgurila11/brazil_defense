@@ -8,6 +8,7 @@
 #include "BDAgent.generated.h"
 
 class ABDEnemyBase;
+class ABDMinister;
 class ABDPalace;
 class UAnimSequenceBase;
 class UBDGridSubsystem;
@@ -15,6 +16,7 @@ class UBDPalaceData;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 struct FBDAgentWeapon;
+struct FBDFreeWalk;
 
 /** What the Agent is doing. A kick is played over any of them and hands back to it. */
 UENUM(BlueprintType)
@@ -135,6 +137,16 @@ public:
 	 */
 	bool Kick();
 
+	/**
+	 * The kick at a minister: the Agent turns to him and kicks, and when the foot lands
+	 * (UBDMinisterSettings::KickImpactSeconds into it) the minister takes it and flies.
+	 * @return false when the kick cannot be played or the minister cannot be kicked.
+	 */
+	bool KickMinister(ABDMinister& Minister);
+
+	/** Kicks that landed on a minister. */
+	int32 GetMinistersKicked() const { return MinistersKicked; }
+
 	//~ Debug ---------------------------------------------------------------------
 
 	/** Sets the patrol time left. 0 sends him home now. */
@@ -161,6 +173,12 @@ private:
 	const UBDPalaceData* GetData() const;
 
 	/** Whether he may stand on a cell: on the grid and not permanent scenery. */
+	/** A minister in reach on his feet: run at him, and kick him once close. @return whether he went for one. */
+	bool GoForMinister(float DeltaSeconds, float Radius);
+
+	/** The free-walk rules, asked for him: the floor trace looks through him and his palace. */
+	FBDFreeWalk Walk() const;
+
 	bool CanStand(const FBDCellCoord& Coord) const;
 
 	/** Whether he may step from one cell to its neighbour: both standable, no divider between. */
@@ -314,6 +332,11 @@ private:
 	TObjectPtr<UAnimSequenceBase> CurrentLoop;
 
 	int32 ShotsFired = 0;
+
+	/** The minister the kick playing now will land on, and how long until it does. */
+	TWeakObjectPtr<ABDMinister> KickVictim;
+	float KickImpactRemaining = 0.0f;
+	int32 MinistersKicked = 0;
 	int32 Kills = 0;
 	float BonusEarned = 0.0f;
 };

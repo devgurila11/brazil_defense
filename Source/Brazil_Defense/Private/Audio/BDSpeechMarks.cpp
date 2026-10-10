@@ -11,6 +11,7 @@
 #include "HAL/PlatformTime.h"
 #include "Kismet/GameplayStatics.h"
 #include "Palace/BDAgent.h"
+#include "Palace/BDMinister.h"
 #include "Sound/SoundBase.h"
 #include "Tower/BDShooter.h"
 
@@ -27,8 +28,12 @@ bool UBDSpeechMarkSubsystem::DoesSupportWorldType(const EWorldType::Type WorldTy
 
 EBDSpeakerSide UBDSpeechMarkSubsystem::SideOf(const AActor& Speaker)
 {
-	// Everything that walks at the urn is the other side, the candidates with it; the rest
-	// that talks is ours. The ministers will say so themselves.
+	// Everything that walks at the urn is the other side, the candidates with it; the
+	// ministers are a side of their own; the rest that talks is ours.
+	if (Speaker.IsA<ABDMinister>())
+	{
+		return EBDSpeakerSide::Minister;
+	}
 	return Speaker.IsA<ABDEnemyBase>() ? EBDSpeakerSide::Opponent : EBDSpeakerSide::Player;
 }
 
@@ -49,6 +54,7 @@ void UBDSpeechMarkSubsystem::NoteSpeech(AActor& Speaker, UAudioComponent& Audio,
 	Mark->Audio = &Audio;
 	Mark->Side = Side;
 	Mark->StartTime = FPlatformTime::Seconds();
+	Mark->EndTime = 0.0;
 
 	++MarksStarted;
 	++MarksBySide[static_cast<int32>(Side)];
@@ -59,6 +65,24 @@ void UBDSpeechMarkSubsystem::NoteSpeech(AActor& Speaker, UAudioComponent& Audio,
 int32 UBDSpeechMarkSubsystem::CountMarks(const AActor& Speaker) const
 {
 	return Marks.FilterByPredicate([&Speaker](const FMark& Mark) { return Mark.Speaker.Get() == &Speaker; }).Num();
+}
+
+void UBDSpeechMarkSubsystem::NoteTimedMark(AActor& Speaker, const EBDSpeakerSide Side, const float Seconds)
+{
+	FMark* Mark = Marks.FindByPredicate([&Speaker](const FMark& Other) { return Other.Speaker.Get() == &Speaker; });
+	if (Mark == nullptr)
+	{
+		Mark = &Marks.AddDefaulted_GetRef();
+		Mark->Speaker = &Speaker;
+	}
+	Mark->Audio = nullptr;
+	Mark->Side = Side;
+	Mark->StartTime = FPlatformTime::Seconds();
+	Mark->EndTime = Mark->StartTime + FMath::Max(0.0f, Seconds);
+
+	++MarksStarted;
+	++MarksBySide[static_cast<int32>(Side)];
+	UE_LOG(LogBDUI, Verbose, TEXT("Speech mark over %s (%s), no sound, %.2f s."), *Speaker.GetName(), *UEnum::GetValueAsString(Side), Seconds);
 }
 
 const TArray<UBDSpeechMarkSubsystem::FMark>& UBDSpeechMarkSubsystem::GetLiveMarks()
@@ -74,7 +98,8 @@ void UBDSpeechMarkSubsystem::Prune()
 	Marks.RemoveAll([Now](const FMark& Mark)
 	{
 		const UAudioComponent* Audio = Mark.Audio.Get();
-		const bool bLive = Mark.Speaker.IsValid() && Audio != nullptr && Audio->IsPlaying();
+		const bool bSounding = Audio != nullptr && Audio->IsPlaying();
+		const bool bLive = Mark.Speaker.IsValid() && (bSounding || Now < Mark.EndTime);
 		if (!bLive)
 		{
 			UE_LOG(LogBDUI, Verbose, TEXT("Speech mark over %s gone after %.2f s."), *GetNameSafe(Mark.Speaker.Get()), Now - Mark.StartTime);

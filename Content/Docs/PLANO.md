@@ -263,6 +263,36 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-10 (Fatia 3a: o ministro, cubo preto, e o chute do Mito) — COMMIT** (desde 5c94239):
+  - Briefing 22:30. `ABDMinister`: bloco preto (cubo da engine com `BasicShapeMaterial`,
+    `Color` preto) já no dobro (4×4×8, alto como o Mito dobrado). Ajustes em Project
+    Settings › Brazil Defense - Minister (`UBDMinisterSettings`).
+  - `UBDMinisterSubsystem` acha o STF pela malha `SM_STF` (o ator do mapa, em
+    (1060, 8000), além da borda +X — o lado sem ônibus). A porta é a célula do tabuleiro
+    mais perto dele em que se pode pisar (47,10); o ministro aparece encostado no prédio,
+    entra pela porta e passeia. Sem STF no mundo, a porta vai para o meio da borda sem
+    boca.
+  - Andar livre em espaço contínuo: as regras do Agente (`CanStep`, `IsLineClear`,
+    `FindWay`, `PlanWay`, `TraceGround`) saíram para `FBDFreeWalk` (Grid/), usado pelos
+    dois — só célula `Blocked` e separador barram; atravessa torre, plataforma, prédio.
+    O Agente só delega (checks AGENTE iguais).
+  - O Mito: sem candidato em campo e fora da volta para casa, um ministro de pé dentro do
+    alcance dele (3 células) vem antes dos militantes: corre até ele (velocidade de
+    perseguição) e, a `KickReachCells`, vira e chuta (`KickMinister`). O pé acerta
+    0,45 s dentro do chute: o ministro voa 15 m em arco girando 720°, cai 2 células para
+    longe do Mito (ou mais perto, se ali não dá para pisar), fica deitado 1 s e foge para
+    a porta a 2,5× o passo, sumindo ao chegar no STF (3a; a regra de voltar só ao matar
+    candidato é 3b).
+  - Falas: o chute do Mito toca `SCue_Mito_Chute` com a exclamação azul (já existia). O
+    ministro grita: `ScreamSound` está vazio (ele ainda não tem voz), então sobe só a
+    exclamação PRETA por 1,6 s — `UBDSpeechMarkSubsystem::NoteTimedMark`, marca sem som
+    com duração; `SideOf` dá `Minister` para ele. Com o som, o grito vira fala normal.
+  - `BD.Minister.Spawn [n] [agent]` (agent = na frente do Mito), `BD.Minister.Status`,
+    `BD.Minister.Clear`; `LogBDMinister`. Checks MINISTRO: porta na borda sem boca, bloco
+    preto 4×4×8; passeio sem pisar em bloqueada; Mito persegue, chuta, voo de 15 m,
+    marca preta, fala de chute, fuga. Regressão 89/89, os dois alvos compilados.
+  - Fica para a 3b: os 11 limitados, um por candidato morto, refúgio de 2 células.
+
 - **2026-10-10 (fala: horda, volume, prioridade, ducking; especiais em dobro) — e961e37** (desde 9131fe4):
   - Briefing 21:00. **A1** — `UBDCreepSoundSubsystem::GetSpeechShare`: a fatia de falas
     de cada creep é `SpeechShare x alvo x intervalo médio / creeps vivos`, com piso, para

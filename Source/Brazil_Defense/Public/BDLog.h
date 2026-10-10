@@ -37,3 +37,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogBDUI, Log, All);
 
 /** Music, ambience and the sounds of the buses. */
 DECLARE_LOG_CATEGORY_EXTERN(LogBDAudio, Log, All);
+
+/** The ministers out of the STF: their walk, the kicks they take, their way back. */
+DECLARE_LOG_CATEGORY_EXTERN(LogBDMinister, Log, All);

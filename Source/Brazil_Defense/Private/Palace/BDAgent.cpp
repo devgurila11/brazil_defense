@@ -2,7 +2,6 @@
 
 #include "Palace/BDAgent.h"
 
-#include "Algo/Reverse.h"
 #include "Animation/AnimSequenceBase.h"
 #include "BDLog.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -15,6 +14,7 @@
 #include "Sound/SoundBase.h"
 #include "Enemy/BDCreepSoundSubsystem.h"
 #include "Enemy/BDEnemyBase.h"
+#include "Grid/BDFreeWalk.h"
 #include "Grid/BDGridDebug.h"
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
@@ -22,6 +22,9 @@
 #include "Match/BDMatchTypes.h"
 #include "Palace/BDPalace.h"
 #include "Palace/BDAnimNotify_Shot.h"
+#include "Palace/BDMinister.h"
+#include "Palace/BDMinisterSettings.h"
+#include "Palace/BDMinisterSubsystem.h"
 #include "Palace/BDPalaceData.h"
 #include "Placement/BDInspection.h"
 #include "Tower/BDShotSound.h"
@@ -55,14 +58,6 @@ namespace BDAgentPrivate
 
 	/** Where on a creep the shot lands, over its location. */
 	static constexpr float TargetChestHeight = 100.0f;
-
-	static const FIntPoint Steps[4] = { FIntPoint(1, 0), FIntPoint(0, 1), FIntPoint(-1, 0), FIntPoint(0, -1) };
-
-	/** Half his shoulders, as a share of a cell: the room a walk keeps from a divider's end. */
-	static constexpr float BodyMargin = 0.2f;
-
-	/** How finely a straight line is walked through the cells to check it, as a share of a cell. */
-	static constexpr float LineCheckStep = 0.2f;
 
 	/** Draws for a patrol point before he gives up and stands still a while. */
 	static constexpr int32 WalkDraws = 16;
@@ -194,176 +189,40 @@ void ABDAgent::InitializeAgent(ABDPalace* InPalace)
 	StartWalk();
 }
 
+FBDFreeWalk ABDAgent::Walk() const
+{
+	// The floor trace looks through him and through his palace.
+	return FBDFreeWalk(GetWorld(), GetGrid(), { this, Palace.Get() });
+}
+
 FVector ABDAgent::CellPoint(const FBDCellCoord& Coord) const
 {
-	const UBDGridSubsystem* Grid = GetGrid();
-	if (Grid == nullptr)
-	{
-		return GetActorLocation();
-	}
-
-	// On the floor, not on the board plane: the street stands above the plane, and on the
-	// plane his feet were under the asphalt walking and half his body lying down.
-	FVector Point = Grid->CellToWorld(Coord);
-	float GroundZ = 0.0f;
-	if (TraceGround(Point, GroundZ))
-	{
-		Point.Z = GroundZ;
-	}
-	return Point;
+	return GetGrid() != nullptr ? Walk().CellPoint(Coord) : GetActorLocation();
 }
 
 bool ABDAgent::TraceGround(const FVector& Point, float& OutGroundZ) const
 {
-	const UWorld* World = GetWorld();
-	const UBDGridSubsystem* Grid = GetGrid();
-	if (World == nullptr || Grid == nullptr)
-	{
-		return false;
-	}
-
-	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
-	const float PlaneZ = Grid->GetOrigin().Z;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(BDAgentGround), /*bTraceComplex*/ false);
-	Params.AddIgnoredActor(this);
-	Params.AddIgnoredActor(Palace.Get());
-
-	FHitResult Hit;
-	if (World->LineTraceSingleByChannel(Hit, FVector(Point.X, Point.Y, PlaneZ + Settings.GroundTraceDistance),
-		FVector(Point.X, Point.Y, PlaneZ - Settings.GroundTraceDistance), Settings.GroundTraceChannel, Params))
-	{
-		OutGroundZ = Hit.ImpactPoint.Z;
-		return true;
-	}
-	return false;
+	return Walk().TraceGround(Point, OutGroundZ);
 }
 
 bool ABDAgent::CanStand(const FBDCellCoord& Coord) const
 {
-	const UBDGridSubsystem* Grid = GetGrid();
-	return Grid != nullptr && Grid->IsValidCoord(Coord) && Grid->GetCellState(Coord) != EBDCellState::Blocked;
+	return Walk().CanStand(Coord);
 }
 
 bool ABDAgent::CanStep(const FBDCellCoord& From, const FBDCellCoord& To) const
 {
-	const UBDGridSubsystem* Grid = GetGrid();
-	return Grid != nullptr && CanStand(To) && !Grid->IsEdgeBlocked(From, To);
+	return Walk().CanStep(From, To);
 }
 
 bool ABDAgent::IsLineClear(const FVector& From, const FVector& To, const float Margin) const
 {
-	const UBDGridSubsystem* Grid = GetGrid();
-	if (Grid == nullptr)
-	{
-		return false;
-	}
-
-	const FVector Along = (To - From).GetSafeNormal2D();
-	const FVector Side = FVector::CrossProduct(FVector::UpVector, Along) * Margin;
-	const int32 Lines = Margin > 0.0f && !Along.IsNearlyZero() ? 3 : 1;
-	const float Step = Grid->GetCellSize() * BDAgentPrivate::LineCheckStep;
-	const int32 Samples = FMath::Max(1, FMath::CeilToInt(FVector::Dist2D(From, To) / Step));
-
-	for (int32 Line = 0; Line < Lines; ++Line)
-	{
-		const FVector Offset = Line == 0 ? FVector::ZeroVector : (Line == 1 ? Side : -Side);
-		FBDCellCoord Previous;
-		if (!Grid->WorldToCell(From + Offset, Previous) || !CanStand(Previous))
-		{
-			return false;
-		}
-
-		for (int32 Sample = 1; Sample <= Samples; ++Sample)
-		{
-			FBDCellCoord Current;
-			if (!Grid->WorldToCell(FMath::Lerp(From, To, static_cast<float>(Sample) / Samples) + Offset, Current))
-			{
-				return false;
-			}
-			if (Current == Previous)
-			{
-				continue;
-			}
-
-			const int32 DX = Current.X - Previous.X;
-			const int32 DY = Current.Y - Previous.Y;
-			if (FMath::Abs(DX) + FMath::Abs(DY) == 1)
-			{
-				if (!CanStep(Previous, Current))
-				{
-					return false;
-				}
-			}
-			else if (FMath::Abs(DX) == 1 && FMath::Abs(DY) == 1)
-			{
-				// Across a corner: open if either way round it is, as a man slips past the
-				// end of a fence. A divider running on through the corner closes both.
-				const FBDCellCoord ByX(Current.X, Previous.Y);
-				const FBDCellCoord ByY(Previous.X, Current.Y);
-				if (!(CanStep(Previous, ByX) && CanStep(ByX, Current)) && !(CanStep(Previous, ByY) && CanStep(ByY, Current)))
-				{
-					return false;
-				}
-			}
-			else
-			{
-				return false;
-			}
-			Previous = Current;
-		}
-	}
-	return true;
+	return Walk().IsLineClear(From, To, Margin);
 }
 
 TArray<FVector> ABDAgent::PlanWay(const FVector& Goal) const
 {
-	TArray<FVector> Points;
-	const UBDGridSubsystem* Grid = GetGrid();
-	const FVector Here = GetActorLocation();
-	if (Grid == nullptr)
-	{
-		return Points;
-	}
-	if (IsLineClear(Here, Goal, 0.0f))
-	{
-		Points.Add(Goal);
-		return Points;
-	}
-
-	// Around by the cells, then pulled straight: from each point, the furthest one on
-	// that is in plain sight. Two points in a row always are, so the pull never sticks.
-	FBDCellCoord From;
-	FBDCellCoord To;
-	if (!Grid->WorldToCell(Here, From) || !Grid->WorldToCell(Goal, To))
-	{
-		return Points;
-	}
-	const TArray<FBDCellCoord> Cells = FindWay(From, To);
-	if (Cells.Num() == 0)
-	{
-		return Points;
-	}
-
-	TArray<FVector> Way;
-	Way.Add(Here);
-	for (int32 Index = 1; Index < Cells.Num() - 1; ++Index)
-	{
-		Way.Add(CellPoint(Cells[Index]));
-	}
-	Way.Add(Goal);
-
-	const float Margin = Grid->GetCellSize() * BDAgentPrivate::BodyMargin;
-	for (int32 At = 0; At < Way.Num() - 1;)
-	{
-		int32 Far = Way.Num() - 1;
-		while (Far > At + 1 && !IsLineClear(Way[At], Way[Far], Margin))
-		{
-			--Far;
-		}
-		Points.Add(Way[Far]);
-		At = Far;
-	}
-	return Points;
+	return Walk().PlanWay(GetActorLocation(), Goal);
 }
 
 bool ABDAgent::FindSleepCell(FBDCellCoord& OutCell) const
@@ -427,43 +286,7 @@ FVector ABDAgent::GetBarAnchor() const
 
 TArray<FBDCellCoord> ABDAgent::FindWay(const FBDCellCoord& From, const FBDCellCoord& To) const
 {
-	TArray<FBDCellCoord> Way;
-	if (From == To)
-	{
-		Way.Add(From);
-		return Way;
-	}
-
-	TMap<FBDCellCoord, FBDCellCoord> CameFrom;
-	TArray<FBDCellCoord> Frontier;
-	Frontier.Add(From);
-	CameFrom.Add(From, From);
-
-	for (int32 Head = 0; Head < Frontier.Num(); ++Head)
-	{
-		const FBDCellCoord Current = Frontier[Head];
-		for (const FIntPoint& Step : BDAgentPrivate::Steps)
-		{
-			const FBDCellCoord Next(Current.X + Step.X, Current.Y + Step.Y);
-			if (CameFrom.Contains(Next) || !CanStep(Current, Next))
-			{
-				continue;
-			}
-			CameFrom.Add(Next, Current);
-			if (Next == To)
-			{
-				for (FBDCellCoord Back = To; Back != From; Back = CameFrom[Back])
-				{
-					Way.Add(Back);
-				}
-				Way.Add(From);
-				Algo::Reverse(Way);
-				return Way;
-			}
-			Frontier.Add(Next);
-		}
-	}
-	return Way;
+	return Walk().FindWay(From, To);
 }
 
 //~ Patrol -----------------------------------------------------------------------
@@ -494,7 +317,7 @@ void ABDAgent::StartWalk()
 	if (Grid != nullptr)
 	{
 		const FVector Here = GetActorLocation();
-		const float Margin = Grid->GetCellSize() * BDAgentPrivate::BodyMargin;
+		const float Margin = Grid->GetCellSize() * FBDFreeWalk::BodyMargin;
 		for (int32 Pass = 0; Pass < 2; ++Pass)
 		{
 			for (int32 Draw = 0; Draw < BDAgentPrivate::WalkDraws; ++Draw)
@@ -942,6 +765,59 @@ bool ABDAgent::DebugCelebrate()
 		&& Sounds->TryCelebrate(*this, Data->AgentCelebrationSound, /*Roll*/ 0.0f) == UBDCreepSoundSubsystem::ECelebration::Said;
 }
 
+bool ABDAgent::GoForMinister(const float DeltaSeconds, const float Radius)
+{
+	const UBDPalaceData* Data = GetData();
+	const UBDMinisterSubsystem* Ministers = UBDMinisterSubsystem::Get(this);
+	const UBDGridSubsystem* Grid = GetGrid();
+	ABDMinister* Minister = Ministers != nullptr && Data != nullptr && Grid != nullptr ? Ministers->FindKickable(GetActorLocation(), Radius) : nullptr;
+	if (Minister == nullptr)
+	{
+		return false;
+	}
+	CurrentTarget = nullptr;
+
+	// Close enough: face him and kick. Not yet: run at him, the chase's way.
+	const FVector ToHim = Minister->GetActorLocation() - GetActorLocation();
+	const float Reach = UBDMinisterSettings::Get().KickReachCells * Grid->GetCellSize() + Minister->GetBodyRadius();
+	if (ToHim.Size2D() <= Reach)
+	{
+		if (TurnTowards(ToHim.GetSafeNormal2D().ToOrientationRotator().Yaw, DeltaSeconds, Data->AimTolerance))
+		{
+			KickMinister(*Minister);
+		}
+		return true;
+	}
+
+	if (State != EBDAgentState::Chasing)
+	{
+		State = EBDAgentState::Chasing;
+		PlayStateAnimation();
+	}
+	Route = PlanWay(Minister->GetActorLocation());
+	if (Route.Num() == 0)
+	{
+		// No way to him: he gives up on this one for now.
+		return false;
+	}
+	StepAlong(DeltaSeconds, Data->ChaseSpeedScale);
+	return true;
+}
+
+bool ABDAgent::KickMinister(ABDMinister& Minister)
+{
+	if (!Minister.CanBeKicked() || !Kick())
+	{
+		return false;
+	}
+	SetActorRotation(FRotator(0.0f, (Minister.GetActorLocation() - GetActorLocation()).GetSafeNormal2D().ToOrientationRotator().Yaw, 0.0f));
+	KickVictim = &Minister;
+	KickImpactRemaining = FMath::Max(KINDA_SMALL_NUMBER, UBDMinisterSettings::Get().KickImpactSeconds);
+	Route.Reset();
+	UE_LOG(LogBDTower, Log, TEXT("%s kicks %s."), *GetName(), *Minister.GetName());
+	return true;
+}
+
 bool ABDAgent::Kick()
 {
 	const UBDPalaceData* Data = GetData();
@@ -1075,9 +951,20 @@ void ABDAgent::Tick(const float DeltaSeconds)
 		}
 	}
 
-	// A kick holds him on the spot until it is over.
+	// A kick holds him on the spot until it is over; on a minister, the foot lands partway.
 	if (KickRemaining > 0.0f)
 	{
+		if (KickImpactRemaining > 0.0f)
+		{
+			KickImpactRemaining -= DeltaSeconds;
+			ABDMinister* Victim = KickVictim.Get();
+			if (KickImpactRemaining <= 0.0f && Victim != nullptr && Victim->CanBeKicked())
+			{
+				Victim->ReceiveKick(*this);
+				++MinistersKicked;
+				KickVictim = nullptr;
+			}
+		}
 		KickRemaining = FMath::Max(0.0f, KickRemaining - DeltaSeconds);
 		if (KickRemaining <= 0.0f)
 		{
@@ -1092,6 +979,13 @@ void ABDAgent::Tick(const float DeltaSeconds)
 
 	// A candidate on the board pulls him off the patrol; on the way home he only shoots.
 	ABDEnemyBase* Candidate = bGoingHome ? nullptr : FindCandidate();
+
+	// A minister in reach is what he leaves the militants for, short of a candidate.
+	if (Candidate == nullptr && !bGoingHome && GoForMinister(DeltaSeconds, Radius))
+	{
+		DrawDebug();
+		return;
+	}
 
 	// Who he shoots: the one held while it lasts, the best in reach otherwise. While a
 	// candidate is out he only stops for the candidate himself.

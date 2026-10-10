@@ -45,6 +45,9 @@ public:
 
 		/** Real seconds when the words started: the pop runs from here. */
 		double StartTime = 0.0;
+
+		/** A mark with no sound behind it (a scream not voiced yet) lasts until here. 0 follows the audio. */
+		double EndTime = 0.0;
 	};
 
 	static UBDSpeechMarkSubsystem* Get(const UObject* WorldContextObject);
@@ -53,12 +56,18 @@ public:
 	virtual bool DoesSupportWorldType(EWorldType::Type WorldType) const override;
 	//~ End USubsystem interface
 
-	/** The side of a speaker by what he is: creeps and candidates Opponent, shooters and the Agent Player. */
+	/** The side of a speaker by what he is: creeps and candidates Opponent, ministers Minister, shooters and the Agent Player. */
 	static EBDSpeakerSide SideOf(const AActor& Speaker);
 
 	/** A sentence started on this audio component, said by this speaker: his mark shows until it stops. */
 	void NoteSpeech(AActor& Speaker, UAudioComponent& Audio);
 	void NoteSpeech(AActor& Speaker, UAudioComponent& Audio, EBDSpeakerSide Side);
+
+	/**
+	 * A mark with no sound to follow: a cry whose voice is not recorded yet still shows
+	 * who cried and on which side, for this many seconds. Same one-a-speaker rule.
+	 */
+	void NoteTimedMark(AActor& Speaker, EBDSpeakerSide Side, float Seconds);
 
 	/** The marks of the sentences still sounding; drops the finished ones first. */
 	const TArray<FMark>& GetLiveMarks();
