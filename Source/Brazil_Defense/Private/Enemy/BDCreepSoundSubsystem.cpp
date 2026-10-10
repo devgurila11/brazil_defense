@@ -2,6 +2,7 @@
 
 #include "Enemy/BDCreepSoundSubsystem.h"
 
+#include "Audio/BDSpeechMarks.h"
 #include "AudioDevice.h"
 #include "BDLog.h"
 #include "Components/AudioComponent.h"
@@ -230,6 +231,12 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 	{
 		Sentences.Add(Audio);
 		PeakSentences = FMath::Max(PeakSentences, Sentences.Num());
+
+		// Words, not a call: the exclamation over him shows who is talking, and on which side.
+		if (UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(&Creep))
+		{
+			Marks->NoteSpeech(Creep, *Audio);
+		}
 	}
 	return true;
 }

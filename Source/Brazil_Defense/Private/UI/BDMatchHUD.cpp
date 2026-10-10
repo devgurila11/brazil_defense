@@ -2,6 +2,7 @@
 
 #include "UI/BDMatchHUD.h"
 
+#include "Audio/BDSpeechMarks.h"
 #include "BDLog.h"
 #include "Camera/PlayerCameraManager.h"
 #include "CanvasItem.h"
@@ -9,6 +10,7 @@
 #include "Enemy/BDEnemyBase.h"
 #include "Engine/Canvas.h"
 #include "Engine/World.h"
+#include "HAL/PlatformTime.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Palace/BDAgent.h"
@@ -35,6 +37,139 @@ void ABDMatchHUD::DrawHUD()
 	DrawPieceStars();
 	DrawAgentBars();
 	DrawCreepBars();
+	// Last, over the bars: who is talking reads over everything else.
+	DrawSpeechMarks();
+}
+
+void ABDMatchHUD::DrawSpeechMarks()
+{
+	UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(this);
+	if (Canvas == nullptr || Marks == nullptr || PlayerOwner == nullptr || PlayerOwner->PlayerCameraManager == nullptr)
+	{
+		return;
+	}
+	const TArray<UBDSpeechMarkSubsystem::FMark>& Live = Marks->GetLiveMarks();
+	if (Live.IsEmpty())
+	{
+		return;
+	}
+
+	const UBDUISettings& Settings = UBDUISettings::Get();
+	const FVector CameraUp = FRotationMatrix(PlayerOwner->PlayerCameraManager->GetCameraRotation()).GetUnitAxis(EAxis::Z);
+	const double Now = FPlatformTime::Seconds();
+	for (const UBDSpeechMarkSubsystem::FMark& Mark : Live)
+	{
+		const AActor* Speaker = Mark.Speaker.Get();
+		if (Speaker == nullptr || Speaker->IsHidden())
+		{
+			continue;
+		}
+
+		// Over his head, and over the bar he may show: a creep's health, the Agent's patrol.
+		const FVector Location = Speaker->GetActorLocation();
+		const FBox Box = Speaker->GetComponentsBoundingBox(/*bNonColliding*/ true);
+		float HeadZ = Box.IsValid ? Box.Max.Z : Location.Z;
+		if (Speaker->IsA<ABDEnemyBase>())
+		{
+			HeadZ = FMath::Max(HeadZ, Location.Z + Settings.CreepBarWorldHeight);
+		}
+		else if (const ABDAgent* Agent = Cast<ABDAgent>(Speaker))
+		{
+			HeadZ = FMath::Max(HeadZ, Agent->GetBarAnchor().Z);
+		}
+		const FVector Foot(Location.X, Location.Y, HeadZ + Settings.SpeechMarkLift);
+		const FVector Top = Foot + CameraUp * Settings.SpeechMarkWorldHeight;
+
+		// Projected: the zoom sizes it, and too small is nothing.
+		const FVector FootOnScreen = Canvas->Project(Foot);
+		const FVector TopOnScreen = Canvas->Project(Top);
+		if (FootOnScreen.Z <= 0.0f || TopOnScreen.Z <= 0.0f)
+		{
+			continue;
+		}
+		const FVector2D FootPoint(FootOnScreen.X, FootOnScreen.Y);
+		const FVector2D TopPoint(TopOnScreen.X, TopOnScreen.Y);
+		const float Height = FVector2D::Distance(FootPoint, TopPoint);
+		if (Height < Settings.SpeechMarkMinPixels)
+		{
+			continue;
+		}
+
+		// The pop: up and back within the pulse, from the first word.
+		const float Age = static_cast<float>(Now - Mark.StartTime);
+		float Scale = 1.0f;
+		if (Settings.SpeechMarkPulseSeconds > 0.0f && Age < Settings.SpeechMarkPulseSeconds)
+		{
+			Scale += Settings.SpeechMarkPulseScale * FMath::Sin(UE_PI * Age / Settings.SpeechMarkPulseSeconds);
+		}
+		DrawExclamation((FootPoint + TopPoint) * 0.5f, Height * Scale, Settings.GetSpeechMarkColor(Mark.Side));
+	}
+}
+
+void ABDMatchHUD::DrawExclamation(const FVector2D& Center, const float Height, const FLinearColor& Color)
+{
+	const UBDUISettings& Settings = UBDUISettings::Get();
+
+	// A dark colour gets a light rim and a white halo, or it would be lost at night.
+	const bool bDark = Color.GetLuminance() < 0.15f;
+	const FLinearColor Rim = bDark ? FLinearColor(1.0f, 1.0f, 1.0f, 0.85f) : FLinearColor(0.0f, 0.0f, 0.0f, 0.75f);
+	const FLinearColor Halo = bDark ? FLinearColor::White : Color;
+
+	// The stroke tapers down to a gap and the dot; all of it Height tall around Center.
+	const float Half = Height * 0.5f;
+	const float DotRadius = Height * 0.11f;
+	const float StrokeTop = Center.Y - Half;
+	const float StrokeBottom = Center.Y + Half - DotRadius * 2.0f - Height * 0.10f;
+	const FVector2D DotCenter(Center.X, Center.Y + Half - DotRadius);
+	const float TopHalfWidth = Height * 0.13f;
+	const float BottomHalfWidth = Height * 0.075f;
+
+	TArray<FCanvasUVTri> Triangles;
+	const auto AddTriangle = [&Triangles](const FVector2D& A, const FVector2D& B, const FVector2D& C,
+		const FLinearColor& ColorA, const FLinearColor& ColorB, const FLinearColor& ColorC)
+	{
+		FCanvasUVTri& Triangle = Triangles.AddDefaulted_GetRef();
+		Triangle.V0_Pos = A;
+		Triangle.V1_Pos = B;
+		Triangle.V2_Pos = C;
+		Triangle.V0_Color = ColorA;
+		Triangle.V1_Color = ColorB;
+		Triangle.V2_Color = ColorC;
+	};
+	const auto AddDisc = [&AddTriangle](const FVector2D& At, const float Radius, const FLinearColor& Inner, const FLinearColor& Outer)
+	{
+		constexpr int32 Segments = 20;
+		for (int32 Segment = 0; Segment < Segments; ++Segment)
+		{
+			const float A0 = Segment * UE_TWO_PI / Segments;
+			const float A1 = (Segment + 1) * UE_TWO_PI / Segments;
+			AddTriangle(At, At + FVector2D(FMath::Cos(A0), FMath::Sin(A0)) * Radius, At + FVector2D(FMath::Cos(A1), FMath::Sin(A1)) * Radius,
+				Inner, Outer, Outer);
+		}
+	};
+	const auto AddGlyph = [&](const float Grow, const FLinearColor& GlyphColor)
+	{
+		const FVector2D TopLeft(Center.X - TopHalfWidth - Grow, StrokeTop - Grow);
+		const FVector2D TopRight(Center.X + TopHalfWidth + Grow, StrokeTop - Grow);
+		const FVector2D BottomLeft(Center.X - BottomHalfWidth - Grow, StrokeBottom + Grow);
+		const FVector2D BottomRight(Center.X + BottomHalfWidth + Grow, StrokeBottom + Grow);
+		AddTriangle(TopLeft, TopRight, BottomRight, GlyphColor, GlyphColor, GlyphColor);
+		AddTriangle(TopLeft, BottomRight, BottomLeft, GlyphColor, GlyphColor, GlyphColor);
+		AddDisc(DotCenter, DotRadius + Grow, GlyphColor, GlyphColor);
+	};
+
+	// The halo first, fading out from the middle; then the rim, a little larger; then the colour.
+	const float Glow = Settings.SpeechMarkGlow;
+	if (Glow > 0.0f)
+	{
+		AddDisc(Center, Height * 0.85f, FLinearColor(Halo.R, Halo.G, Halo.B, Glow), FLinearColor(Halo.R, Halo.G, Halo.B, 0.0f));
+	}
+	AddGlyph(FMath::Clamp(Height * 0.035f, 1.0f, 3.0f), Rim);
+	AddGlyph(0.0f, Color);
+
+	FCanvasTriangleItem Item(Triangles, GWhiteTexture);
+	Item.BlendMode = SE_BLEND_Translucent;
+	Canvas->DrawItem(Item);
 }
 
 void ABDMatchHUD::DrawCreepBars()

@@ -4,6 +4,7 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Audio/BDSpeechMarks.h"
 #include "Camera/CameraActor.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "BDLog.h"
@@ -1308,10 +1309,32 @@ namespace BDAutoSetupCommands
 		const float Yaw = Args.Num() > 2 ? FCString::Atof(*Args[2]) : 30.0f;
 		const float HeightShare = Args.Num() > 3 ? FCString::Atof(*Args[3]) : 0.62f;
 		int32 Skip = Args.Num() > 4 ? FCString::Atoi(*Args[4]) : 0;
-		for (TActorIterator<AActor> It(World); It; ++It)
+		// "Speaker" is whoever is saying a sentence right now, the nth of them.
+		TArray<AActor*> Candidates;
+		if (Args[0] == TEXT("Speaker"))
 		{
-			const USkeletalMeshComponent* Body = It->FindComponentByClass<USkeletalMeshComponent>();
-			if (!It->GetClass()->GetName().Contains(Args[0]) || Body == nullptr || Body->GetSkeletalMeshAsset() == nullptr || Skip-- > 0)
+			if (UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(World))
+			{
+				for (const UBDSpeechMarkSubsystem::FMark& Mark : Marks->GetLiveMarks())
+				{
+					Candidates.Add(Mark.Speaker.Get());
+				}
+			}
+		}
+		else
+		{
+			for (TActorIterator<AActor> It(World); It; ++It)
+			{
+				if (It->GetClass()->GetName().Contains(Args[0]))
+				{
+					Candidates.Add(*It);
+				}
+			}
+		}
+		for (AActor* Actor : Candidates)
+		{
+			const USkeletalMeshComponent* Body = Actor != nullptr ? Actor->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
+			if (Body == nullptr || Body->GetSkeletalMeshAsset() == nullptr || Skip-- > 0)
 			{
 				continue;
 			}
@@ -1322,15 +1345,15 @@ namespace BDAutoSetupCommands
 			const FVector Eye = Target + Facing * Distance + FVector(0.0f, 0.0f, Distance * 0.15f);
 			ACameraActor* Camera = World->SpawnActor<ACameraActor>(Eye, (Target - Eye).Rotation());
 			Player->SetViewTarget(Camera);
-			UE_LOG(LogBDDebug, Log, TEXT("BD.Debug.LookAt: %s (on %s) from %s."), *It->GetName(), *GetNameSafe(It->GetAttachParentActor()), *Eye.ToString());
+			UE_LOG(LogBDDebug, Log, TEXT("BD.Debug.LookAt: %s from %s."), *Actor->GetName(), *Eye.ToString());
 			return;
 		}
-		UE_LOG(LogBDDebug, Warning, TEXT("BD.Debug.LookAt: no actor of a class with '%s' and a skinned body."), *Args[0]);
+		UE_LOG(LogBDDebug, Warning, TEXT("BD.Debug.LookAt: no actor of a class with '%s' (or speaking, for Speaker) and a skinned body."), *Args[0]);
 	}
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdLookAt(
 		TEXT("BD.Debug.LookAt"),
-		TEXT("BD.Debug.LookAt <class text> [distance=300] [yaw=30] [height share=0.62] [nth=0]: puts the view on a camera framing the nth such actor's body, e.g. BDShooter or BDAgent."),
+		TEXT("BD.Debug.LookAt <class text> [distance=300] [yaw=30] [height share=0.62] [nth=0]: puts the view on a camera framing the nth such actor's body, e.g. BDShooter, BDAgent, or Speaker for whoever is talking."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecLookAt));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdClearAll(

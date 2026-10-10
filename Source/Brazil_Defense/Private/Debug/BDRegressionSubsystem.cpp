@@ -52,6 +52,8 @@
 #include "UObject/UObjectIterator.h"
 #include "Audio/BDAudioSettings.h"
 #include "Audio/BDSoundscapeSubsystem.h"
+#include "Audio/BDSpeechMarks.h"
+#include "Components/AudioComponent.h"
 #include "Palace/BDAgent.h"
 #include "Palace/BDAnimNotify_Shot.h"
 #include "Placement/BDInspection.h"
@@ -1011,6 +1013,43 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					FString::Printf(TEXT("shooter level 1 '%s', %d silent level(s); Agent level 0 '%s', %d silent level(s)"),
 						ShooterData != nullptr ? *ShooterData->ResolveFireSound(1).GetAssetName() : TEXT("no data"), ShooterSilent,
 						PalaceData != nullptr ? *PalaceData->ResolveFireSound(0).GetAssetName() : TEXT("no data"), AgentSilent));
+			}
+
+			// Who is talking: an exclamation in the colour of the side, one a speaker, gone the
+			// moment its sound is not playing. Headless has no audio, so a sentence here never
+			// plays: its mark must be dropped on the next look.
+			if (UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(World))
+			{
+				ABDEnemyBase* Talker = Waves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), 0);
+				const bool bSides = Talker != nullptr && Shooter != nullptr
+					&& UBDSpeechMarkSubsystem::SideOf(*Talker) == EBDSpeakerSide::Opponent
+					&& UBDSpeechMarkSubsystem::SideOf(*GetDefault<ABDCandidate>()) == EBDSpeakerSide::Opponent
+					&& UBDSpeechMarkSubsystem::SideOf(*Shooter) == EBDSpeakerSide::Player
+					&& UBDSpeechMarkSubsystem::SideOf(*GetDefault<ABDAgent>()) == EBDSpeakerSide::Player;
+				const UBDUISettings& UI = UBDUISettings::Get();
+				const FLinearColor Red = UI.GetSpeechMarkColor(EBDSpeakerSide::Opponent);
+				const FLinearColor Blue = UI.GetSpeechMarkColor(EBDSpeakerSide::Player);
+				const FLinearColor Black = UI.GetSpeechMarkColor(EBDSpeakerSide::Minister);
+				const bool bColours = Red.R > Red.B && Red.R > Red.G && Blue.B > Blue.R && Blue.B > Blue.G && Black.GetLuminance() < 0.15f;
+
+				int32 HeldAfterTwo = 0;
+				int32 LiveAfter = -1;
+				if (Talker != nullptr)
+				{
+					UAudioComponent* First = NewObject<UAudioComponent>(Talker);
+					UAudioComponent* Second = NewObject<UAudioComponent>(Talker);
+					Marks->NoteSpeech(*Talker, *First);
+					Marks->NoteSpeech(*Talker, *Second);
+					HeldAfterTwo = Marks->CountMarks(*Talker);
+					Marks->GetLiveMarks();
+					LiveAfter = Marks->CountMarks(*Talker);
+					Talker->Destroy();
+				}
+				Check(TEXT("FALA"), TEXT("a speaker shows one exclamation of his side's colour, gone as soon as his sentence is not sounding"),
+					bSides && bColours && HeldAfterTwo == 1 && LiveAfter == 0,
+					FString::Printf(TEXT("sides %s, colours %s (red %s, blue %s, black %s), %d mark(s) after two sentences, %d once not sounding"),
+						bSides ? TEXT("ok") : TEXT("WRONG"), bColours ? TEXT("ok") : TEXT("WRONG"), *Red.ToFColor(true).ToHex(), *Blue.ToFColor(true).ToHex(),
+						*Black.ToFColor(true).ToHex(), HeldAfterTwo, LiveAfter));
 			}
 
 			// Fifty of them fill eight platforms: their bodies are in the animation budget with the horde's.

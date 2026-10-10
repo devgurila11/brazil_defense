@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
+#include "Audio/BDSpeechMarks.h"
 #include "BDUISettings.generated.h"
 
 class USoundClass;
@@ -109,6 +110,46 @@ public:
 	/** Bars narrower than this many pixels are not drawn: the overview stays clean. */
 	UPROPERTY(config, EditAnywhere, Category = "Creep Bars", meta = (ClampMin = "1.0", UIMin = "1.0"))
 	float CreepBarMinPixels = 14.0f;
+
+	//~ Speech marks --------------------------------------------------------------
+	// Drawn by ABDMatchHUD over whoever is saying a sentence (UBDSpeechMarkSubsystem): an
+	// exclamation in the colour of his side, from the first word to the last. Sized in the
+	// world like the creep bars, so the zoom sizes it and the overview drops it.
+
+	/** Height of the exclamation in the world. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks", meta = (ClampMin = "10.0", UIMin = "10.0", ForceUnits = "cm"))
+	float SpeechMarkWorldHeight = 160.0f;
+
+	/** Gap between the top of the speaker (or his health bar) and the foot of the exclamation. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float SpeechMarkLift = 40.0f;
+
+	/** Exclamations shorter than this many pixels are not drawn: the overview stays clean. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks", meta = (ClampMin = "1.0", UIMin = "1.0"))
+	float SpeechMarkMinPixels = 9.0f;
+
+	/** The pop when the words start: this long, growing by PulseScale at its peak. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float SpeechMarkPulseSeconds = 0.22f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks", meta = (ClampMin = "0.0", ClampMax = "2.0", UIMin = "0.0", UIMax = "2.0"))
+	float SpeechMarkPulseScale = 0.45f;
+
+	/** Strength of the soft halo round it: a little light in the action and at night, not a beacon. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float SpeechMarkGlow = 0.35f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks")
+	FLinearColor SpeechMarkOpponentColor = FLinearColor(0.95f, 0.12f, 0.10f, 1.0f);
+
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks")
+	FLinearColor SpeechMarkPlayerColor = FLinearColor(0.15f, 0.55f, 1.0f, 1.0f);
+
+	/** The ministers' robes. Its rim and halo go light, or black would vanish at night. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks")
+	FLinearColor SpeechMarkMinisterColor = FLinearColor(0.03f, 0.03f, 0.03f, 1.0f);
+
+	FLinearColor GetSpeechMarkColor(EBDSpeakerSide Side) const;
 
 	//~ Agent bar -----------------------------------------------------------------
 	// Drawn by ABDMatchHUD over the palace's Agent, as the creep bars, a fixed width in the

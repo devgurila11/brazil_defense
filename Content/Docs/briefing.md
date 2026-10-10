@@ -1,38 +1,47 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-10 14:00**
+**Versão: 2026-10-10 15:30**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Montar o Cue de som de disparo da pistola
+# Balão de exclamação acima de quem FALA (por lado, colorido)
 
-O usuário importou os sons de DISPARO da pistola em:
-C:\Users\rafag\Documents\Unreal\Brazil_Defense\Content\audio\Effects
+Com falas vindo de NPCs e dos personagens, não dá para saber de quem
+veio a frase engraçada. Solução: uma EXCLAMAÇÃO colorida acima de quem
+está falando, com a cor indicando o LADO. Dá leitura instantânea de
+origem + lado, sem precisar mapear texto.
 
-ATENÇÃO: essa pasta JÁ tem outros sons (ambiência AMB_*, motor
-S_Bus_Engine_*, buzina S_Bus_Horn_*). Identificar os NOVOS (os
-disparos de pistola) pelos arquivos recém-adicionados / nome / tipo —
-não misturar com os que já existem.
+## Quando aparece
+- SÓ em FALAS (as frases com voz). NÃO em relincho, casco, tiro, zurro
+  — só quando o personagem solta uma FALA.
+- Aparece no instante em que a fala COMEÇA.
+- SOME quando a fala TERMINA — sem fade, corte direto ao acabar o áudio.
 
-## Fazer
-1. Identificar os ~4 sons de disparo novos. Renomear num padrão limpo:
-   S_Pistola_Tiro_01 ... _04 (ou o padrão do projeto). Se ficar
-   ambíguo qual é disparo, listar para o usuário confirmar.
-2. Montar o Cue SCue_Pistola_Tiro com as 4 variações (Random, leve
-   variação de pitch), como os outros Cues de tiro.
-   - Reusar o BDBuildSoundCue: SCue em /Game/BD/Audio/SCue_Pistola_Tiro.
-3. Apontar o SCue_Pistola_Tiro no FireSound da arma NÍVEL 0 (pistola)
-   nos DOIS DataAssets:
-   - DA_Shooter_Pistol (Nicole)
-   - DA_PalaceData (Mito)
-4. O som do tiro deve sair no frame do BD Shot (já sincronizado),
-   3D na posição da arma, atenuação por câmera, SC_Effects, com o
-   concurrency dos sons de tiro que já existe.
+## Cor por lado (de quem fala)
+- VERMELHO: militantes e CANDIDATOS (lado adversário).
+- AZUL: personagens do jogador — Nicole, Mito, e os próximos atiradores.
+- PRETO: ministros (preto da toga) — para a Fatia 3 (ministros ainda
+  não existem; deixar a cor preta JÁ mapeada para quando entrarem).
+
+## Visual
+- Ícone de EXCLAMAÇÃO ("!") acima da cabeça de quem fala.
+- BILLBOARD: sempre virado para a câmera.
+- SOME/encolhe no zoom afastado (como a barra de vida do creep) — não
+  poluir a visão geral.
+- PULSA ao aparecer: um pop rápido de escala para chamar o olho.
+- Levemente EMISSIVO: brilha um pouco, para destacar no meio da ação e
+  à noite (com os postes). Emissivo LEVE, não um farol.
+
+## Poluição / limites
+- As falas já têm concurrency (poucas tocam juntas), então poucos
+  balões por vez — ok. Mas garantir: um personagem só mostra UMA
+  exclamação por vez (não empilha).
+- Billboard + fade por distância evita sopa de ícones no zoom out.
 
 ## Entregável
-- Sons de disparo identificados e renomeados, sem misturar com
-  ambiência/motor/buzina.
-- SCue_Pistola_Tiro montado e apontado no FireSound nível 0 da Nicole
-  e do Mito.
-- Tiro com som (sincronizado com a animação), 3D, atenuado, concurrency.
+- Exclamação acima de quem fala, cor por lado (vermelho militante/
+  candidato, azul personagem do jogador, preto ministro-futuro).
+- Aparece ao começar a fala, some seco ao terminar.
+- Billboard, some no zoom afastado, pulsa, levemente emissiva.
+- Reusar o sistema de billboard das barras/estrelas.
 - BD.Test.Regression passa; compilar os dois alvos; commit.

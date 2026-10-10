@@ -263,6 +263,30 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-10 (exclamação sobre quem fala) — COMMIT** (desde 3735ae1):
+  - Briefing 15:30. `UBDSpeechMarkSubsystem` (Audio/BDSpeechMarks): uma marca por
+    personagem, presa ao componente de áudio da frase; vale enquanto ele toca e sai no
+    mesmo quadro em que para (fim, `Stop` ao ser substituída, falante destruído). Nova
+    frase do mesmo personagem reaproveita a marca e repete o pop. Só FALAS acionam: o
+    `PlayVocal` avisa quando sorteou a frase, não o chamado/zurro; casco, tiro, morte e
+    queda não passam por ali.
+  - Lado (`EBDSpeakerSide`): creeps e candidatos `Opponent` (vermelho), atiradores e
+    Agente `Player` (azul), `Minister` (preto, contorno e halo claros) já mapeado para a
+    Fatia 3 — o ministro passa o lado ao chamar `NoteSpeech`.
+  - Desenho no `ABDMatchHUD` como a barra do creep: "!" (traço afinando + ponto) com
+    contorno, halo radial suave na cor do lado (o "emissivo leve"), pop de escala de
+    0,22 s. Tamanho fixo no mundo (160 cm), some abaixo de 9 px: mesma distância em que a
+    barra do creep some (~13000); na visão geral não aparece. Fica acima da cabeça e acima
+    da barra de vida (creep) ou de patrulha (Agente). Ajustes em Project Settings ›
+    Brazil Defense - UI › Speech Marks.
+  - Medido com áudio: 8 frases de militantes, cada marca durou o que a frase durou
+    (0,5–4,2 s, conforme a variação sorteada); conferido na tela de dia e de noite.
+  - Nicole e Mito ainda não têm falas: quando tiverem, quem tocar a frase chama
+    `NoteSpeech` (o lado azul sai sozinho). `BD.Speech.Say <classe> [lado] [n]` faz
+    qualquer um "falar" baixinho para ver a marca; `BD.Speech.Status` conta por lado;
+    `BD.Debug.LookAt Speaker` enquadra quem está falando. Check novo FALA; regressão
+    80/80, os dois alvos compilados.
+
 - **2026-10-10 (som do tiro da pistola) — 1e78c6e** (desde 267dfde):
   - Briefing 14:00. Os 4 disparos dele chegaram como `.wav` soltos em
     `Content/audio/Effects` (`Single_pistol_gunshot[_1/_2/_3].wav`, estéreo, 48 kHz, 1 s,

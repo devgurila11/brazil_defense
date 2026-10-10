@@ -21,6 +21,10 @@
  *
  * Over every Agent, the creep bars' way: his patrol time emptying in blue while awake,
  * his rest filling in violet while he sleeps.
+ *
+ * Over whoever is saying a sentence, an exclamation in the colour of his side
+ * (UBDSpeechMarkSubsystem): from the first word, with a pop, to the last, cut dry. Sized in
+ * the world like the bars, with a soft halo of its colour.
  */
 UCLASS()
 class BRAZIL_DEFENSE_API ABDMatchHUD : public AHUD
@@ -56,6 +60,12 @@ private:
 
 	/** Over every Agent: the patrol emptying in blue while awake, the rest filling in violet while asleep. */
 	void DrawAgentBars();
+
+	/** Over whoever is talking: the exclamation of his side. */
+	void DrawSpeechMarks();
+
+	/** One exclamation centered on a screen point, Height tall, in a colour, with its rim and halo. */
+	void DrawExclamation(const FVector2D& Center, float Height, const FLinearColor& Color);
 
 	/** One five-pointed star centered on a screen point, Radius from the center to a tip: filled, or only its outline. */
 	void DrawStar(const FVector2D& Center, float Radius, bool bFilled, const FLinearColor& Color);

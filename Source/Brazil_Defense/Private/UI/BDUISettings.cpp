@@ -14,6 +14,16 @@ const UBDUISettings& UBDUISettings::Get()
 	return *Settings;
 }
 
+FLinearColor UBDUISettings::GetSpeechMarkColor(const EBDSpeakerSide Side) const
+{
+	switch (Side)
+	{
+	case EBDSpeakerSide::Player: return SpeechMarkPlayerColor;
+	case EBDSpeakerSide::Minister: return SpeechMarkMinisterColor;
+	default: return SpeechMarkOpponentColor;
+	}
+}
+
 float UBDUISettings::GetPalaceStarOpacity(const float CameraDistance) const
 {
 	// Eased both ends, so the stars do not pop on or off at either edge of the band.
