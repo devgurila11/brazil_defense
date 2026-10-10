@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-10 (exclamação sobre quem fala) — COMMIT** (desde 3735ae1):
+- **2026-10-10 (exclamação sobre quem fala) — f158067** (desde 3735ae1):
   - Briefing 15:30. `UBDSpeechMarkSubsystem` (Audio/BDSpeechMarks): uma marca por
     personagem, presa ao componente de áudio da frase; vale enquanto ele toca e sai no
     mesmo quadro em que para (fim, `Stop` ao ser substituída, falante destruído). Nova
