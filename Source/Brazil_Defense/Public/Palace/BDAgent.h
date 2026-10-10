@@ -13,6 +13,7 @@ class UAnimSequenceBase;
 class UBDGridSubsystem;
 class UBDPalaceData;
 class USkeletalMeshComponent;
+class UStaticMeshComponent;
 struct FBDAgentWeapon;
 
 /** What the Agent is doing. A kick is played over any of them and hands back to it. */
@@ -103,6 +104,9 @@ public:
 
 	/** The weapon in his hands: the palace level's entry. Null without data. */
 	const FBDAgentWeapon* GetWeapon() const;
+
+	/** The model in his hand, on the data's hand socket. No mesh while the data has none. */
+	UStaticMeshComponent* GetHeldWeapon() const { return HeldWeapon; }
 
 	/** Detection radius in centimetres, on the board plane. */
 	float GetDetectionRadius() const;
@@ -249,6 +253,9 @@ private:
 
 	FVector GetMuzzleLocation() const;
 
+	/** Puts the palace level's weapon in his hand: on the hand socket, or at the body's root without one. */
+	void ApplyWeapon();
+
 	void DrawDebug() const;
 
 	UPROPERTY(VisibleAnywhere, Category = "Agent")
@@ -256,6 +263,12 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Agent")
 	TObjectPtr<USkeletalMeshComponent> Body;
+
+	UPROPERTY(VisibleAnywhere, Category = "Agent")
+	TObjectPtr<UStaticMeshComponent> HeldWeapon;
+
+	/** The palace level the weapon in his hand was picked for; a star bought swaps it. */
+	int32 HeldWeaponLevel = INDEX_NONE;
 
 	/** The body's height over the root with the feet on the floor; SleepLift goes on top. */
 	float BodyBaseZ = 0.0f;

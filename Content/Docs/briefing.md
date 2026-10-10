@@ -1,63 +1,48 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-08 16:00**
+**Versão: 2026-10-10 12:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Remover os obstáculos sorteados (campo limpo)
+# Ajustes do atirador: altura, nome no menu, giro da arma
 
-Decisão de design: REMOVER os 20 obstáculos sorteados por seed. Num
-jogo onde o jogador posiciona a urna e desenha o labirinto do zero,
-células aleatórias bloqueadas que ele não escolheu só atrapalham — ele
-tenta posicionar num ponto estratégico e dá vermelho sem motivo
-visível, num cenário que parece limpo. O tabuleiro deve começar LIMPO
-e desobstruído.
+Animações e sincronia de disparo da Nicole estão ÓTIMAS. Faltam três
+ajustes de acabamento.
 
-## Remover, mas SEM prejudicar o jogo (remoção limpa)
+## 1. Atiradores flutuando ~1,5m acima do deck da plataforma
 
-O gerador de obstáculos (UBDObstacleGenerator) está no projeto desde o
-início e várias coisas podem depender dele. Remover com cuidado:
+- Os atiradores (Nicole) ficam ~1,5m ACIMA do piso da plataforma —
+  flutuando, não pisando no deck.
+- Acontece no PALANQUE e no CAMINHÃO (e provavelmente arquibancada) —
+  é geral dos slots de plataforma, não de uma só.
+- Corrigir a altura (Z) do atirador no slot para ele PISAR no deck da
+  plataforma, não flutuar acima.
+- Verificar nos três tipos (palanque, caminhão, arquibancada) e nos
+  andares de evolução (quando a plataforma sobe de nível, o atirador
+  acompanha o deck).
 
-1. Desligar a geração dos obstáculos: o tabuleiro inicia SEM nenhuma
-   célula Blocked por obstáculo. Campo totalmente livre (só as bocas,
-   a urna quando posicionada, e o que o jogador construir).
+## 2. Menu drop-up mostra "Shooter" em vez de "Nicole"
 
-2. Verificar e limpar as dependências (reportar o que achou):
-   - O AutoSetup / simulador usava obstáculos? A varredura de grid, as
-     rotas, o WouldBlockPath — algo assume que há células Blocked de
-     obstáculo? Ajustar para funcionar com campo limpo.
-   - A seed ainda é usada para outras coisas (sorteio de bocas, wander
-     da horda, etc.)? NÃO quebrar esses — só a parte de obstáculos sai.
-   - Os blocos visíveis (cubo cinza / ObstacleMesh) adicionados hoje
-     saem junto (não há mais obstáculo para mostrar).
-   - As checagens de regressão criadas hoje para os obstáculos: ajustar
-     ou remover as que não fazem mais sentido; manter a auditoria de
-     grid (BD.Grid.Audit) e a invariante de consistência de células
-     (essa continua útil).
+- Ao clicar em Atiradores, o item no drop-up aparece como "Shooter"
+  (nome genérico). Deve aparecer o nome do PERSONAGEM: "Nicole".
+- Ajustar o DisplayName do DA_Shooter_Pistol para "Nicole" (FText,
+  pt/en). O menu lê o DisplayName de cada atirador — quando entrarem
+  outros, cada um mostra o seu nome.
 
-3. Manter o BD.Grid.Audit e a invariante "nenhuma célula ocupada sem
-   dono" — são úteis independente dos obstáculos.
+## 3. Arma precisa de leve giro para a direita (alinhar com a linha de tiro)
 
-4. Opcional/decisão futura: deixar o gerador no código DESLIGADO por
-   um cvar/flag (bGenerateObstacles=false) em vez de apagar tudo, caso
-   um dia se queira obstáculos autorados (não aleatórios) no mapa. Mas
-   por padrão: OFF, campo limpo.
-
-## Confirmar
-- Campo começa limpo (nenhum bloco, nenhuma célula Blocked de
-  obstáculo).
-- Posicionar a urna e construir em qualquer célula livre funciona sem
-  vermelho indevido.
-- Rotas, bocas, wander, pathfinding, candidato — tudo funciona sem os
-  obstáculos.
-- Balanceamento: os números da §13 foram medidos COM obstáculos. Anotar
-  que a remoção muda isso (campo mais aberto = horda com rota mais
-  curta se o jogador não cercar). NÃO recalibrar agora — só registrar.
+- A pistola está quase alinhada, mas precisa de um leve giro para a
+  DIREITA (lado de fora da mão) para o cano ficar alinhado com a linha
+  de tiro.
+- Ajuste fino no campo GRIP do nível 0 (um pequeno yaw à direita), nos
+  DataAssets da Nicole (DA_Shooter_Pistol) e do Mito (DA_PalaceData) —
+  a mesma correção provavelmente serve para os dois, já que usam a
+  mesma pistola.
+- Conferir pelo frame do BD Shot que o cano aponta na direção do tiro.
 
 ## Entregável
-- Obstáculos removidos; tabuleiro inicia limpo.
-- Dependências verificadas e ajustadas; nada quebrado (rotas, bocas,
-  pathfinding, candidato).
-- Blocos cinza e checks de obstáculo removidos; auditoria de grid e
-  consistência de célula mantidas.
-- BD.Test.Regression passa; compilar os dois alvos; commit.
+- Atiradores pisando no deck das plataformas (todos os tipos e níveis).
+- Menu drop-up mostrando "Nicole" (DisplayName).
+- Arma alinhada com a linha de tiro (giro fino na Grip).
+- BD.Test.Regression passa; compilar os dois alvos; commit (inclui o
+  que ficou da auditoria anterior).

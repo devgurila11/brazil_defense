@@ -235,6 +235,19 @@ void ABDShooter::Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats)
 	const int32 ShotLevel = GetTowerLevel();
 	const FBDShooterWeapon* Entry = Shooter->GetWeapon(ShotLevel);
 
+	// How far the barrel points off the line to the target, for fitting a weapon's Grip.
+	// Only on screen: off it the pose ticks without moving the bones, and the socket reads the reference pose.
+	if (Entry != nullptr && Target != nullptr && Body->WasRecentlyRendered() && Weapon->GetStaticMesh() != nullptr && Weapon->DoesSocketExist(Entry->MuzzleSocket)
+		&& UE_LOG_ACTIVE(LogBDTower, Verbose))
+	{
+		const FTransform Muzzle = Weapon->GetSocketTransform(Entry->MuzzleSocket);
+		const FRotator Barrel = Muzzle.GetUnitAxis(EAxis::X).Rotation();
+		const FRotator Line = (Target->GetActorLocation() - Muzzle.GetLocation()).Rotation();
+		UE_LOG(LogBDTower, Verbose, TEXT("%s: barrel off the line of fire by %.1f deg of yaw (+ right), %.1f of pitch, %.0f%% into the gesture."), *GetName(),
+			FMath::FindDeltaAngleDegrees(Line.Yaw, Barrel.Yaw), FMath::FindDeltaAngleDegrees(Line.Pitch, Barrel.Pitch),
+			Body->IsPlaying() && CurrentAnimation != nullptr && CurrentAnimation->GetPlayLength() > 0.0f ? 100.0f * Body->GetPosition() / CurrentAnimation->GetPlayLength() : 0.0f);
+	}
+
 	// The flash on the tip of the barrel, riding with the weapon while it plays.
 	++FlashesRequested;
 	if (UNiagaraSystem* Flash = Shooter->ResolveMuzzleFlash(ShotLevel).LoadSynchronous())

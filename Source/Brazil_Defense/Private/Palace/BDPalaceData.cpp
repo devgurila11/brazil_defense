@@ -37,3 +37,15 @@ const FBDAgentWeapon* UBDPalaceData::GetWeapon(const int32 PalaceLevel) const
 {
 	return Weapons.Num() > 0 ? &Weapons[FMath::Clamp(PalaceLevel, 0, Weapons.Num() - 1)] : nullptr;
 }
+
+TSoftObjectPtr<UStaticMesh> UBDPalaceData::ResolveWeaponMesh(const int32 PalaceLevel) const
+{
+	for (int32 Index = FMath::Clamp(PalaceLevel, 0, Weapons.Num() - 1); Index >= 0; --Index)
+	{
+		if (!Weapons[Index].Mesh.IsNull())
+		{
+			return Weapons[Index].Mesh;
+		}
+	}
+	return TSoftObjectPtr<UStaticMesh>();
+}

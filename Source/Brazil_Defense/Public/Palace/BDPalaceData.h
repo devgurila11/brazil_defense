@@ -44,6 +44,18 @@ struct FBDAgentWeapon
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	bool bPlaceholder = false;
 
+	/** The weapon's model, held on the body's hand socket. Empty takes the one below. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
+	TSoftObjectPtr<UStaticMesh> Mesh;
+
+	/** Where the weapon sits against the hand socket, to fit the grip to the fingers. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
+	FTransform Grip;
+
+	/** Socket of the weapon mesh at the tip of the barrel: the shot and its sound leave there. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
+	FName MuzzleSocket = TEXT("Muzzle");
+
 	/** Health taken off a creep by one shot. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon", meta = (ClampMin = "0.0"))
 	float Damage = 10.0f;
@@ -142,6 +154,10 @@ public:
 	/** Turns the model so it faces the actor's forward. The imported model faces +Y, hence -90. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Look")
 	float AgentMeshYaw = -90.0f;
+
+	/** Socket of the body the weapon is held on. Made in the skeleton editor; the name must match. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Look")
+	FName HandSocket = TEXT("hand_r");
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Animation")
 	TSoftObjectPtr<UAnimSequenceBase> WalkAnimation;
@@ -271,4 +287,7 @@ public:
 
 	/** The weapon of a palace level, clamped to the authored entries. Null when there are none. */
 	const FBDAgentWeapon* GetWeapon(int32 PalaceLevel) const;
+
+	/** The model of a palace level: its own, or the nearest entry below with one. */
+	TSoftObjectPtr<UStaticMesh> ResolveWeaponMesh(int32 PalaceLevel) const;
 };

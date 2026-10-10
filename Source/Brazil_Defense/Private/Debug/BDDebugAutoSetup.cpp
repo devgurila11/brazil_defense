@@ -4,6 +4,8 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "Camera/CameraActor.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "BDLog.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -1292,6 +1294,44 @@ namespace BDAutoSetupCommands
 		TEXT("BD.Debug.PerfScene"),
 		TEXT("BD.Debug.PerfScene [bleachers=4] [palanques=3] [trucks=1] [borrow body 0|1]: a board of full platforms for measuring, past the budget; 1 dresses bodiless shooters in the horde's skinned mesh."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPerfScene));
+
+	/** A camera of its own on the first actor whose class name holds the text, framing its skinned body. */
+	static void ExecLookAt(const TArray<FString>& Args, UWorld* World)
+	{
+		APlayerController* Player = World != nullptr ? World->GetFirstPlayerController() : nullptr;
+		if (Args.Num() < 1 || Player == nullptr)
+		{
+			UE_LOG(LogBDDebug, Error, TEXT("BD.Debug.LookAt <class text> [distance=300] [yaw=30] [height share=0.62] [nth=0]."));
+			return;
+		}
+		const float Distance = Args.Num() > 1 ? FCString::Atof(*Args[1]) : 300.0f;
+		const float Yaw = Args.Num() > 2 ? FCString::Atof(*Args[2]) : 30.0f;
+		const float HeightShare = Args.Num() > 3 ? FCString::Atof(*Args[3]) : 0.62f;
+		int32 Skip = Args.Num() > 4 ? FCString::Atoi(*Args[4]) : 0;
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			const USkeletalMeshComponent* Body = It->FindComponentByClass<USkeletalMeshComponent>();
+			if (!It->GetClass()->GetName().Contains(Args[0]) || Body == nullptr || Body->GetSkeletalMeshAsset() == nullptr || Skip-- > 0)
+			{
+				continue;
+			}
+			// The imported bodies face their mesh's +Y; the yaw goes round from there.
+			const FBox Box = Body->Bounds.GetBox();
+			const FVector Target(Box.GetCenter().X, Box.GetCenter().Y, FMath::Lerp(Box.Min.Z, Box.Max.Z, HeightShare));
+			const FVector Facing = FRotator(0.0f, Yaw, 0.0f).RotateVector(Body->GetRightVector().GetSafeNormal2D());
+			const FVector Eye = Target + Facing * Distance + FVector(0.0f, 0.0f, Distance * 0.15f);
+			ACameraActor* Camera = World->SpawnActor<ACameraActor>(Eye, (Target - Eye).Rotation());
+			Player->SetViewTarget(Camera);
+			UE_LOG(LogBDDebug, Log, TEXT("BD.Debug.LookAt: %s (on %s) from %s."), *It->GetName(), *GetNameSafe(It->GetAttachParentActor()), *Eye.ToString());
+			return;
+		}
+		UE_LOG(LogBDDebug, Warning, TEXT("BD.Debug.LookAt: no actor of a class with '%s' and a skinned body."), *Args[0]);
+	}
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdLookAt(
+		TEXT("BD.Debug.LookAt"),
+		TEXT("BD.Debug.LookAt <class text> [distance=300] [yaw=30] [height share=0.62] [nth=0]: puts the view on a camera framing the nth such actor's body, e.g. BDShooter or BDAgent."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecLookAt));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdClearAll(
 		TEXT("BD.Debug.ClearAll"),

@@ -6,8 +6,10 @@
 #include "Animation/AnimSequenceBase.h"
 #include "BDLog.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Sound/SoundBase.h"
@@ -89,6 +91,12 @@ ABDAgent::ABDAgent()
 	Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Body->SetCanEverAffectNavigation(false);
 	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPose;
+
+	HeldWeapon = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HeldWeapon"));
+	HeldWeapon->SetupAttachment(Body);
+	HeldWeapon->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	HeldWeapon->SetGenerateOverlapEvents(false);
+	HeldWeapon->SetCanEverAffectNavigation(false);
 }
 
 UBDGridSubsystem* ABDAgent::GetGrid() const
@@ -158,6 +166,7 @@ void ABDAgent::InitializeAgent(ABDPalace* InPalace)
 		{
 			UE_LOG(LogBDTower, Error, TEXT("%s: agent mesh %s of %s failed to load."), *GetName(), *Data->AgentMesh.ToString(), *Data->GetName());
 		}
+		ApplyWeapon();
 	}
 
 	// Out of the door: he starts on the cell he will sleep on.
@@ -795,8 +804,51 @@ bool ABDAgent::UsesShotTimer() const
 	return Data == nullptr || !UBDAnimNotify_Shot::IsOn(Data->ShootAnimation.Get());
 }
 
+void ABDAgent::ApplyWeapon()
+{
+	const UBDPalaceData* Data = GetData();
+	const ABDPalace* Home = Palace.Get();
+	HeldWeaponLevel = Home != nullptr ? Home->GetPalaceLevel() : 0;
+	const FBDAgentWeapon* Entry = GetWeapon();
+	if (Data == nullptr || Entry == nullptr)
+	{
+		HeldWeapon->SetStaticMesh(nullptr);
+		return;
+	}
+
+	const TSoftObjectPtr<UStaticMesh> MeshRef = Data->ResolveWeaponMesh(HeldWeaponLevel);
+	UStaticMesh* WeaponMesh = MeshRef.LoadSynchronous();
+	if (!MeshRef.IsNull() && WeaponMesh == nullptr)
+	{
+		UE_LOG(LogBDTower, Error, TEXT("%s: weapon mesh %s failed to load."), *GetName(), *MeshRef.ToString());
+	}
+	HeldWeapon->SetStaticMesh(WeaponMesh);
+
+	// In the hand when the body has the socket; at the body's root when it has not.
+	const bool bHasSocket = Body->GetSkeletalMeshAsset() != nullptr && Body->DoesSocketExist(Data->HandSocket);
+	HeldWeapon->AttachToComponent(Body, FAttachmentTransformRules::SnapToTargetNotIncludingScale, bHasSocket ? Data->HandSocket : NAME_None);
+	HeldWeapon->SetRelativeTransform(Entry->Grip);
+	if (WeaponMesh != nullptr && !bHasSocket)
+	{
+		UE_LOG(LogBDTower, Warning, TEXT("%s: the body has no socket '%s' for the weapon; it hangs at the root. Make the socket in the skeleton or change HandSocket on %s."),
+			*GetName(), *Data->HandSocket.ToString(), *Data->GetName());
+	}
+}
+
 FVector ABDAgent::GetMuzzleLocation() const
 {
+	// The weapon's muzzle, then the hand, then a guess at the hand held out in front.
+	const FBDAgentWeapon* Entry = GetWeapon();
+	if (Entry != nullptr && HeldWeapon->GetStaticMesh() != nullptr && HeldWeapon->DoesSocketExist(Entry->MuzzleSocket))
+	{
+		return HeldWeapon->GetSocketLocation(Entry->MuzzleSocket);
+	}
+	const UBDPalaceData* Data = GetData();
+	if (Data != nullptr && Body->GetSkeletalMeshAsset() != nullptr && Body->DoesSocketExist(Data->HandSocket))
+	{
+		return Body->GetSocketLocation(Data->HandSocket);
+	}
+
 	// About the hand, held out in front at chest height.
 	const float Height = Body->GetSkeletalMeshAsset() != nullptr ? Body->Bounds.BoxExtent.Z * 1.2f : 200.0f;
 	return GetActorLocation() + GetActorForwardVector() * 80.0f + FVector(0.0f, 0.0f, Height);
@@ -845,6 +897,17 @@ void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 		Shots->PlayShot(Weapon.FireSound.LoadSynchronous(), GetMuzzleLocation());
 	}
 	UE_LOG(LogBDTower, Verbose, TEXT("%s fires %s at %s: %.0f damage."), *GetName(), *Weapon.Name.ToString(), *Target->GetName(), Weapon.Damage);
+
+	// How far the barrel points off the line to the target, for fitting a weapon's Grip.
+	// Only on screen: off it the pose ticks without moving the bones, and the socket reads the reference pose.
+	if (Body->WasRecentlyRendered() && HeldWeapon->GetStaticMesh() != nullptr && HeldWeapon->DoesSocketExist(Weapon.MuzzleSocket) && UE_LOG_ACTIVE(LogBDTower, Verbose))
+	{
+		const FTransform Muzzle = HeldWeapon->GetSocketTransform(Weapon.MuzzleSocket);
+		const FRotator Barrel = Muzzle.GetUnitAxis(EAxis::X).Rotation();
+		const FRotator Line = (Target->GetActorLocation() - Muzzle.GetLocation()).Rotation();
+		UE_LOG(LogBDTower, Verbose, TEXT("%s: barrel off the line of fire by %.1f deg of yaw (+ right), %.1f of pitch."), *GetName(),
+			FMath::FindDeltaAngleDegrees(Line.Yaw, Barrel.Yaw), FMath::FindDeltaAngleDegrees(Line.Pitch, Barrel.Pitch));
+	}
 	Target->ApplyDamage(Weapon.Damage, this);
 }
 
@@ -949,6 +1012,11 @@ void ABDAgent::Tick(const float DeltaSeconds)
 	if (Data == nullptr || GetGrid() == nullptr)
 	{
 		return;
+	}
+
+	if (Palace->GetPalaceLevel() != HeldWeaponLevel)
+	{
+		ApplyWeapon();
 	}
 
 	FireCooldown = FMath::Max(0.0f, FireCooldown - DeltaSeconds);

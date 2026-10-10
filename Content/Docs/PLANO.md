@@ -263,6 +263,36 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-10 (Nicole na plataforma, pistola na mão do Mito) — COMMIT** (desde df1ad53):
+  - Assets dele: Nicole (`SMK_Nicole`, esqueleto próprio `Nicole_Skeleton` com socket
+    `hand_r`, `Nicole_Pistol_Idle`, `Nicole_Shooting` com BD Shot a 0,21 s), pistola
+    (`SM_Pistol` com socket `Muzzle`, cano no -X da malha), `MI_Nicole`, `MI_Pistol`,
+    `MI_Mito`, referências em `img_references`.
+  - Briefing 11:15 (auditoria): o `DA_Shooter_Pistol` estava sem corpo e sem animações
+    — apontados; Nanite ligado na Nicole. Com a Grip padrão o cano apontava para o chão e
+    a pistola ficava ~3× pequena: Grip calculada por script no quadro do BD Shot, escala 3.
+  - O Mito passa a segurar arma: `FBDAgentWeapon` ganhou `Mesh`, `Grip`, `MuzzleSocket`;
+    `UBDPalaceData` ganhou `HandSocket` e `ResolveWeaponMesh`; `ABDAgent` ganhou o
+    componente `HeldWeapon`, trocado quando o nível do palácio muda; tiro e som saem do
+    Muzzle. O Mito segura no osso `RightHand` (o Python não cria socket de esqueleto);
+    se ganhar `hand_r` no editor, trocar `HandSocket` e refazer a Grip.
+  - Briefing 12:00: atiradores flutuando. O Z de todo slot era o topo do bounding box da
+    malha (581/314/475), não o piso. Medido com raio contra os triângulos da malha e
+    corrigido nos BPs: arquibancada 301 (fileira de trás) e 235 (frente), palanque ~94,
+    caminhão 208,8. Os dois slots do caminhão que caíam no teto da cabine (entre as caixas
+    de som) foram para a carroceria: x = -150/150/450 nas duas fileiras. Os slots sobem com
+    o deck a cada andar (conferido renderizado após `BD.Debug.AutoEvolve`).
+  - Drop-up mostra "Nicole": `Piece.DA_Character` nas duas tabelas (`BD_en`/`BD_pt.csv`,
+    que têm prioridade) e `DisplayName` de `DA_Character` e `DA_Shooter_Pistol`.
+  - Grip girada para a direita: cano na frente do corpo em vez da linha do antebraço
+    (7,9° na Nicole, 10,2° no Mito). Medido em tiros reais renderizados: desvio de yaw
+    mediano 2,0° (Nicole, 377 tiros) e 1,1° (Mito, 53 tiros). Novo log Verbose
+    `barrel off the line of fire` em `LogBDTower` (só com o corpo na tela: fora dela os
+    ossos não atualizam e o socket lê a pose de referência).
+  - `BD.Debug.LookAt <classe> [dist] [yaw] [altura] [n]`: câmera de perto num corpo, para
+    screenshot. Regressão 79/79, os dois alvos compilados.
+  - Dele: FireSound vazio em tudo (importar os sons de tiro).
+
 - **2026-10-08 (campo limpo, sem obstáculos sorteados) — b075c0f** (desde 256380a):
   - Briefing 2026-10-08 16:00. Decisão de design: o tabuleiro começa LIMPO. Os 20
     obstáculos por seed saíram: `bGenerateObstacles=false` (novo, padrão desligado) em
