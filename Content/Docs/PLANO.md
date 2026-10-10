@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-10 (Fatia 3a: o ministro, cubo preto, e o chute do Mito) — COMMIT** (desde 5c94239):
+- **2026-10-10 (Fatia 3a: o ministro, cubo preto, e o chute do Mito) — c069926** (desde 5c94239):
   - Briefing 22:30. `ABDMinister`: bloco preto (cubo da engine com `BasicShapeMaterial`,
     `Color` preto) já no dobro (4×4×8, alto como o Mito dobrado). Ajustes em Project
     Settings › Brazil Defense - Minister (`UBDMinisterSettings`).
