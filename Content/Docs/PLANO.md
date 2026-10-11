@@ -263,6 +263,43 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-11 (desempenho: resolução por nível, LODs dos personagens, teste da cerca)** (desde 1c25138):
+  - Briefing 14:20 (otimização da cena horda). Medido na cena de referência
+    (§13, Rodada 7): o gargalo é a GPU. O "Draw" do stat unit era 14,4 ms de espera
+    (`EventWait/Visibility`) em 22 ms; o render thread trabalha ~7,5 ms com 326 draw
+    calls. O maior passe é o TSR nativo (5 ms).
+  - **Resolução por nível** — `Config/DefaultScalability.ini` (novo) sobrescreve
+    `PerfIndexValues_ResolutionQuality` para "50 67 75 100 100": Baixo 50%, Médio 67%,
+    Alto 75%, Épico e Cinemático 100%, reconstruídos pelo TSR. Conferido headless:
+    `Scalability 0..4` põe `r.ScreenPercentage` em 50/67/75/100/100. Alto a 75% leva a
+    cena horda de 45 a 59 fps. **Atenção:** com a qualidade em "automático" (-1, o
+    padrão), o `UBDSettingsSubsystem` não aplica nível, o `sg.ResolutionQuality` salvo
+    fica em 0 e a engine usa a resolução padrão do projeto (100%); o ganho só vale com
+    Alto escolhido no menu.
+  - **LODs da Nicole** — `SMK_Nicole` ganhou 4 LODs automáticos (128.983 / 40.238 /
+    21.182 / 10.998 vértices, `SkeletalMeshEditorSubsystem.regenerate_lod`). Na câmera
+    distante os 50 atiradores usam o LOD3: 57 → 68 fps a 75%, GPU 16,7 → 13,6 ms,
+    skinning 1,9 → 0,8 ms, sem diferença visível. Ela tem Nanite ligado, mas é
+    desenhada pelo caminho comum (o skin cache usa o LOD0 normal); baixar o fallback do
+    Nanite não mudou nada e foi desfeito.
+  - **LODs do Jumento** — `SKM_Jumento` também (23.859 / 7.433 / 3.877 / 1.990), mantidos
+    a pedido, mas sem efeito hoje: a horda é desenhada em Nanite, que ignora LOD
+    clássico (continua em LOD0; esconder a horda não muda os draw calls). Ela custa ~0,3 ms
+    de GPU; o peso dela é CPU (~1,1 ms de game, ~1,2 ms de RHI).
+  - **Regressão** — o check COLOCACAO "a piece that would fence a walking creep in is
+    refused" só rodava se, naquele tick, já houvesse um creep andando para célula livre;
+    com os LODs o tempo mudou e ele sumia da contagem (88). Agora, sem um creep assim, ele
+    manda um de cada boca até um servir, destrói depois e acusa FAIL se não achar
+    nenhum. 89/89 em 5 rodadas depois da correção, os dois alvos compilados.
+  - **Testes intermitentes (anotar, não corrigidos)**: AGENTE "the Agent walks free of the
+    grid" e MINISTRO "the Agent runs at a minister in reach and kicks" falharam uma vez
+    cada em 14 rodadas do dia (o chute não aconteceu; o Agente andou no máximo 6 cm fora
+    da linha de centro da célula). ONIBUS "the candidate waits for the buses to park" falhou uma vez com a
+    malha original. Repetindo, passam. Ficam para investigar.
+  - `SM_Palacio.uasset` vai junto: alterado pelo usuário antes desta sessão.
+  - Fora do repositório: kit de medição em `C:\Users\rafag\gpu_bench` (`ue_perf.ps1`
+    com `-Scene horde`, `-Hide`, `-Extra`, CSV, ProfileGPU e prints).
+
 - **2026-10-10 (Fatia 3a: o ministro, cubo preto, e o chute do Mito) — c069926** (desde 5c94239):
   - Briefing 22:30. `ABDMinister`: bloco preto (cubo da engine com `BasicShapeMaterial`,
     `Color` preto) já no dobro (4×4×8, alto como o Mito dobrado). Ajustes em Project
@@ -2217,3 +2254,42 @@ aberto, rota da horda mais curta se o jogador não cercar, e o AutoSetup
 tem mais células para escolher. Os números acima não valem mais como
 estão; não houve recalibração, só este registro. A próxima rodada mede o
 campo limpo.
+
+### Rodada 7 — 2026-10-11 (cena horda, GPU)
+
+**O que é.** Jogo renderizado no Odyssey 3440x1440 em tela cheia sem borda,
+VSync e limite de FPS desligados, RTX 4070 Laptop presa nos 78 W. Cena
+"horda" (`C:\Users\rafag\gpu_bench\ue_perf.ps1 -Scene horde -Minutes 4`):
+`BD.Debug.PerfScene 4 3 1 1` (50 atiradores), meio-dia parado
+(`BD.Day.Freeze 1`, `BD.Day.SetAlpha 0.25`), onda 8 com `BD.Wave.SpawnLoop 1`
+(111–123 jumentos o tempo todo), câmera distante sem tocar. Duas amostras de
+`BD.Debug.PerfSample 900` (35 s e 135 s), CSV do profiler (~5700 quadros) e
+um `ProfileGPU` no fim. As variações são só de console; a variação entre a
+baseline do começo e a do fim foi 0,3 ms de GPU.
+
+| rodada | fps | Game ms | Draw ms | GPU ms | render thread (trabalho/espera) | draw calls |
+|---|---|---|---|---|---|---|
+| baseline (100%) | 45 | 8,3 | 22,0 | 21,1 | 7,6 / 14,4 | 326 |
+| `r.ScreenPercentage 75` | 59 | 8,6 | 16,9 | 16,1 | 7,8 / 9,0 | 326 |
+| `r.ScreenPercentage 67` | 63 | 9,1 | 15,9 | 15,0 | 8,1 / 7,7 | 326 |
+| `r.Shadow.Virtual.Enable 0` | 47 | 8,4 | 21,4 | 20,5 | 7,1 / 14,2 | 339 |
+| `r.SkeletalMeshLODBias 1` / `2` | 45 / 46 | 8,3 | 22,0 / 21,7 | 21,1 / 20,9 | 7,5 / 14,4 | 326 |
+| horda escondida (`PerfHide Horde`) | 46 | 7,2 | 21,8 | 21,0 | 7,1 / 14,7 | 326 |
+| atiradores escondidos | 54 | 8,0 | 18,6 | 17,7 | 8,1 / 10,5 | 153 |
+| 75% + LODs na `SMK_Nicole` | 68 | 9,7 | 14,6 | 13,6 | — | — |
+
+**Leitura.** Preso na GPU. O "Draw" acompanha a GPU porque inclui a espera
+do render thread por ela; o trabalho dele é ~7,5–8 ms com só 326 draw
+calls. Passes de GPU na baseline: TSR nativo 5,0 ms, iluminação 2,2,
+skinning 1,95, base pass 1,7, sombras (VSM) 1,6; ~10% do quadro fica fora
+de qualquer passe. Os atiradores custavam ~3,5 ms (malha de 129 mil
+vértices em LOD0, sem LODs) e 173 draw calls; os jumentos quase nada de
+GPU (Nanite), mas ~1,1 ms de game thread e ~1,2 ms de RHI; os projéteis
+são ~3 vivos. O viés de LOD não fazia nada porque nenhum personagem tinha
+LOD. Depois do 75% e dos LODs da Nicole, o próximo teto é a game thread
+(~10 ms).
+
+**Limites.** 50 atiradores passa do orçamento de uma partida normal; numa
+partida real o ganho dos LODs é menor. Medido com o Afterburner na curva
+de undervolt do usuário (perfil 1: 900 mV / 2430 MHz, memória +300), que não muda o
+FPS no jogo (±0,5%).

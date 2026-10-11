@@ -1744,15 +1744,32 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				MoneyBefore, Match->GetPublicMoney()));
 
 		// What goes down under a wave must not fence a walking creep in: a platform on the
-		// cell a creep is heading into is refused, as blocking the path.
+		// cell a creep is heading into is refused, as blocking the path. The wave's creeps are
+		// still held back here, so whether one happens to be walking depends on timing; when
+		// none is, one is sent out of each mouth in turn (its route goes in before it ticks)
+		// until one heads into a free cell, and taken off the board after.
 		{
+			const auto IsWalkingIntoFree = [Grid](const ABDEnemyBase* Enemy)
+			{
+				return Enemy != nullptr && !Enemy->IsOnFinalLeg() && !Enemy->HasArrived() && Grid->GetCellState(Enemy->GetHeadingCell()) == EBDCellState::Free;
+			};
 			const ABDEnemyBase* Walker = nullptr;
 			for (const ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
 			{
-				if (Enemy != nullptr && !Enemy->IsOnFinalLeg() && !Enemy->HasArrived() && Grid->GetCellState(Enemy->GetHeadingCell()) == EBDCellState::Free)
+				if (IsWalkingIntoFree(Enemy))
 				{
 					Walker = Enemy;
 					break;
+				}
+			}
+			TArray<ABDEnemyBase*> Helpers;
+			for (int32 Mouth = 0; Walker == nullptr && Mouth < Waves->GetSpawnPoints().Num(); ++Mouth)
+			{
+				ABDEnemyBase* Helper = Waves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), Mouth);
+				if (Helper != nullptr)
+				{
+					Helpers.Add(Helper);
+					Walker = IsWalkingIntoFree(Helper) ? Helper : nullptr;
 				}
 			}
 			if (Walker != nullptr && Platform != nullptr)
@@ -1765,8 +1782,18 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				Placement->CancelSelection();
 				Check(TEXT("COLOCACAO"), TEXT("a piece that would fence a walking creep in is refused"),
 					!bTrapped && Match->GetLedger().PiecesBuilt == BuiltBeforeTrap,
-					FString::Printf(TEXT("%s heading into %s: %s (%s)"), *Walker->GetName(), *Walker->GetHeadingCell().ToString(),
-						bTrapped ? TEXT("PLACED") : TEXT("refused"), *RefusalName(TrapRefusal)));
+					FString::Printf(TEXT("%s heading into %s%s: %s (%s)"), *Walker->GetName(), *Walker->GetHeadingCell().ToString(),
+						Helpers.Contains(Walker) ? TEXT(", sent out for the check") : TEXT(""), bTrapped ? TEXT("PLACED") : TEXT("refused"), *RefusalName(TrapRefusal)));
+			}
+			else
+			{
+				Check(TEXT("COLOCACAO"), TEXT("a piece that would fence a walking creep in is refused"), false,
+					FString::Printf(TEXT("nothing to check against: %s, %d creep(s) sent out and none heading into a free cell"),
+						Platform != nullptr ? TEXT("platform found") : TEXT("NO platform piece"), Helpers.Num()));
+			}
+			for (ABDEnemyBase* Helper : Helpers)
+			{
+				Helper->Destroy();
 			}
 		}
 		const int32 LevelBefore = GroundTower.IsValid() ? GroundTower->GetTowerLevel() : 0;
