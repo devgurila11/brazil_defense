@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-11 (desempenho: resolução por nível, LODs dos personagens, teste da cerca)** (desde 1c25138):
+- **2026-10-11 (desempenho: resolução por nível, LODs dos personagens, teste da cerca) — 3714619** (desde 1c25138):
   - Briefing 14:20 (otimização da cena horda). Medido na cena de referência
     (§13, Rodada 7): o gargalo é a GPU. O "Draw" do stat unit era 14,4 ms de espera
     (`EventWait/Visibility`) em 22 ms; o render thread trabalha ~7,5 ms com 326 draw
