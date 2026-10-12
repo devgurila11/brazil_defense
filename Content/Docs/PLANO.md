@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-12 (Mito chuta ministro sem estamina, ministro sobre separador, console no ABNT2, Rodadas 8–9) — COMMIT** (desde 4cf7a64):
+- **2026-10-12 (Mito chuta ministro sem estamina, ministro sobre separador, console no ABNT2, Rodadas 8–9) — 9124658** (desde 4cf7a64):
   - **Mito no retorno** ("ministros ele deverá atacar mesmo sem estamina"): com a barra
     vazia ele passa pela horda sem atirar e só se desvia para chutar um ministro em pé no
     alcance de ministro (`GetMinisterReachRadius`); depois do chute refaz o caminho de casa
