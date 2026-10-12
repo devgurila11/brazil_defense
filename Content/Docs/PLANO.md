@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-12 (Fatia 3b: o refúgio do ministro) — (id)** (desde a9c6ae7):
+- **2026-10-12 (Fatia 3b: o refúgio do ministro) — 1c301fc** (desde a9c6ae7):
   - Sem briefing.md: veio da conversa colada com as três respostas dele (volta a andar 5 s
     depois de esvaziar; escudo é um domo no limite do raio; só saem de campo com o chute).
   - **Refúgio** — `ABDMinister` ganhou o estado `Reading`. Militante (nunca candidato) a
