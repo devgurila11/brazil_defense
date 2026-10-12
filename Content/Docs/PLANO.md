@@ -263,6 +263,26 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-12 (passeio de 8 células, falas pela metade, atalho liso) — (id)** (desde 03850c0):
+  - **Ministro** — ele testou o passeio pelo grid todo: "rápido e sem zig-zag". Revertido
+    (`bRoamWholeBoard`/`RoamMinCells` saíram, `BDMinister.cpp` igual a 61977a2); no lugar,
+    `WalkCellsMax` 4 → 8. O check MINISTRO virou "stretches of up to eight cells" (≥ 8
+    células da porta em 4 min; deu 23,7).
+  - **Falas −50%** ("repetitivo e enjoativo com a horda grande"): `SpeechTargetPerSecond`
+    0,4 → 0,2 (a horda inteira, uma frase a cada 5 s) e `CelebrationChance` 0,18 → 0,09
+    (Mito e atiradores ao matar). A fala do chute no ministro continua sempre.
+  - **Atalho na área de trabalho** — "Brazil Defense" = `UnrealEditor.exe <uproject> -game`;
+    o `Brazil_Defense.exe` sozinho fecha com erro sem cook (empacotar só no final, pedido dele).
+  - **Qualidade automática limitada a Alto** — pelo atalho o jogo rodava a ~16 fps: no
+    automático a engine põe Épico nativo nesta máquina (partida leve em 3440x1440: 28 fps,
+    GPU 35 ms; no Alto 75%: 103 fps, 8,6 ms). `UBDSettingsSubsystem::ApplyGraphics` agora
+    limita o automático a Alto fora do editor (`AutoQualityCeiling`); Épico segue no menu.
+    Era o pedido pendente de 11/10. Check QUALIDADE novo. Ele confirmou: "rodando liso".
+  - **Material padrão no jogo** — `M_Master_Environment` (pai de `MI_Nicole` e `MI_Urna`)
+    ganhou as marcações de uso Nanite e InstancedStaticMeshes; sem elas o modo jogo trocava
+    pelo material quadriculado (o "ícone estranho" que ele viu; sumiu).
+  - Regressão 100/100; os dois alvos compilados.
+
 - **2026-10-12 (ministros pelo grid todo, alcance do Mito sobre ministros) — 0f1d25f** (desde 5d5e347):
   - **Grid todo** — os ministros ficavam rondando a porta do STF (passos de 1–4 células a
     0,4 célula/s). Agora cada trecho vai até uma célula sorteada em qualquer ponto do tabuleiro,

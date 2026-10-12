@@ -343,37 +343,10 @@ void ABDMinister::StartWalk()
 		return;
 	}
 
-	const FBDFreeWalk Rules = Walk();
-	const FVector Here = GetActorLocation();
-
-	// Anywhere on the board, far enough off, by the way around what blocks him.
-	if (Settings.bRoamWholeBoard && Grid->GetSizeX() > 0 && Grid->GetSizeY() > 0)
-	{
-		const float MinDistance = Settings.RoamMinCells * Grid->GetCellSize();
-		for (int32 Draw = 0; Draw < BDMinisterPrivate::WalkDraws; ++Draw)
-		{
-			const FBDCellCoord Cell(FMath::RandRange(0, Grid->GetSizeX() - 1), FMath::RandRange(0, Grid->GetSizeY() - 1));
-			if (!Rules.CanStand(Cell))
-			{
-				continue;
-			}
-			const FVector There = Rules.CellPoint(Cell);
-			if (FVector::Dist2D(Here, There) < MinDistance)
-			{
-				continue;
-			}
-			TArray<FVector> Way = Rules.PlanWay(Here, There);
-			if (Way.Num() > 0)
-			{
-				Route = MoveTemp(Way);
-				State = EBDMinisterState::Walking;
-				return;
-			}
-		}
-	}
-
 	// A point a few cells off in any direction, in plain sight; the first draws keep a
 	// margin from dividers, the last ones do without.
+	const FBDFreeWalk Rules = Walk();
+	const FVector Here = GetActorLocation();
 	const float Margin = Grid->GetCellSize() * FBDFreeWalk::BodyMargin;
 	for (int32 Pass = 0; Pass < 2; ++Pass)
 	{

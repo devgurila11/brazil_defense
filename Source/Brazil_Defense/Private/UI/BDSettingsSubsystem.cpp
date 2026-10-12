@@ -99,6 +99,13 @@ namespace BDSettingsPrivate
 {
 	static constexpr int32 LowestQuality = 0;
 	static constexpr int32 HighestQuality = 3;
+
+	/**
+	 * The most Auto may land on: High, 75% of the screen rebuilt by TSR. The engine puts the
+	 * RTX 4070 Laptop on Epic, native, which ran a light match at 3440x1440 at 28 fps
+	 * against 103 on High (2026-10-12). Epic stays a pick of the menu.
+	 */
+	static constexpr int32 AutoQualityCeiling = 2;
 	static constexpr int32 VolumeMax = 100;
 
 	/** "voices 80, music 20 (muted), ...", for the log. */
@@ -231,10 +238,19 @@ void UBDSettingsSubsystem::ApplyGraphics()
 		return;
 	}
 
-	// Auto leaves scalability where the engine put it; only an explicit pick sets a level.
+	// Auto leaves scalability where the engine put it, up to High (outside the editor, whose
+	// viewport keeps its own); an explicit pick sets its level.
 	if (Settings->QualityLevel >= 0)
 	{
 		UserSettings->SetOverallScalabilityLevel(FMath::Clamp(Settings->QualityLevel, BDSettingsPrivate::LowestQuality, BDSettingsPrivate::HighestQuality));
+	}
+	else if (!GIsEditor)
+	{
+		const int32 EngineLevel = UserSettings->GetOverallScalabilityLevel();
+		if (EngineLevel < 0 || EngineLevel > BDSettingsPrivate::AutoQualityCeiling)
+		{
+			UserSettings->SetOverallScalabilityLevel(BDSettingsPrivate::AutoQualityCeiling);
+		}
 	}
 
 	// "Display resolution" means the desktop for a full screen of either kind; a window

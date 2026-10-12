@@ -64,6 +64,9 @@
 #include "Palace/BDPalace.h"
 #include "Palace/BDPalaceData.h"
 #include "Palace/BDMinisterSubsystem.h"
+#include "UI/BDSettingsSubsystem.h"
+#include "UI/BDSettingsSave.h"
+#include "GameFramework/GameUserSettings.h"
 #include "Palace/BDMinisterSettings.h"
 #include "Palace/BDMinister.h"
 #include "Components/StaticMeshComponent.h"
@@ -1175,6 +1178,17 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						Fresh->GetVolume(EBDSoundCategory::Environment), Fresh->GetVolume(EBDSoundCategory::Effects),
 						bUpgraded ? TEXT("yes") : TEXT("no"), bOwnFields ? TEXT("yes") : TEXT("no")));
 
+				// Quality on Auto lands at most on High (75% of the screen): the engine's own pick
+				// for this machine is Epic, native, which a full screen cannot carry.
+				const UBDSettingsSubsystem* GameSettings = World->GetGameInstance() != nullptr ? World->GetGameInstance()->GetSubsystem<UBDSettingsSubsystem>() : nullptr;
+				const UGameUserSettings* UserSettings = GEngine != nullptr ? GEngine->GetGameUserSettings() : nullptr;
+				if (GameSettings != nullptr && UserSettings != nullptr && GameSettings->Get().QualityLevel < 0)
+				{
+					const int32 Level = UserSettings->GetOverallScalabilityLevel();
+					Check(TEXT("QUALIDADE"), TEXT("quality on Auto never goes past High"), Level >= 0 && Level <= 2,
+						FString::Printf(TEXT("overall level %d, resolution quality %.0f%%"), Level, UserSettings->ScalabilityQuality.ResolutionQuality));
+				}
+
 				const USoundBase* Words = Militant != nullptr ? Militant->SpeechSound.LoadSynchronous() : nullptr;
 				const USoundClass* WordsClass = Words != nullptr ? Words->GetSoundClass() : nullptr;
 				const USoundMix* Duck = Voice.SpeechDuckMix.LoadSynchronous();
@@ -1639,7 +1653,7 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				Check(TEXT("MINISTRO"), TEXT("a minister strolls the board free of the grid, never on a blocked cell"),
 					Strolled > 50.0f && bStood, FString::Printf(TEXT("%.0f cm in 10 s, %s"), Strolled, *Minister->Describe()));
 
-				// Left to it for four minutes he crosses the board as the Mito does, not just the STF's doorstep.
+				// Left to it for four minutes, by stretches of up to eight cells, he leaves the STF's doorstep.
 				float Farthest = Strolled;
 				for (int32 Frame = 0; Frame < 30 * 240; ++Frame)
 				{
@@ -1648,9 +1662,9 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					Farthest = FMath::Max(Farthest, FVector::Dist2D(StrollStart, Minister->GetActorLocation()));
 				}
 				const float FarthestCells = Farthest / Grid->GetCellSize();
-				const float Wanted = 0.5f * FMath::Max(Grid->GetSizeX(), Grid->GetSizeY());
-				Check(TEXT("MINISTRO"), TEXT("a minister roams the whole board, not just in front of the STF"),
-					MinisterSettings.bRoamWholeBoard && FarthestCells >= Wanted && bStood,
+				const float Wanted = 8.0f;
+				Check(TEXT("MINISTRO"), TEXT("a minister strolls by stretches of up to eight cells, away from the STF's doorstep"),
+					MinisterSettings.WalkCellsMax == 8 && FarthestCells >= Wanted && bStood,
 					FString::Printf(TEXT("farthest %.1f cell(s) from the door in 4 min (wanted %.1f), %s"), FarthestCells, Wanted, *Minister->Describe()));
 
 				// The Agent sees him in reach, runs at him and kicks; the foot sends him flying.

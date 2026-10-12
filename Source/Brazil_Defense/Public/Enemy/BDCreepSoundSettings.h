@@ -91,10 +91,10 @@ public:
 	 * Sentences the whole horde asks for each second, however big it is: each creep's
 	 * share of words shrinks as the horde grows (SpeechShare x target x mean interval /
 	 * creeps alive), so twenty or two hundred militants talk about as often. Calls fill
-	 * the rest of their turns, as before. 0.4 is one sentence every two and a half seconds.
+	 * the rest of their turns, as before. 0.2 is one sentence every five seconds.
 	 */
 	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", UIMin = "0.0"))
-	float SpeechTargetPerSecond = 0.4f;
+	float SpeechTargetPerSecond = 0.2f;
 
 	/** The least a creep's share of words may fall to, as a fraction of its data's SpeechShare. */
 	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
@@ -145,7 +145,7 @@ public:
 
 	/** Chance a kill makes its shooter say a line, once his interval has passed. */
 	UPROPERTY(config, EditAnywhere, Category = "Celebration", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
-	float CelebrationChance = 0.18f;
+	float CelebrationChance = 0.09f;
 
 	/** Seconds a character keeps quiet after a line of his own, whatever he kills. */
 	UPROPERTY(config, EditAnywhere, Category = "Celebration", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))

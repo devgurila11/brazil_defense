@@ -59,24 +59,12 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Walk", meta = (ClampMin = "10.0"))
 	float TurnRate = 360.0f;
 
-	/**
-	 * He crosses the whole board as the Mito does: each stretch heads for a cell drawn
-	 * anywhere on it, at least RoamMinCells off, around blocked cells and dividers. Off, or
-	 * with no such cell to be reached, a stretch is a short step (WalkCellsMin..Max).
-	 */
-	UPROPERTY(config, EditAnywhere, Category = "Walk")
-	bool bRoamWholeBoard = true;
-
-	/** The least a stretch of his roam goes, in cells, so he does not hang about one spot. */
-	UPROPERTY(config, EditAnywhere, Category = "Walk", meta = (ClampMin = "0.0", EditCondition = "bRoamWholeBoard"))
-	float RoamMinCells = 6.0f;
-
-	/** How far one short stretch of his stroll goes, in cells. */
+	/** How far one stretch of his stroll goes, in cells. */
 	UPROPERTY(config, EditAnywhere, Category = "Walk", meta = (ClampMin = "1"))
 	int32 WalkCellsMin = 1;
 
 	UPROPERTY(config, EditAnywhere, Category = "Walk", meta = (ClampMin = "1"))
-	int32 WalkCellsMax = 4;
+	int32 WalkCellsMax = 8;
 
 	/** Chance he stands a while instead of walking on. */
 	UPROPERTY(config, EditAnywhere, Category = "Walk", meta = (ClampMin = "0.0", ClampMax = "1.0"))
