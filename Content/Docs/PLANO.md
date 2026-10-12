@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-12 (áudio em 4 categorias, ducking do ambiente, falas que chegam longe)** (desde 3c57cb0):
+- **2026-10-12 (áudio em 4 categorias, ducking do ambiente, falas que chegam longe) — 222efba** (desde 3c57cb0):
   - Briefing 10:00. **Quatro classes irmãs** sob `SC_Master`: `SC_Voice` (todas as
     falas), `SC_Music`, `SC_Environment` (nova: cidade, pássaros, noite) e `SC_Effects`
     (tiro, casco, zurro, grito, urna, ônibus, tombo). `SC_Voice` deixou de ser filha de
