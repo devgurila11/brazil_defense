@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-12 (tecla H esconde só o painel) — (id)** (desde c4b07ee):
+- **2026-10-12 (tecla H esconde só o painel) — 77c08d8** (desde c4b07ee):
   - Briefing 12:00. O **H** (e `BD.HUD.Clean`) esconde só o painel: o widget do HUD
     (placar, apuração, recursos, menu de peças, abates), as linhas de debug (alcances,
     contornos) e as mensagens de tela. O canvas do `ABDMatchHUD` deixou de ser desligado
