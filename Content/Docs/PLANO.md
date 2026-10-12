@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-12 (ministros pelo grid todo, alcance do Mito sobre ministros) — (id)** (desde 5d5e347):
+- **2026-10-12 (ministros pelo grid todo, alcance do Mito sobre ministros) — 0f1d25f** (desde 5d5e347):
   - **Grid todo** — os ministros ficavam rondando a porta do STF (passos de 1–4 células a
     0,4 célula/s). Agora cada trecho vai até uma célula sorteada em qualquer ponto do tabuleiro,
     a pelo menos `RoamMinCells` (6), contornando bloqueadas e divisórias (`FBDFreeWalk::PlanWay`),
