@@ -14,10 +14,11 @@ namespace BDFreeWalkPrivate
 	static const FIntPoint Steps[4] = { FIntPoint(1, 0), FIntPoint(0, 1), FIntPoint(-1, 0), FIntPoint(0, -1) };
 }
 
-FBDFreeWalk::FBDFreeWalk(const UWorld* InWorld, const UBDGridSubsystem* InGrid, TArray<const AActor*> InIgnored)
+FBDFreeWalk::FBDFreeWalk(const UWorld* InWorld, const UBDGridSubsystem* InGrid, TArray<const AActor*> InIgnored, const bool bInOverDividers)
 	: World(InWorld)
 	, Grid(InGrid)
 	, Ignored(MoveTemp(InIgnored))
+	, bOverDividers(bInOverDividers)
 {
 }
 
@@ -28,7 +29,7 @@ bool FBDFreeWalk::CanStand(const FBDCellCoord& Coord) const
 
 bool FBDFreeWalk::CanStep(const FBDCellCoord& From, const FBDCellCoord& To) const
 {
-	return Grid != nullptr && CanStand(To) && !Grid->IsEdgeBlocked(From, To);
+	return Grid != nullptr && CanStand(To) && (bOverDividers || !Grid->IsEdgeBlocked(From, To));
 }
 
 bool FBDFreeWalk::IsLineClear(const FVector& From, const FVector& To, const float Margin) const

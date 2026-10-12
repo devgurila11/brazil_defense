@@ -263,6 +263,30 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-12 (Mito chuta ministro sem estamina, ministro sobre separador, console no ABNT2, Rodadas 8–9) — COMMIT** (desde 4cf7a64):
+  - **Mito no retorno** ("ministros ele deverá atacar mesmo sem estamina"): com a barra
+    vazia ele passa pela horda sem atirar e só se desvia para chutar um ministro em pé no
+    alcance de ministro (`GetMinisterReachRadius`); depois do chute refaz o caminho de casa
+    (`PlanWayHome`, `bWayHomeLost`) em vez de deitar onde chutou. Sai `ShotsOnWayHome`.
+    Check AGENTE novo: volta, chute, retomada, sono, militante ao lado sem dano.
+  - **Ministro sobre separador**: `FBDFreeWalk` ganhou `bOverDividers` (arestas não
+    barram; célula Blocked e STF sim), ligado só em `ABDMinister::Walk()` (agora público):
+    passeio, volta ao STF e voo do chute. Mito e horda seguem contornando. Check MINISTRO
+    novo com uma cerca no meio do tabuleiro.
+  - **Console**: `+ConsoleKeys=Apostrophe` e `F10` no `DefaultInput.ini`. No ABNT2 a Tilde
+    não existe; "stat fps" ia para o jogo e o P pausava ("travou" era pausa).
+  - **§13**: Rodada 8 (a partida dele até a onda 139: régua da horda, capacidade da defesa
+    nível 1 ~130 mil de vida por onda, perdas só por ministros antes do palácio e 5 na 131,
+    dinheiro sobrando) e Rodada 9 (GPU na onda 90: 38 fps no Alto, horda ~2,8 ms, tabuleiro
+    22 ms contra 13,6 na Rodada 7). `gpu_bench/ue_perf.ps1` ganhou `-Wave` (fora do repo).
+  - Regressão 102/102; alvos do editor e do jogo compilados.
+  - **Onde paramos**: (1) achar o que deixou o tabuleiro ~8 ms mais caro de GPU desde a
+    Rodada 7 (suspeita: usage flags do `M_Master_Environment`; A/B escondendo atiradores e
+    urna); (2) decisões dele: o que fazer com o dinheiro que sobra depois da onda 100 (zero
+    evoluções compradas) e se ministros cobrindo tudo antes do palácio é o perigo pretendido;
+    (3) ele ver na tela o Mito chutando no retorno e o ministro pulando separador; (4) regra
+    de firewall da 9171 (CriptoCNS) como admin.
+
 - **2026-10-12 (passeio de 8 células, falas pela metade, atalho liso) — eb4873c** (desde 03850c0):
   - **Ministro** — ele testou o passeio pelo grid todo: "rápido e sem zig-zag". Revertido
     (`bRoamWholeBoard`/`RoamMinCells` saíram, `BDMinister.cpp` igual a 61977a2); no lugar,
@@ -2412,3 +2436,133 @@ LOD. Depois do 75% e dos LODs da Nicole, o próximo teto é a game thread
 partida real o ganho dos LODs é menor. Medido com o Afterburner na curva
 de undervolt do usuário (perfil 1: 900 mV / 2430 MHz, memória +300), que não muda o
 FPS no jogo (±0,5%).
+
+### Rodada 8 — 2026-10-12 (partida real até a onda 139, equilíbrio de combate)
+
+**O que é.** Partida jogada pelo usuário na tela (não headless), semente
+13432, Normal, build 2026.10.12-1439. Vitória na onda 100 (29.578 × 722,
+97,6% azul), seguiu no modo sem fim e foi abandonada na onda 139 com
+"defesas bem montadas". Fonte: `Saved/Logs/WaveLog.csv` (linhas com
+`MatchStart` 2026-10-12 15:13:45, ondas 1–138) e `PostMatch.csv` (linhas
+de 16:28 e 17:03). Reproduzir as contas: filtrar o WaveLog por esse
+`MatchStart` e somar as colunas por faixa de ondas.
+
+**Placar final.** Azul 57.329, vermelho 727, nulos 7.324 (o HUD mostrava
+57.002 quando ele anotou, no meio da onda 139). 58.330 militantes
+soltos, 57.329 mortos, 727 na urna; 34 candidatos soltos, 34 mortos,
+nenhum na urna. 6.606 s reais (1 h 50) para 20.005 s de jogo (~3× de
+velocidade média).
+
+**A horda, medida.** As curvas se confirmaram exatas na partida inteira:
+- quantidade por onda = 6 × onda (6 bocas × onda por boca);
+- vida = 10 × 1,022^(onda−1) por militante (`HealthScale` cresce 2,2%
+  por onda em toda a faixa: 1,00 → 2,90 na 50 → 8,62 na 100 → 19,71 na 138);
+- vida total da onda ≈ 60 × onda × 1,022^(onda−1):
+
+| onda | militantes | vida de cada | vida da onda |
+|---|---|---|---|
+| 30 | 180 | 18,8 | 3,4 mil |
+| 60 | 360 | 36,1 | 13 mil |
+| 90 | 540 | 69,4 | 37,5 mil |
+| 100 | 600 | 86,2 | 51,7 mil |
+| 131 | 786 | 169,3 | 133 mil |
+| 138 | 828 | 197,1 | 163 mil |
+
+Soma da vida soltada nas 138 ondas: 5,21 milhões; dano entregue
+5,41 milhões (inclui a onda 139 e os candidatos), 8,35% desperdiçado
+(sobra de dano em quem morre e tiro em militante coberto). 581 mil
+tiros, ~9,3 de dano útil por tiro. Pico de vivos: 368 (onda 136).
+
+**Onde se perdeu voto: só nos ministros.** Os 727 vermelhos vieram de
+seis ondas:
+- 32–34: 212 (21, 38, 153) com 18 atiradores e 4 plataformas;
+- 42–43: 510 (252 e 258), **zero tiros** nas duas: 7–8 ministros na rua,
+  todos lendo, cobriam todos os militantes, e ainda não havia Mito para
+  chutá-los: o palácio só foi construído logo depois (log 18:31 UTC, onda
+  44), e daí em diante nenhuma onda vazou até a 131;
+- 131: 5, de 786, com 133 mil de vida, o primeiro vazamento por força
+  bruta (14.290 tiros, 132.900 de 133.056 de vida entregue).
+
+Fora isso, de 44 a 138 a defesa limpou todas as ondas. Os ministros são
+hoje a única ameaça real até ~130; depois disso a curva da horda começa
+a passar a capacidade de uma defesa de nível 1.
+
+**A defesa e o dinheiro.**
+
+| faixa | ganho | gasto | nulos | desperdício | pico vivos | vida soltada |
+|---|---|---|---|---|---|---|
+| 1–30 | 2,7 mil | 4,8 mil | 953 | 13 mil | 150 | 43 mil |
+| 31–60 | 7,5 mil | 6,7 mil | 1.686 | 45 mil | 233 | 227 mil |
+| 61–90 | 10,1 mil | 11,4 mil | 1.848 | 95 mil | 352 | 715 mil |
+| 91–138 | 85,7 mil | 16,0 mil | 2.815 | 335 mil | 368 | 4,22 milhões |
+
+(vida soltada = militantes × `HealthScale` × 10.)
+
+- Tabuleiro final: 62 torres, 52 atiradores em 9 plataformas, 119
+  separadores (dos 835 dados), 1 palácio. A defesa parou de crescer na
+  onda 85 (52 atiradores, 9 plataformas, 119 separadores); só as torres
+  subiram depois (36 → 61 na onda 133, 10 mil de uma vez).
+- **Nenhuma evolução comprada** (nível médio 1,00, `LevelsBought` 0).
+- O ganho explode depois da 100 (85,7 mil de 106 mil vieram de 91–138,
+  quase tudo propina recuperada de candidato) e sobrou dinheiro:
+  65.990 parados no fim. A economia do fim de jogo dá mais do que há em
+  que gastar.
+- Separadores esticaram a rota mais longa de 64 para 136 células; o
+  caminho mais curto ficou em ~95.
+
+**Memória.** De 4,3 GB na onda 1 a 6,9 GB na 138 (~19 MB por onda),
+UObjects 56 mil na 41 e 99 mil na 136. Não quebrou, mas cresce com a
+partida; olhar se o modo sem fim for longe.
+
+**Para usar no futuro (novas hordas e defesas).**
+- Régua da horda: vida da onda V(n) = 60 · n · 1,022^(n−1). Uma horda
+  nova se compara por "quantos jumentos de teste ela vale" (vida × número
+  dividido por 10 × 6n).
+- Régua da defesa: este tabuleiro de nível 1 (62 torres + 52 atiradores)
+  segurou ~130 mil de vida por onda e vazou aos 133 mil, então a
+  capacidade fica em ~130 mil de vida por onda, nas rotas de ~95–136
+  células. Evolução, defesa nova ou rota mais curta mexem nesse número.
+- Antes de culpar a curva da horda por uma derrota, conferir ministros:
+  onda com 0 tiros = cobertura total. Sem palácio, nada tira a cobertura;
+  com o Mito em campo os ministros deixaram de ser problema.
+- Pontos para decidir: (1) o que fazer com o dinheiro que sobra depois
+  da 100 (evoluções não compradas, teto de plataformas); (2) se 7–8
+  ministros cobrindo tudo antes de haver palácio é o perigo pretendido
+  (aqui custou 510 votos em duas ondas).
+
+### Rodada 9 — 2026-10-12 (GPU na onda 90, horda grande)
+
+**O que é.** Pedido do usuário: na onda 90 no Odyssey a RTX bate 100%,
+com ou sem os outros monitores. Mesma bancada da Rodada 7
+(`C:\Users\rafag\gpu_bench\ue_perf.ps1`, que ganhou `-Wave`), agora com
+`-Scene horde -Wave 90 -SpawnEvery 0.45` (300–390 militantes de vida
+×6,94 o tempo todo), `BD.Debug.PerfScene 4 3 1 1` (50 atiradores, 8
+plataformas), meio-dia parado, 3440x1440 sem borda, VSync e limite
+desligados. Duas amostras de 900 quadros por rodada mais um `ProfileGPU`.
+
+| rodada | fps | Game ms | GPU ms | horda viva | RHI ms |
+|---|---|---|---|---|---|
+| resolução 100% (`-ScreenPercentage 100`) | 34 | 13,6–14,3 | 27,8 | 384–386 | 6,5 |
+| nível Alto do jogo (75%) | 38 | 13,8–14,5 | 25,1 | 375–378 | 6,4–6,8 |
+| Alto, horda escondida (`-Hide Horde`) | 42–43 | 9,6–10,0 | 22,3 | — | 3,9 |
+
+**Leitura.**
+- O 100% de GPU é real: a 38 fps a RTX está longe dos 100 Hz do Odyssey.
+  Desligar monitores não muda porque quem desenha é a RTX (sem MUX, ver a
+  nota dos monitores); os monitores pesam na Arc.
+- A horda de ~380 custa só ~2,8 ms de GPU (skinning 1,4 → 4,2 ms) e
+  ~4 ms de game thread e ~2,7 ms de RHI. Não é ela o teto.
+- O tabuleiro sem horda já custa 22 ms de GPU, contra 13,6 ms do mesmo
+  `PerfScene` com 75% na Rodada 7 (2026-10-11). A diferença está espalhada:
+  envio de buffers 0,27 → 1,84 ms, leitura do Nanite 0,16 → 1,24,
+  campos de distância 0,14 → 0,70, VisBuffer do Nanite 0,48 → 2,15, e
+  ~3,5 ms do quadro fora de qualquer passe (eram ~0,6). Em compensação o
+  TSR caiu de 4,2 para 1,8 ms. Suspeita a conferir: as usage flags de
+  Nanite e ISM ligadas no `M_Master_Environment` hoje de manhã (antes, no
+  `-game`, a Nicole e a urna saíam com o material padrão, mais barato, e
+  a Rodada 7 mediu assim). Não foi provado; é o próximo passo.
+
+**Limites.** O `PerfScene` não põe as 62 torres nem os 119 separadores
+da partida real, e põe 50 atiradores (a partida tinha 52). Arquivos:
+`profilegpu_w90_*.txt`, `csv\w90_*.csv`, `shots\w90_*.png` em
+`gpu_bench`.

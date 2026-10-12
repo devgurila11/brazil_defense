@@ -26,6 +26,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "Grid/BDFreeWalk.h"
 #include "Grid/BDGridAudit.h"
 #include "Grid/BDGridSubsystem.h"
 #include "HAL/IConsoleManager.h"
@@ -1653,6 +1654,30 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				Check(TEXT("MINISTRO"), TEXT("a minister strolls the board free of the grid, never on a blocked cell"),
 					Strolled > 50.0f && bStood, FString::Printf(TEXT("%.0f cm in 10 s, %s"), Strolled, *Minister->Describe()));
 
+				// A divider stops the Mito but not a minister: he steps over it, in a straight
+				// line and on a planned way alike. Blocked cells still stop both.
+				{
+					const FBDCellCoord Left(Grid->GetSizeX() / 2, Grid->GetSizeY() / 2);
+					const FBDCellCoord Right(Left.X + 1, Left.Y);
+					const FBDEdgeCoord Fence(Left, FBDEdgeCoord::DirectionX);
+					const FBDFreeWalk MinisterRules = Minister->Walk();
+					const FBDFreeWalk AgentRules(World, Grid);
+					const bool bFenced = !Grid->IsEdgeBlockedAt(Fence) && Grid->CanBlockEdge(Fence) && Grid->SetEdgeBlocked(Fence, true);
+					const FVector From = Grid->CellToWorld(Left);
+					const FVector To = Grid->CellToWorld(Right);
+					const bool bMinisterSteps = MinisterRules.CanStep(Left, Right) && MinisterRules.IsLineClear(From, To, 0.0f)
+						&& MinisterRules.PlanWay(From, To).Num() == 1;
+					const bool bAgentStopped = !AgentRules.CanStep(Left, Right) && !AgentRules.IsLineClear(From, To, 0.0f);
+					if (bFenced)
+					{
+						Grid->SetEdgeBlocked(Fence, false);
+					}
+					Check(TEXT("MINISTRO"), TEXT("a minister steps over a divider the Mito has to go around"),
+						bFenced && bMinisterSteps && bAgentStopped,
+						FString::Printf(TEXT("fence %s between %s and %s, minister %s, Mito %s"), bFenced ? TEXT("up") : TEXT("refused"),
+							*Left.ToString(), *Right.ToString(), bMinisterSteps ? TEXT("steps over") : TEXT("STOPPED"), bAgentStopped ? TEXT("goes around") : TEXT("WALKS THROUGH")));
+				}
+
 				// Left to it for four minutes, by stretches of up to eight cells, he leaves the STF's doorstep.
 				float Farthest = Strolled;
 				for (int32 Frame = 0; Frame < 30 * 240; ++Frame)
@@ -1828,6 +1853,58 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			if (Covered != nullptr)
 			{
 				Covered->Destroy();
+			}
+
+			// On an empty bar he walks home past the horde, yet a minister in his reach still
+			// gets the kick, and from there he takes the way home again and lies down.
+			const int32 LateBefore = Ministers->GetMinisters().Num();
+			Ministers->SpawnMinisters(1);
+			const TArray<ABDMinister*> LateOut = Ministers->GetMinisters();
+			ABDMinister* Late = LateOut.Num() > LateBefore ? LateOut.Last() : nullptr;
+			ABDEnemyBase* Passer = RefugeWaves != nullptr ? RefugeWaves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), 0) : nullptr;
+			if (Late != nullptr && Passer != nullptr && Kicker != nullptr)
+			{
+				const float Cell = Grid->GetCellSize();
+				const float Frame30 = 1.0f / 30.0f;
+				Kicker->DebugWake();
+				const FVector Inward = (Grid->CellToWorld(FBDCellCoord(Grid->GetSizeX() / 2, Grid->GetSizeY() / 2)) - Kicker->GetActorLocation()).GetSafeNormal2D();
+				Kicker->DebugSetPatrolRemaining(0.0f);
+				const bool bHomeBound = Kicker->GetState() == EBDAgentState::Returning;
+				Late->DebugPlaceOnBoard(Kicker->GetActorLocation() + Inward * Cell * 2.0f);
+				Passer->SetActorLocation(Kicker->GetActorLocation() - Inward * Cell * 1.5f);
+				const float PasserHealth = Passer->GetCurrentHealth();
+				const int32 KicksBefore = Kicker->GetMinistersKicked();
+				for (int32 Frame = 0; Frame < 300 && Kicker->GetMinistersKicked() == KicksBefore; ++Frame)
+				{
+					Kicker->Tick(Frame30);
+				}
+				const bool bKickedHomeBound = Kicker->GetMinistersKicked() > KicksBefore;
+				bool bBackOnWay = false;
+				for (int32 Frame = 0; Frame < 30 * 60 && Kicker->GetState() != EBDAgentState::Sleeping; ++Frame)
+				{
+					Kicker->Tick(Frame30);
+					bBackOnWay |= Kicker->GetState() == EBDAgentState::Returning;
+				}
+				const EBDAgentState Final = Kicker->GetState();
+				Check(TEXT("AGENTE"), TEXT("on an empty bar he walks home past the horde, kicks a minister in reach, and takes the way home again"),
+					bHomeBound && bKickedHomeBound && bBackOnWay && Final == EBDAgentState::Sleeping && FMath::IsNearlyEqual(Passer->GetCurrentHealth(), PasserHealth),
+					FString::Printf(TEXT("home bound %s, minister kicked %s, back on the way %s, then %s, militant beside him %.0f -> %.0f hp"),
+						bHomeBound ? TEXT("yes") : TEXT("no"), bKickedHomeBound ? TEXT("yes") : TEXT("no"), bBackOnWay ? TEXT("yes") : TEXT("no"),
+						*StaticEnum<EBDAgentState>()->GetNameStringByValue(static_cast<int64>(Final)), PasserHealth, Passer->GetCurrentHealth()));
+			}
+			else
+			{
+				Check(TEXT("AGENTE"), TEXT("a minister, a militant and the Agent for the way home"), false,
+					FString::Printf(TEXT("minister %s, militant %s, agent %s"), Late != nullptr ? TEXT("yes") : TEXT("no"),
+						Passer != nullptr ? TEXT("yes") : TEXT("no"), Kicker != nullptr ? TEXT("yes") : TEXT("no")));
+			}
+			if (Late != nullptr)
+			{
+				Late->Destroy();
+			}
+			if (Passer != nullptr)
+			{
+				Passer->Destroy();
 			}
 		}
 

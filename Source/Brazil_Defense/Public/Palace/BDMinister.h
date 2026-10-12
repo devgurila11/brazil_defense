@@ -110,8 +110,10 @@ public:
 	/** One line on his state, for the console and the regression. */
 	FString Describe() const;
 
-private:
+	/** The rules he walks by: free over the board, stepping over the dividers. */
 	FBDFreeWalk Walk() const;
+
+private:
 	UBDGridSubsystem* GetGrid() const;
 
 	/** Steps along Route, turning to it. @return true once it is walked. */

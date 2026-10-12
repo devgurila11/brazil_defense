@@ -67,8 +67,9 @@ UBDGridSubsystem* ABDMinister::GetGrid() const
 
 FBDFreeWalk ABDMinister::Walk() const
 {
-	// The floor trace looks through him and through the STF he walks out of.
-	return FBDFreeWalk(GetWorld(), GetGrid(), { this, StfBuilding.Get() });
+	// The floor trace looks through him and through the STF he walks out of; the dividers
+	// do not stop him, he steps over them.
+	return FBDFreeWalk(GetWorld(), GetGrid(), { this, StfBuilding.Get() }, /*bOverDividers*/ true);
 }
 
 void ABDMinister::InitializeMinister(const FVector& Outside, const FBDCellCoord& InDoorCell, const AActor* Stf, const int32 InSeat)
@@ -344,7 +345,7 @@ void ABDMinister::StartWalk()
 	}
 
 	// A point a few cells off in any direction, in plain sight; the first draws keep a
-	// margin from dividers, the last ones do without.
+	// margin from blocked cells, the last ones do without.
 	const FBDFreeWalk Rules = Walk();
 	const FVector Here = GetActorLocation();
 	const float Margin = Grid->GetCellSize() * FBDFreeWalk::BodyMargin;

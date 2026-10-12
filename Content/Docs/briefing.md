@@ -1,39 +1,27 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-12 12:00**
+**Versão: 2026-10-12 (depois do "faça")**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Tecla "H": esconder só o PAINEL, manter o mundo
+Aplicado e com regressão 102/102 (não commitado): Mito sem estamina chuta
+ministro e ignora a horda no retorno; ministros passam por cima dos
+separadores; console abre com `'` (ao lado do 1) e F10; Rodadas 8 e 9 na
+§13 do PLANO.
 
-Hoje o "H" esconde TUDO, inclusive coisas que pertencem ao mundo do
-jogo (exclamações de fala, barras de vida). Corrigir: o "H" deve
-esconder SÓ os dados de PAINEL (interface sobreposta de gerenciamento)
-e MANTER tudo que é do mundo do jogo (billboards sobre os atores).
+# Pendente
 
-## Com "H" — SOME (painel/interface de gerenciamento)
-- Placar de votos (azul/vermelho), a barra de apuração.
-- Medidores de recurso (fundos públicos, cota de separador).
-- Menu de peças / barra de construção.
-- Placar de abates lateral (ícones de tipo).
-- Overlays de debug (alcances on-click, etc.).
-- Qualquer elemento fixo na tela (HUD 2D sobreposto).
+## GPU: o tabuleiro ficou mais caro que na Rodada 7
+- Rodada 9: sem horda, o mesmo `PerfScene` com 75% custa 22 ms de GPU,
+  contra 13,6 ms em 2026-10-11. A horda de ~380 custa só ~2,8 ms.
+- Suspeita: as usage flags de Nanite/ISM do `M_Master_Environment`
+  (Nicole e urna com o material de verdade no `-game` desde hoje).
+- Próximo passo: A/B com `ue_perf.ps1 -Scene horde -Wave 90 -SpawnEvery
+  0.45 -ScreenPercentage 0`, escondendo atiradores (`-Hide Shooter`) e a
+  urna, para ver qual malha volta os ~8 ms.
 
-## Com "H" — FICA (mundo do jogo)
-- Exclamações de fala (indicam quem está falando) — NUNCA esconder.
-- Barras de vida dos NPCs.
-- Estrelas de evolução das construções.
-- Barra de tempo do Mito, barra do candidato.
-- Qualquer indicador que flutua SOBRE um ator na cena (billboard no
-  mundo).
-
-## Regra geral
-- Critério: elemento FIXO NA TELA (painel/HUD 2D) = some com H.
-  Elemento que FLUTUA SOBRE UM ATOR no mundo (billboard) = fica.
-- Objetivo: ver a cena/batalha viva (inimigos apanhando, falas
-  pipocando) sem os dados de gerenciamento atrapalhando.
-
-## Entregável
-- "H" esconde só o painel; mantém exclamações, barras de vida,
-  estrelas e barras flutuantes do mundo.
-- BD.Test.Regression passa; compilar os dois alvos; commit.
+## Decisões dele (da Rodada 8)
+- Dinheiro sobrando depois da onda 100 (66 mil parados, nenhuma evolução
+  comprada): o que fazer com ele.
+- 7–8 ministros cobrindo tudo antes do palácio custaram 510 votos nas ondas
+  42–43: é o perigo pretendido?

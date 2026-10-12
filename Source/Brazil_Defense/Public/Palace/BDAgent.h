@@ -32,7 +32,7 @@ enum class EBDAgentState : uint8
 	/** Running after a candidate on the board, until he is in reach. */
 	Chasing,
 
-	/** Patrol time ran out: walking home to sleep, still shooting whatever comes in reach. */
+	/** Patrol time ran out: walking home to sleep past the horde, stopping only to kick a minister in reach. */
 	Returning,
 
 	/** Lying in front of the palace, the bar filling, defending nothing. */
@@ -59,8 +59,8 @@ enum class EBDAgentState : uint8
  * (UBDAnimNotify_Shot); damage and rate are the weapon of the palace's level.
  *
  * His patrol time runs down always, waves or not. Each kill puts some back. At zero he
- * walks home - shooting on the way - lies down in front of the palace and rests: the bar
- * fills over a rest that is shorter the more he killed (UBDPalaceData::GetRestTime), and
+ * walks home - past the horde, a minister in reach still kicked - lies down in front of
+ * the palace and rests: the bar fills over a rest that is shorter the more he killed (UBDPalaceData::GetRestTime), and
  * he gets up on his own when it is full, mid wave or not.
  */
 UCLASS(meta = (DisplayName = "BD Agent"))
@@ -235,6 +235,8 @@ private:
 
 	/** Patrol over: the cells home, divider by divider, or lying down where he is when home cannot be reached. */
 	void StartReturn();
+	/** The way home from where he stands into Route. @return false when home cannot be reached. */
+	bool PlanWayHome();
 	void StartSleep();
 	void WakeUp();
 
@@ -316,17 +318,17 @@ private:
 	float FireCooldown = 0.0f;
 	float KickRemaining = 0.0f;
 
-	/** Heading home on an empty bar: he shoots on the way, and lies down at the end of it. */
+	/** Heading home on an empty bar: past the horde, kicking only a minister in reach, and lying down at the end of it. */
 	bool bGoingHome = false;
+
+	/** A minister took him off the way home: the way is planned again from where he stands. */
+	bool bWayHomeLost = false;
 
 	/** The current rest, in seconds, and how much of it has passed. */
 	float RestDuration = 0.0f;
 	float RestElapsed = 0.0f;
 
 	int32 KillsOnPatrol = 0;
-
-	/** Shots fired since the bar ran out, on the way home. */
-	int32 ShotsOnWayHome = 0;
 
 	/** The candidate's cell the chase route was planned to, when it goes around something. */
 	FBDCellCoord ChaseGoal;

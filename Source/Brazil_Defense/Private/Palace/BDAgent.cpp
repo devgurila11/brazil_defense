@@ -367,13 +367,11 @@ void ABDAgent::StartIdle()
 void ABDAgent::StartReturn()
 {
 	PatrolRemaining = 0.0f;
-	ShotsOnWayHome = 0;
 	bGoingHome = true;
+	bWayHomeLost = false;
+	CurrentTarget.Reset();
 
-	// From wherever he stands, not from a cell: the way is planned in the world.
-	FBDCellCoord Home;
-	TArray<FVector> Way = FindSleepCell(Home) ? PlanWay(CellPoint(Home)) : TArray<FVector>();
-	if (Way.Num() == 0)
+	if (!PlanWayHome())
 	{
 		UE_LOG(LogBDTower, Warning, TEXT("%s: no way home from %s, resting where he stands."), *GetName(), *HeadingCell.ToString());
 		Route.Reset();
@@ -381,13 +379,22 @@ void ABDAgent::StartReturn()
 		return;
 	}
 
-	UE_LOG(LogBDTower, Log, TEXT("%s: patrol time over after %d kill(s), %d straight leg(s) home."), *GetName(), KillsOnPatrol, Way.Num());
-	Route = MoveTemp(Way);
-	if (State != EBDAgentState::Shooting)
+	UE_LOG(LogBDTower, Log, TEXT("%s: patrol time over after %d kill(s), %d straight leg(s) home."), *GetName(), KillsOnPatrol, Route.Num());
+	State = EBDAgentState::Returning;
+	PlayStateAnimation();
+}
+
+bool ABDAgent::PlanWayHome()
+{
+	// From wherever he stands, not from a cell: the way is planned in the world.
+	FBDCellCoord Home;
+	TArray<FVector> Way = FindSleepCell(Home) ? PlanWay(CellPoint(Home)) : TArray<FVector>();
+	if (Way.Num() == 0)
 	{
-		State = EBDAgentState::Returning;
-		PlayStateAnimation();
+		return false;
 	}
+	Route = MoveTemp(Way);
+	return true;
 }
 
 void ABDAgent::StartSleep()
@@ -395,6 +402,7 @@ void ABDAgent::StartSleep()
 	Route.Reset();
 	CurrentTarget.Reset();
 	bGoingHome = false;
+	bWayHomeLost = false;
 	State = EBDAgentState::Sleeping;
 	FBDCellCoord Home;
 	if (FindSleepCell(Home) && Home == HeadingCell)
@@ -412,7 +420,7 @@ void ABDAgent::StartSleep()
 	RestDuration = Data != nullptr ? Data->GetRestTime(KillsOnPatrol) : 0.0f;
 	RestElapsed = 0.0f;
 	PlayStateAnimation();
-	UE_LOG(LogBDTower, Log, TEXT("%s lies down at %s: %d kill(s) on the patrol, %d shot(s) on the way home, %.1fs of rest."), *GetName(), *HeadingCell.ToString(), KillsOnPatrol, ShotsOnWayHome, RestDuration);
+	UE_LOG(LogBDTower, Log, TEXT("%s lies down at %s: %d kill(s) on the patrol, %.1fs of rest."), *GetName(), *HeadingCell.ToString(), KillsOnPatrol, RestDuration);
 }
 
 void ABDAgent::WakeUp()
@@ -718,7 +726,6 @@ void ABDAgent::OnShotFrame()
 void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 {
 	++ShotsFired;
-	ShotsOnWayHome += bGoingHome ? 1 : 0;
 	UWorld* World = GetWorld();
 	if (World != nullptr && BDAgentPrivate::GShowShots != 0)
 	{
@@ -988,13 +995,42 @@ void ABDAgent::Tick(const float DeltaSeconds)
 	const float Radius = GetDetectionRadius();
 	const float RadiusSquared = Radius * Radius;
 
-	// A candidate on the board pulls him off the patrol; on the way home he only shoots.
+	// A candidate on the board pulls him off the patrol; on the way home only a minister does.
 	ABDEnemyBase* Candidate = bGoingHome ? nullptr : FindCandidate();
 
-	// A minister in reach is what he leaves the militants for, short of a candidate. That
-	// reach grows with every minister on his feet out there.
-	if (Candidate == nullptr && !bGoingHome && GoForMinister(DeltaSeconds, GetMinisterReachRadius()))
+	// A minister in reach is what he leaves the militants for, short of a candidate, and
+	// what he stops for even on an empty bar. That reach grows with every minister on his
+	// feet out there.
+	if (Candidate == nullptr && GoForMinister(DeltaSeconds, GetMinisterReachRadius()))
 	{
+		bWayHomeLost |= bGoingHome;
+		DrawDebug();
+		return;
+	}
+
+	// On the way home the horde is not his: he walks past it, the way planned again where
+	// a minister took him off it, and lies down at the end of it.
+	if (bGoingHome)
+	{
+		CurrentTarget.Reset();
+		if (bWayHomeLost)
+		{
+			bWayHomeLost = false;
+			if (!PlanWayHome())
+			{
+				UE_LOG(LogBDTower, Warning, TEXT("%s: no way home from %s after the minister, resting where he stands."), *GetName(), *HeadingCell.ToString());
+				Route.Reset();
+			}
+		}
+		if (State != EBDAgentState::Returning)
+		{
+			State = EBDAgentState::Returning;
+			PlayStateAnimation();
+		}
+		if (StepAlong(DeltaSeconds))
+		{
+			StartSleep();
+		}
 		DrawDebug();
 		return;
 	}
@@ -1047,22 +1083,7 @@ void ABDAgent::Tick(const float DeltaSeconds)
 		return;
 	}
 
-	// Reach clear and nobody to run after: home if the bar is out, the patrol otherwise.
-	if (bGoingHome)
-	{
-		if (State != EBDAgentState::Returning)
-		{
-			State = EBDAgentState::Returning;
-			PlayStateAnimation();
-		}
-		if (StepAlong(DeltaSeconds))
-		{
-			StartSleep();
-		}
-		DrawDebug();
-		return;
-	}
-
+	// Reach clear and nobody to run after: on with the patrol.
 	if (State == EBDAgentState::Shooting || State == EBDAgentState::Chasing)
 	{
 		// Back to the walk he was on, or a new decision. A chase leaves nothing to finish:
