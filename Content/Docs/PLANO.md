@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-12 (passeio de 8 células, falas pela metade, atalho liso) — (id)** (desde 03850c0):
+- **2026-10-12 (passeio de 8 células, falas pela metade, atalho liso) — eb4873c** (desde 03850c0):
   - **Ministro** — ele testou o passeio pelo grid todo: "rápido e sem zig-zag". Revertido
     (`bRoamWholeBoard`/`RoamMinCells` saíram, `BDMinister.cpp` igual a 61977a2); no lugar,
     `WalkCellsMax` 4 → 8. O check MINISTRO virou "stretches of up to eight cells" (≥ 8
