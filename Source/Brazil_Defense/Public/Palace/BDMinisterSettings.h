@@ -113,11 +113,19 @@ public:
 	//~ The refuge --------------------------------------------------------------
 
 	/**
-	 * How far his cover reaches, in cells, from his centre. A militant inside it while he
-	 * reads is out of every defender's reach and blinks; the candidate is never covered.
+	 * How far the first minister's cover reaches, in cells, from his centre. A militant
+	 * inside it while he reads is out of every defender's reach and blinks; the candidate
+	 * is never covered.
 	 */
 	UPROPERTY(config, EditAnywhere, Category = "Refuge", meta = (ClampMin = "0.1"))
 	float RefugeRadiusCells = 2.0f;
+
+	/** Each minister after the first in the STF's order covers this much further: the next one out is the stronger. */
+	UPROPERTY(config, EditAnywhere, Category = "Refuge", meta = (ClampMin = "0.0"))
+	float RefugeRadiusStepCells = 0.5f;
+
+	/** The cover of the minister in a seat of the STF's order (1 the first out). */
+	float GetRefugeRadiusCells(int32 Seat) const { return RefugeRadiusCells + RefugeRadiusStepCells * FMath::Max(0, Seat - 1); }
 
 	/** Seconds he keeps reading once nobody is left in his radius, before he walks on. */
 	UPROPERTY(config, EditAnywhere, Category = "Refuge", meta = (ClampMin = "0.0", ForceUnits = "s"))
@@ -151,11 +159,14 @@ public:
 
 	//~ Out of the STF ---------------------------------------------------------
 
-	/** One minister out of the STF for every candidate killed, while fewer than MaxOnBoard are out. */
+	/** One minister out of the STF for every candidate killed, the next of its line, while any is inside. */
 	UPROPERTY(config, EditAnywhere, Category = "STF")
 	bool bReleaseOnCandidateKilled = true;
 
-	/** The STF has eleven. */
+	/**
+	 * The STF has eleven, each in his seat of its order. They come out first to last; a
+	 * kicked one goes back to the end of the line and comes out again only after the others.
+	 */
 	UPROPERTY(config, EditAnywhere, Category = "STF", meta = (ClampMin = "0"))
 	int32 MaxOnBoard = 11;
 

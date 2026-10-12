@@ -263,6 +263,22 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-12 (rodízio dos 11 ministros, raio que cresce) — (id)** (desde 757599f):
+  - Respostas dele à 3b: o Mito chuta só no alcance dele (confirmado); o piscar fica.
+  - **Rodízio** — o STF tem uma fila de 11 assentos (`UBDMinisterSubsystem::GetLine`). Cada
+    candidato morto solta o próximo da fila; com todos fora, ninguém sai. O ministro que volta
+    ao STF (chutado, ou destruído) vai para o fim da fila (`ReturnSeat`, no `EndPlay`) e só
+    sai de novo depois dos outros.
+  - **Raio crescente** — cada assento protege `RefugeRadiusStepCells` (0,5) a mais que o
+    anterior: 1º 2 células, 2º 2,5 … 11º 7 (`GetRefugeRadiusCells(Seat)`); o domo segue o
+    raio. **Decisão minha:** o raio é do assento, então o chutado volta com o mesmo raio — não
+    cresce sem limite a cada saída.
+  - Check REFUGIO novo (a fila e o meio célula a mais). Os dois checks de chute posicionavam o
+    ministro à frente do Mito, que às vezes olha para fora do tabuleiro (falha intermitente já
+    vista); agora vão na direção do centro. Regressão 97/97 três vezes seguidas; os dois alvos
+    compilados. Numa rodada com a DLL velha apareceu uma falha de ONIBUS ("the candidate waits
+    for the buses to park") que não se repetiu.
+
 - **2026-10-12 (Fatia 3b: o refúgio do ministro) — 1c301fc** (desde a9c6ae7):
   - Sem briefing.md: veio da conversa colada com as três respostas dele (volta a andar 5 s
     depois de esvaziar; escudo é um domo no limite do raio; só saem de campo com o chute).

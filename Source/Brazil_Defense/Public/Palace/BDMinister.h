@@ -49,7 +49,8 @@ enum class EBDMinisterState : uint8
  * black exclamation over him - falls, lies there a moment, then runs back to the STF and
  * is gone through its door: the kick is the only thing that sends him back.
  *
- * The refuge (slice 3b): a militant (never the candidate) within RefugeRadiusCells of him
+ * The refuge (slice 3b): a militant (never the candidate) within his radius (wider the
+ * later his seat in the STF's order, UBDMinisterSettings::GetRefugeRadiusCells)
  * stops him, and he reads. While he reads, every militant inside the radius is covered
  * (ABDEnemyBase::IsSheltered): no defender aims at it, no hit lands, it blinks; the shield
  * dome stands on the edge of the radius while somebody is inside. With the radius empty he
@@ -70,7 +71,15 @@ public:
 	 * Sets him off: out of Outside (the STF door, off the board), onto DoorCell, then the
 	 * stroll. Running back, he heads for the same door.
 	 */
-	void InitializeMinister(const FVector& Outside, const FBDCellCoord& DoorCell, const AActor* Stf);
+	void InitializeMinister(const FVector& Outside, const FBDCellCoord& DoorCell, const AActor* Stf, int32 InSeat);
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** His seat in the STF's order, 1 the first out; 0 for none. */
+	int32 GetSeat() const { return Seat; }
+
+	/** How far his cover reaches, in cells: wider the later his seat. */
+	float GetRefugeRadiusCells() const;
 
 	/** Puts him walking at a point of the board at once, skipping the door (for the tests). */
 	void DebugPlaceOnBoard(const FVector& Where);
@@ -143,6 +152,8 @@ private:
 
 	/** Seconds read with nobody in the radius. */
 	float QuietSeconds = 0.0f;
+
+	int32 Seat = 0;
 
 	EBDMinisterState State = EBDMinisterState::Entering;
 

@@ -1644,8 +1644,10 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(World);
 				const int32 KickLinesBefore = Sounds != nullptr ? Sounds->GetAlwaysAsked() : 0;
 				const int32 BlackBefore = Marks != nullptr ? Marks->GetMarksStarted(EBDSpeakerSide::Minister) : 0;
+				// Toward the middle of the board: facing out from an edge, ahead of him is off it.
 				Kicker->DebugWake();
-				Minister->DebugPlaceOnBoard(Kicker->GetActorLocation() + Kicker->GetActorForwardVector() * Grid->GetCellSize() * 2.0f);
+				const FVector TowardMiddle = (Grid->CellToWorld(FBDCellCoord(Grid->GetSizeX() / 2, Grid->GetSizeY() / 2)) - Kicker->GetActorLocation()).GetSafeNormal2D();
+				Minister->DebugPlaceOnBoard(Kicker->GetActorLocation() + TowardMiddle * Grid->GetCellSize() * 2.0f);
 				for (int32 Frame = 0; Frame < 240 && Kicker->GetMinistersKicked() == 0; ++Frame)
 				{
 					Kicker->Tick(1.0f / 30.0f);
@@ -1668,6 +1670,41 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			// The refuge (slice 3b): a militant inside his radius stops him and he reads; the
 			// militant is covered (no hit lands, no defender aims) and the dome goes up. With
 			// the radius empty he reads on and then walks. The Agent's kick drops the cover.
+			{
+				// The line of eleven: they come out in order, each covering half a cell more than
+				// the one before; one back in goes to the end, out again only after the others.
+				for (ABDMinister* Old : Ministers->GetMinisters())
+				{
+					Old->Destroy();
+				}
+				const TArray<int32> LineBefore = Ministers->GetLine();
+				const int32 First = LineBefore.Num() > 1 ? LineBefore[0] : 0;
+				TArray<ABDMinister*> Pair;
+				Ministers->SpawnMinisters(2);
+				for (ABDMinister* OutNow : Ministers->GetMinisters())
+				{
+					Pair.Add(OutNow);
+				}
+				Pair.Sort([](const ABDMinister& A, const ABDMinister& B) { return A.GetSeat() < B.GetSeat(); });
+				const bool bTwo = Pair.Num() == 2;
+				const int32 SeatA = bTwo ? Pair[0]->GetSeat() : 0;
+				const int32 SeatB = bTwo ? Pair[1]->GetSeat() : 0;
+				const float CoverA = bTwo ? Pair[0]->GetRefugeRadiusCells() : 0.0f;
+				const float CoverB = bTwo ? Pair[1]->GetRefugeRadiusCells() : 0.0f;
+				const bool bWider = bTwo && SeatB == SeatA + 1 && FMath::IsNearlyEqual(CoverB - CoverA, MinisterSettings.RefugeRadiusStepCells);
+				if (bTwo)
+				{
+					Pair[0]->Destroy();
+					Pair[1]->Destroy();
+				}
+				const TArray<int32>& LineAfter = Ministers->GetLine();
+				const bool bToTheEnd = LineAfter.Num() == LineBefore.Num() && LineAfter.Num() >= 2 && LineAfter[LineAfter.Num() - 2] == SeatA;
+				Check(TEXT("REFUGIO"), TEXT("the STF's line: the next out covers half a cell wider, and one back in waits behind the rest"),
+					bWider && SeatA == First && bToTheEnd,
+					FString::Printf(TEXT("seats %d and %d, cover %.1f and %.1f cells, %d inside, seat %d back at %d of %d"),
+						SeatA, SeatB, CoverA, CoverB, LineAfter.Num(), SeatA, LineAfter.IndexOfByKey(SeatA) + 1, LineAfter.Num()));
+			}
+
 			UBDWaveSubsystem* RefugeWaves = World->GetSubsystem<UBDWaveSubsystem>();
 			const int32 RefugeBefore = Ministers->GetMinisters().Num();
 			Ministers->SpawnMinisters(1);
@@ -1679,9 +1716,12 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				const float Cell = Grid->GetCellSize();
 				const float Frame30 = 1.0f / 30.0f;
 				Kicker->DebugWake();
-				const FVector Spot = Kicker->GetActorLocation() + Kicker->GetActorForwardVector() * Cell * 6.0f;
+				// Toward the middle of the board, whichever way the Agent faces after the kick above.
+				const FVector BoardMiddle = Grid->CellToWorld(FBDCellCoord(Grid->GetSizeX() / 2, Grid->GetSizeY() / 2));
+				const FVector Inward = (BoardMiddle - Kicker->GetActorLocation()).GetSafeNormal2D();
+				const FVector Spot = Kicker->GetActorLocation() + Inward * Cell * 6.0f;
 				Reader->DebugPlaceOnBoard(Spot);
-				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * MinisterSettings.RefugeRadiusCells * 0.5f, 0.0f, 0.0f));
+				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * Reader->GetRefugeRadiusCells() * 0.5f, 0.0f, 0.0f));
 				Reader->Tick(Frame30);
 				const float HealthBefore = Covered->GetCurrentHealth();
 				Covered->ApplyDamage(HealthBefore * 0.5f, Kicker);
@@ -1693,7 +1733,7 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						Covered->IsSheltered() ? TEXT("covered") : TEXT("in plain sight"), HealthBefore, Covered->GetCurrentHealth()));
 
 				// The radius empties: the dome goes, he reads on, and after the wait he walks.
-				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * (MinisterSettings.RefugeRadiusCells + 3.0f), 0.0f, 0.0f));
+				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * (Reader->GetRefugeRadiusCells() + 3.0f), 0.0f, 0.0f));
 				float Read = 0.0f;
 				bool bShieldDown = true;
 				while (Read < MinisterSettings.ResumeAfterSeconds - 0.5f)
@@ -1713,8 +1753,8 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						bStillReading ? TEXT("yes") : TEXT("no"), *Reader->Describe()));
 
 				// Covering again, in the Agent's reach: he comes for him, and the kick drops the cover at once.
-				Reader->DebugPlaceOnBoard(Kicker->GetActorLocation() + Kicker->GetActorForwardVector() * Cell * 2.0f);
-				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * MinisterSettings.RefugeRadiusCells * 0.5f, 0.0f, 0.0f));
+				Reader->DebugPlaceOnBoard(Kicker->GetActorLocation() + Inward * Cell * 2.0f);
+				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * Reader->GetRefugeRadiusCells() * 0.5f, 0.0f, 0.0f));
 				Reader->Tick(Frame30);
 				const int32 KicksBefore = Kicker->GetMinistersKicked();
 				for (int32 Frame = 0; Frame < 300 && Kicker->GetMinistersKicked() == KicksBefore; ++Frame)
@@ -2121,7 +2161,7 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		Candidate->ApplyDamage(Candidate->GetMaxHealth() * 10.0f, nullptr);
 		const int32 MinistersAfter = Stf != nullptr ? Stf->GetMinisters().Num() : 0;
 		Check(TEXT("REFUGIO"), TEXT("a candidate killed lets one minister out of the STF"),
-			MinistersAfter == MinistersBefore + 1 || (MinistersBefore >= UBDMinisterSettings::Get().MaxOnBoard && MinistersAfter == MinistersBefore),
+			MinistersAfter == MinistersBefore + 1 || (Stf != nullptr && Stf->GetLine().Num() == 0 && MinistersAfter == MinistersBefore),
 			FString::Printf(TEXT("%d -> %d out"), MinistersBefore, MinistersAfter));
 		Bribes->FlushNow(TEXT("BD.Test.Regression"));
 		const int32 Earned = Match->GetLedger().BribeEarned - EarnedBefore;

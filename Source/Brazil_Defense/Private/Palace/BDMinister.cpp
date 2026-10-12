@@ -13,6 +13,7 @@
 #include "Grid/BDGridSubsystem.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Palace/BDMinisterSettings.h"
+#include "Palace/BDMinisterSubsystem.h"
 #include "Wave/BDWaveSubsystem.h"
 
 namespace BDMinisterPrivate
@@ -70,9 +71,10 @@ FBDFreeWalk ABDMinister::Walk() const
 	return FBDFreeWalk(GetWorld(), GetGrid(), { this, StfBuilding.Get() });
 }
 
-void ABDMinister::InitializeMinister(const FVector& Outside, const FBDCellCoord& InDoorCell, const AActor* Stf)
+void ABDMinister::InitializeMinister(const FVector& Outside, const FBDCellCoord& InDoorCell, const AActor* Stf, const int32 InSeat)
 {
 	const UBDMinisterSettings& Settings = UBDMinisterSettings::Get();
+	Seat = InSeat;
 	StfBuilding = Stf;
 	DoorOutside = Outside;
 	DoorCell = InDoorCell;
@@ -114,7 +116,7 @@ void ABDMinister::InitializeMinister(const FVector& Outside, const FBDCellCoord&
 	{
 		Shield->SetStaticMesh(Mesh);
 		const UBDGridSubsystem* Grid = GetGrid();
-		const float Radius = Settings.RefugeRadiusCells * (Grid != nullptr ? Grid->GetCellSize() : 100.0f);
+		const float Radius = GetRefugeRadiusCells() * (Grid != nullptr ? Grid->GetCellSize() : 100.0f);
 		const float MeshRadius = FMath::Max(Mesh->GetBoundingBox().GetExtent().GetMax(), 1.0f);
 		Shield->SetRelativeScale3D(FVector(Radius / MeshRadius));
 	}
@@ -136,7 +138,28 @@ void ABDMinister::InitializeMinister(const FVector& Outside, const FBDCellCoord&
 	State = EBDMinisterState::Entering;
 	SetActorRotation(FRotator(0.0f, (DoorPoint - DoorOutside).GetSafeNormal2D().ToOrientationRotator().Yaw, 0.0f));
 
-	UE_LOG(LogBDMinister, Log, TEXT("Minister '%s' out of the STF at %s, onto the board at %s."), *GetName(), *DoorOutside.ToCompactString(), *DoorCell.ToString());
+	UE_LOG(LogBDMinister, Log, TEXT("Minister '%s' (seat %d, cover %.1f cells) out of the STF at %s, onto the board at %s."), *GetName(),
+		Seat, GetRefugeRadiusCells(), *DoorOutside.ToCompactString(), *DoorCell.ToString());
+}
+
+void ABDMinister::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// Back in the STF, or gone some other way: his seat goes to the end of its line.
+	DropCover();
+	if (Seat > 0 && (EndPlayReason == EEndPlayReason::Destroyed || EndPlayReason == EEndPlayReason::RemovedFromWorld))
+	{
+		if (UBDMinisterSubsystem* Ministers = UBDMinisterSubsystem::Get(this))
+		{
+			Ministers->ReturnSeat(Seat);
+		}
+	}
+	Seat = 0;
+	Super::EndPlay(EndPlayReason);
+}
+
+float ABDMinister::GetRefugeRadiusCells() const
+{
+	return UBDMinisterSettings::Get().GetRefugeRadiusCells(Seat);
 }
 
 void ABDMinister::DebugPlaceOnBoard(const FVector& Where)
@@ -184,7 +207,7 @@ void ABDMinister::UpdateRefuge(const float DeltaSeconds)
 
 	// Every militant inside the radius, the candidate never.
 	const UBDMinisterSettings& Settings = UBDMinisterSettings::Get();
-	const float RadiusSquared = FMath::Square(Settings.RefugeRadiusCells * Grid->GetCellSize());
+	const float RadiusSquared = FMath::Square(GetRefugeRadiusCells() * Grid->GetCellSize());
 	const FVector Here = GetActorLocation();
 	for (ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
 	{
@@ -515,7 +538,7 @@ FString ABDMinister::Describe() const
 	FBDCellCoord Cell;
 	const UBDGridSubsystem* Grid = GetGrid();
 	const bool bOnBoard = Grid != nullptr && Grid->WorldToCell(GetActorLocation(), Cell);
-	return FString::Printf(TEXT("%s: %s at %s (%s), %d point(s) to go, %d kick(s) taken, %d covered%s"), *GetName(),
+	return FString::Printf(TEXT("%s (seat %d, %.1f cells): %s at %s (%s), %d point(s) to go, %d kick(s) taken, %d covered%s"), *GetName(), Seat, GetRefugeRadiusCells(),
 		*StaticEnum<EBDMinisterState>()->GetNameStringByValue(static_cast<int64>(State)), *GetActorLocation().ToCompactString(),
 		bOnBoard ? *Cell.ToString() : TEXT("off the board"), Route.Num(), KicksTaken, Sheltered.Num(), IsShieldUp() ? TEXT(", shield up") : TEXT(""));
 }

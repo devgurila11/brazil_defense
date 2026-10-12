@@ -152,14 +152,25 @@ int32 UBDMinisterSubsystem::SpawnMinisters(const int32 Count)
 	int32 Spawned = 0;
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
+		if (GetLine().Num() == 0)
+		{
+			UE_LOG(LogBDMinister, Log, TEXT("The STF is empty: all %d ministers are out."), UBDMinisterSettings::Get().MaxOnBoard);
+			break;
+		}
+		const int32 Seat = Line[0];
+		Line.RemoveAt(0);
 		const float Offset = (Index - (Count - 1) * 0.5f) * Grid->GetCellSize() * 0.8f;
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		ABDMinister* Minister = World->SpawnActor<ABDMinister>(ABDMinister::StaticClass(), FTransform(Outside + Along * Offset), Params);
 		if (Minister != nullptr)
 		{
-			Minister->InitializeMinister(Outside + Along * Offset, DoorCell, Building);
+			Minister->InitializeMinister(Outside + Along * Offset, DoorCell, Building, Seat);
 			++Spawned;
+		}
+		else
+		{
+			Line.Insert(Seat, 0);
 		}
 	}
 	return Spawned;
@@ -172,19 +183,38 @@ bool UBDMinisterSubsystem::NotifyCandidateKilled()
 	{
 		return false;
 	}
-	const int32 Out = GetMinisters().Num();
-	if (Out >= Settings.MaxOnBoard)
-	{
-		UE_LOG(LogBDMinister, Log, TEXT("Candidate down, but %d of %d ministers are already out: nobody leaves the STF."), Out, Settings.MaxOnBoard);
-		return false;
-	}
 	if (SpawnMinisters(1) == 0)
 	{
+		UE_LOG(LogBDMinister, Log, TEXT("Candidate down, but nobody is left in the STF."));
 		return false;
 	}
 	++ReleasedByKills;
-	UE_LOG(LogBDMinister, Log, TEXT("Candidate down: a minister comes out of the STF (%d out, %d let out by kills)."), Out + 1, ReleasedByKills);
+	UE_LOG(LogBDMinister, Log, TEXT("Candidate down: a minister comes out of the STF (%d out, %d inside, %d let out by kills)."),
+		GetMinisters().Num(), GetLine().Num(), ReleasedByKills);
 	return true;
+}
+
+const TArray<int32>& UBDMinisterSubsystem::GetLine()
+{
+	if (!bLineReady)
+	{
+		bLineReady = true;
+		for (int32 Seat = 1; Seat <= UBDMinisterSettings::Get().MaxOnBoard; ++Seat)
+		{
+			Line.Add(Seat);
+		}
+	}
+	return Line;
+}
+
+void UBDMinisterSubsystem::ReturnSeat(const int32 Seat)
+{
+	GetLine();
+	if (Seat > 0 && !Line.Contains(Seat))
+	{
+		Line.Add(Seat);
+		UE_LOG(LogBDMinister, Log, TEXT("Seat %d back in the STF, at the end of the line (%d inside)."), Seat, Line.Num());
+	}
 }
 
 TArray<ABDMinister*> UBDMinisterSubsystem::GetMinisters() const

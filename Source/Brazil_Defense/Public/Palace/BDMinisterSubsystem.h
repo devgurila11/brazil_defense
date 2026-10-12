@@ -10,8 +10,9 @@
 class ABDMinister;
 
 /**
- * The STF lets the ministers out: one for every candidate killed, up to its eleven on the
- * board at once (slice 3b); a kicked one goes back in and may come out again. It is the building placed in the map, found by
+ * The STF lets the ministers out: one for every candidate killed, the next of its line of
+ * eleven, each one covering wider than the one before him (slice 3b). A kicked one goes
+ * back in at the end of the line, out again only after the others. It is the building placed in the map, found by
  * its mesh (UBDMinisterSettings::StfMesh), on the side of the board away from the buses.
  * Its door is the board cell nearest to it that a man may stand on; outside the door,
  * against the building, is where a minister appears and where a fleeing one is gone.
@@ -35,10 +36,16 @@ public:
 	int32 SpawnMinisters(int32 Count);
 
 	/**
-	 * A candidate is down: one more minister out of the STF, while fewer than MaxOnBoard
-	 * are out (UBDMinisterSettings::bReleaseOnCandidateKilled). @return whether one came out.
+	 * A candidate is down: the next minister of the STF's line comes out, if any is inside
+	 * (UBDMinisterSettings::bReleaseOnCandidateKilled). @return whether one came out.
 	 */
 	bool NotifyCandidateKilled();
+
+	/** A minister is back inside (or gone): his seat to the end of the line. */
+	void ReturnSeat(int32 Seat);
+
+	/** The seats inside the STF, the next one out first. */
+	const TArray<int32>& GetLine();
 
 	/** Ministers let out by candidates killed this match. */
 	int32 GetReleasedByKills() const { return ReleasedByKills; }
@@ -59,4 +66,8 @@ private:
 	TWeakObjectPtr<const AActor> Stf;
 	bool bStfSearched = false;
 	int32 ReleasedByKills = 0;
+
+	/** The seats inside, in the order they come out; filled with 1..MaxOnBoard the first time it is asked. */
+	TArray<int32> Line;
+	bool bLineReady = false;
 };
