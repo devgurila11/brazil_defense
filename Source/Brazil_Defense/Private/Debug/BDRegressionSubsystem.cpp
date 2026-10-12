@@ -1639,6 +1639,20 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				Check(TEXT("MINISTRO"), TEXT("a minister strolls the board free of the grid, never on a blocked cell"),
 					Strolled > 50.0f && bStood, FString::Printf(TEXT("%.0f cm in 10 s, %s"), Strolled, *Minister->Describe()));
 
+				// Left to it for four minutes he crosses the board as the Mito does, not just the STF's doorstep.
+				float Farthest = Strolled;
+				for (int32 Frame = 0; Frame < 30 * 240; ++Frame)
+				{
+					Minister->Tick(1.0f / 30.0f);
+					bStood &= Grid->WorldToCell(Minister->GetActorLocation(), Under) && Grid->GetCellState(Under) != EBDCellState::Blocked;
+					Farthest = FMath::Max(Farthest, FVector::Dist2D(StrollStart, Minister->GetActorLocation()));
+				}
+				const float FarthestCells = Farthest / Grid->GetCellSize();
+				const float Wanted = 0.5f * FMath::Max(Grid->GetSizeX(), Grid->GetSizeY());
+				Check(TEXT("MINISTRO"), TEXT("a minister roams the whole board, not just in front of the STF"),
+					MinisterSettings.bRoamWholeBoard && FarthestCells >= Wanted && bStood,
+					FString::Printf(TEXT("farthest %.1f cell(s) from the door in 4 min (wanted %.1f), %s"), FarthestCells, Wanted, *Minister->Describe()));
+
 				// The Agent sees him in reach, runs at him and kicks; the foot sends him flying.
 				UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(World);
 				UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(World);
@@ -1692,6 +1706,23 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				const float CoverA = bTwo ? Pair[0]->GetRefugeRadiusCells() : 0.0f;
 				const float CoverB = bTwo ? Pair[1]->GetRefugeRadiusCells() : 0.0f;
 				const bool bWider = bTwo && SeatB == SeatA + 1 && FMath::IsNearlyEqual(CoverB - CoverA, MinisterSettings.RefugeRadiusStepCells);
+
+				// The Mito's reach for ministers: his reach for the horde plus a quarter cell for
+				// each one standing; a kicked one takes his quarter back at once.
+				if (bTwo && Kicker != nullptr)
+				{
+					const float Cell = Grid->GetCellSize();
+					const float Base = Kicker->GetDetectionRadius();
+					Pair[0]->DebugPlaceOnBoard(Grid->CellToWorld(Door));
+					Pair[1]->DebugPlaceOnBoard(Grid->CellToWorld(Door));
+					const float WithTwo = (Kicker->GetMinisterReachRadius() - Base) / Cell;
+					Pair[0]->ReceiveKick(*Kicker);
+					const float WithOne = (Kicker->GetMinisterReachRadius() - Base) / Cell;
+					const float ReachStep = MinisterSettings.AgentReachStepCells;
+					Check(TEXT("MINISTRO"), TEXT("the Mito's reach for ministers is his reach for the horde plus a quarter cell per minister standing, back down for each one kicked"),
+						FMath::IsNearlyEqual(WithTwo, 2.0f * ReachStep, 0.01f) && FMath::IsNearlyEqual(WithOne, ReachStep, 0.01f) && Pair[0]->GetState() == EBDMinisterState::Flying,
+						FString::Printf(TEXT("horde reach %.2f cells, +%.2f with two standing, +%.2f with one kicked (%s)"), Base / Cell, WithTwo, WithOne, *Pair[0]->Describe()));
+				}
 				if (bTwo)
 				{
 					Pair[0]->Destroy();

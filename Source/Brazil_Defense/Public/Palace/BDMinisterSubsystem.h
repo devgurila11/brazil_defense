@@ -56,6 +56,9 @@ public:
 	/** The ministers out now. */
 	TArray<ABDMinister*> GetMinisters() const;
 
+	/** Ministers on their feet on the board: out, and not kicked on their way back. */
+	int32 CountStanding() const;
+
 	/** The nearest minister a kick would land on within Radius of a point, or null. */
 	ABDMinister* FindKickable(const FVector& From, float Radius) const;
 

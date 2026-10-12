@@ -47,6 +47,9 @@ namespace BDAgentPrivate
 
 	// Colours of his own, apart from the towers' (cyan reach, red target, yellow next level).
 	static const FColor RangeColor(90, 230, 110, 255);
+
+	/** His reach for ministers, outside the green one while any stands on the board. */
+	static const FColor MinisterReachColor(40, 40, 40, 255);
 	static const FColor ShotColor(255, 60, 220, 255);
 
 	/**
@@ -119,6 +122,14 @@ float ABDAgent::GetDetectionRadius() const
 	const UBDPalaceData* Data = GetData();
 	const UBDGridSubsystem* Grid = GetGrid();
 	return Data != nullptr && Grid != nullptr ? Data->DetectionRadiusCells * Grid->GetCellSize() : 0.0f;
+}
+
+float ABDAgent::GetMinisterReachRadius() const
+{
+	const UBDGridSubsystem* Grid = GetGrid();
+	const UBDMinisterSubsystem* Ministers = UBDMinisterSubsystem::Get(this);
+	const int32 Standing = Ministers != nullptr ? Ministers->CountStanding() : 0;
+	return GetDetectionRadius() + (Grid != nullptr ? UBDMinisterSettings::Get().AgentReachStepCells * Standing * Grid->GetCellSize() : 0.0f);
 }
 
 float ABDAgent::GetPatrolFraction() const
@@ -980,8 +991,9 @@ void ABDAgent::Tick(const float DeltaSeconds)
 	// A candidate on the board pulls him off the patrol; on the way home he only shoots.
 	ABDEnemyBase* Candidate = bGoingHome ? nullptr : FindCandidate();
 
-	// A minister in reach is what he leaves the militants for, short of a candidate.
-	if (Candidate == nullptr && !bGoingHome && GoForMinister(DeltaSeconds, Radius))
+	// A minister in reach is what he leaves the militants for, short of a candidate. That
+	// reach grows with every minister on his feet out there.
+	if (Candidate == nullptr && !bGoingHome && GoForMinister(DeltaSeconds, GetMinisterReachRadius()))
 	{
 		DrawDebug();
 		return;
@@ -1108,6 +1120,15 @@ void ABDAgent::DrawDebug() const
 	DrawDebugCircle(World, Center, Radius, 64, BDAgentPrivate::RangeColor,
 		BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority,
 		6.0f, FVector::ForwardVector, FVector::RightVector, /*bDrawAxis*/ false);
+
+	// His reach for ministers, wider by every one standing out there.
+	const float MinisterReach = GetMinisterReachRadius();
+	if (MinisterReach > Radius + 1.0f)
+	{
+		DrawDebugCircle(World, Center, MinisterReach, 64, BDAgentPrivate::MinisterReachColor,
+			BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority,
+			4.0f, FVector::ForwardVector, FVector::RightVector, /*bDrawAxis*/ false);
+	}
 }
 
 //~ Debug ------------------------------------------------------------------------

@@ -263,6 +263,20 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-12 (ministros pelo grid todo, alcance do Mito sobre ministros) — (id)** (desde 5d5e347):
+  - **Grid todo** — os ministros ficavam rondando a porta do STF (passos de 1–4 células a
+    0,4 célula/s). Agora cada trecho vai até uma célula sorteada em qualquer ponto do tabuleiro,
+    a pelo menos `RoamMinCells` (6), contornando bloqueadas e divisórias (`FBDFreeWalk::PlanWay`),
+    como o Mito. `bRoamWholeBoard` desliga e volta ao passo curto (que segue como reserva).
+  - **Alcance do Mito sobre ministros** — o da horda (3 células) mais `AgentReachStepCells`
+    (0,25) por ministro em pé no campo (`UBDMinisterSubsystem::CountStanding`: fora do STF e
+    nem voando, nem caído, nem fugindo); o chutado devolve o 0,25 na hora
+    (`ABDAgent::GetMinisterReachRadius`). Círculo cinza-escuro em volta do verde no debug do
+    alcance. **Decisão minha:** "ministro morre" = chutado, já que ministro não morre.
+  - Checks MINISTRO novos: o ministro chega a ≥ metade do lado maior do tabuleiro em 4 min
+    (deu 40,6 células); o alcance +0,50 com dois em pé, +0,25 com um chutado. Regressão 99/99;
+    os dois alvos compilados.
+
 - **2026-10-12 (rodízio dos 11 ministros, raio que cresce) — 61977a2** (desde 757599f):
   - Respostas dele à 3b: o Mito chuta só no alcance dele (confirmado); o piscar fica.
   - **Rodízio** — o STF tem uma fila de 11 assentos (`UBDMinisterSubsystem::GetLine`). Cada

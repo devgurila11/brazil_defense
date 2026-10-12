@@ -113,6 +113,12 @@ public:
 	/** Detection radius in centimetres, on the board plane. */
 	float GetDetectionRadius() const;
 
+	/**
+	 * How far he goes for a minister, in centimetres: his detection radius plus
+	 * UBDMinisterSettings::AgentReachStepCells for every minister on his feet on the board.
+	 */
+	float GetMinisterReachRadius() const;
+
 	ABDEnemyBase* GetCurrentTarget() const { return CurrentTarget.Get(); }
 
 	int32 GetShotsFired() const { return ShotsFired; }

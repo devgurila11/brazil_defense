@@ -59,7 +59,19 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Walk", meta = (ClampMin = "10.0"))
 	float TurnRate = 360.0f;
 
-	/** How far one stretch of his stroll goes, in cells. */
+	/**
+	 * He crosses the whole board as the Mito does: each stretch heads for a cell drawn
+	 * anywhere on it, at least RoamMinCells off, around blocked cells and dividers. Off, or
+	 * with no such cell to be reached, a stretch is a short step (WalkCellsMin..Max).
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Walk")
+	bool bRoamWholeBoard = true;
+
+	/** The least a stretch of his roam goes, in cells, so he does not hang about one spot. */
+	UPROPERTY(config, EditAnywhere, Category = "Walk", meta = (ClampMin = "0.0", EditCondition = "bRoamWholeBoard"))
+	float RoamMinCells = 6.0f;
+
+	/** How far one short stretch of his stroll goes, in cells. */
 	UPROPERTY(config, EditAnywhere, Category = "Walk", meta = (ClampMin = "1"))
 	int32 WalkCellsMin = 1;
 
@@ -81,6 +93,14 @@ public:
 	/** How close the Agent comes before he kicks, in cells between their centres. */
 	UPROPERTY(config, EditAnywhere, Category = "Kick", meta = (ClampMin = "0.1"))
 	float KickReachCells = 1.0f;
+
+	/**
+	 * The Mito's reach for ministers is his reach for the horde plus this much, in cells,
+	 * for every minister on his feet on the board: each one out widens it, each one kicked
+	 * back to the STF narrows it again by as much.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Kick", meta = (ClampMin = "0.0"))
+	float AgentReachStepCells = 0.25f;
 
 	/** Seconds into the Agent's kick when his foot lands: the minister flies from then. */
 	UPROPERTY(config, EditAnywhere, Category = "Kick", meta = (ClampMin = "0.0", ForceUnits = "s"))

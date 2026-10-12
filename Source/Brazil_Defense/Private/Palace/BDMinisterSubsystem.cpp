@@ -230,6 +230,17 @@ TArray<ABDMinister*> UBDMinisterSubsystem::GetMinisters() const
 	return Out;
 }
 
+int32 UBDMinisterSubsystem::CountStanding() const
+{
+	int32 Count = 0;
+	for (const ABDMinister* Minister : GetMinisters())
+	{
+		const EBDMinisterState State = Minister->GetState();
+		Count += State != EBDMinisterState::Flying && State != EBDMinisterState::Down && State != EBDMinisterState::Fleeing ? 1 : 0;
+	}
+	return Count;
+}
+
 ABDMinister* UBDMinisterSubsystem::FindKickable(const FVector& From, const float Radius) const
 {
 	ABDMinister* Nearest = nullptr;
