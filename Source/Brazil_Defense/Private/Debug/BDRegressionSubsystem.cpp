@@ -17,6 +17,7 @@
 #include "Enemy/BDAnimNotify_Footstep.h"
 #include "Enemy/BDCreepCorpse.h"
 #include "EngineUtils.h"
+#include "UI/BDSettingsSave.h"
 #include "UI/BDUISettings.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundClass.h"
@@ -1127,28 +1128,88 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					FString::Printf(TEXT("%.2f/s with 20, %.2f/s with 200, target %.2f/s (unscaled the 200 would ask %.2f/s)"), RateSmall, RateLarge,
 						Voice.SpeechTargetPerSecond, Militant != nullptr ? 200 * Militant->SpeechShare / (0.5f * (FMath::Max(0.5f, Militant->VocalIntervalMin) + Militant->VocalIntervalMax)) : 0.0f));
 
-				const USoundClass* Effects = UBDUISettings::Get().EffectsSoundClass.LoadSynchronous();
-				const USoundClass* Music = UBDUISettings::Get().MusicSoundClass.LoadSynchronous();
+				// Four categories side by side under the master, each owned by its slider alone; the
+				// words duck the effects and the environment while they sound, never the music nor
+				// themselves, and the two come back faded.
+				const UBDUISettings& UI = UBDUISettings::Get();
+				const USoundClass* Master = UI.MasterSoundClass.LoadSynchronous();
+				const USoundClass* VoiceClass = UI.VoiceSoundClass.LoadSynchronous();
+				const USoundClass* Music = UI.MusicSoundClass.LoadSynchronous();
+				const USoundClass* Environment = UI.EnvironmentSoundClass.LoadSynchronous();
+				const USoundClass* Effects = UI.EffectsSoundClass.LoadSynchronous();
+				FString Tree;
+				bool bSiblings = Master != nullptr;
+				TSet<const USoundClass*> Distinct;
+				for (const USoundClass* Class : { VoiceClass, Music, Environment, Effects })
+				{
+					bSiblings &= Class != nullptr && Class->ParentClass == Master && Master->ChildClasses.Contains(Class) && Class->ChildClasses.IsEmpty();
+					Distinct.Add(Class);
+					Tree += FString::Printf(TEXT("%s%s under %s"), Tree.IsEmpty() ? TEXT("") : TEXT(", "), *GetNameSafe(Class),
+						Class != nullptr ? *GetNameSafe(Class->ParentClass) : TEXT("-"));
+				}
+				bSiblings &= Distinct.Num() == 4;
+				Check(TEXT("AUDIO"), TEXT("voices, music, environment and effects are four classes side by side under the master, none under another"),
+					bSiblings, Tree);
+
+				const UBDSettingsSave* Fresh = GetDefault<UBDSettingsSave>();
+				const bool bDefaults = Fresh->GetVolume(EBDSoundCategory::Voice) == 80 && Fresh->GetVolume(EBDSoundCategory::Music) == 20
+					&& Fresh->GetVolume(EBDSoundCategory::Environment) == 40 && Fresh->GetVolume(EBDSoundCategory::Effects) == 50
+					&& !Fresh->IsMuted(EBDSoundCategory::Voice) && !Fresh->IsMuted(EBDSoundCategory::Music)
+					&& !Fresh->IsMuted(EBDSoundCategory::Environment) && !Fresh->IsMuted(EBDSoundCategory::Effects);
+				// A save of the old two-slider layout comes up at the defaults, its one mute on all four.
+				UBDSettingsSave* Old = NewObject<UBDSettingsSave>();
+				Old->AudioLayout = 0;
+				Old->MusicVolume = 80;
+				Old->EffectsVolume = 80;
+				Old->ResetAudio();
+				const bool bUpgraded = Old->AudioLayout == UBDSettingsSave::CurrentAudioLayout && Old->GetVolume(EBDSoundCategory::Music) == 20
+					&& Old->GetVolume(EBDSoundCategory::Effects) == 50;
+				Old->SetMuted(EBDSoundCategory::Environment, true);
+				Old->SetVolume(EBDSoundCategory::Voice, 65);
+				const bool bOwnFields = Old->IsMuted(EBDSoundCategory::Environment) && !Old->IsMuted(EBDSoundCategory::Effects)
+					&& Old->GetVolume(EBDSoundCategory::Voice) == 65 && Old->GetVolume(EBDSoundCategory::Music) == 20;
+				Check(TEXT("AUDIO"), TEXT("the options start at voices 80, music 20, environment 40, effects 50, and each slider and mute is its own"),
+					bDefaults && bUpgraded && bOwnFields,
+					FString::Printf(TEXT("defaults %d/%d/%d/%d, old save brought up %s, a mute and a slider touch only their own %s"),
+						Fresh->GetVolume(EBDSoundCategory::Voice), Fresh->GetVolume(EBDSoundCategory::Music),
+						Fresh->GetVolume(EBDSoundCategory::Environment), Fresh->GetVolume(EBDSoundCategory::Effects),
+						bUpgraded ? TEXT("yes") : TEXT("no"), bOwnFields ? TEXT("yes") : TEXT("no")));
+
 				const USoundBase* Words = Militant != nullptr ? Militant->SpeechSound.LoadSynchronous() : nullptr;
-				const USoundClass* VoiceClass = Words != nullptr ? Words->GetSoundClass() : nullptr;
+				const USoundClass* WordsClass = Words != nullptr ? Words->GetSoundClass() : nullptr;
 				const USoundMix* Duck = Voice.SpeechDuckMix.LoadSynchronous();
 				const bool bPassive = VoiceClass != nullptr && VoiceClass->PassiveSoundMixModifiers.ContainsByPredicate(
 					[Duck](const FPassiveSoundMixModifier& Modifier) { return Modifier.SoundMix == Duck; });
-				bool bEffectsOnly = Duck != nullptr && Duck->SoundClassEffects.Num() > 0;
+				TSet<const USoundClass*> Ducked;
+				FString Adjusters;
+				bool bClean = Duck != nullptr;
 				for (const FSoundClassAdjuster& Adjuster : Duck != nullptr ? Duck->SoundClassEffects : TArray<FSoundClassAdjuster>())
 				{
-					bEffectsOnly &= Adjuster.SoundClassObject == Effects && !Adjuster.bApplyToChildren && Adjuster.SoundClassObject != Music;
+					Ducked.Add(Adjuster.SoundClassObject);
+					bClean &= !Adjuster.bApplyToChildren && Adjuster.VolumeAdjuster >= 0.3f && Adjuster.VolumeAdjuster <= 0.7f;
+					Adjusters += FString::Printf(TEXT("%s%s to %.2f%s"), Adjusters.IsEmpty() ? TEXT("") : TEXT(", "), *GetNameSafe(Adjuster.SoundClassObject),
+						Adjuster.VolumeAdjuster, Adjuster.bApplyToChildren ? TEXT(" with children") : TEXT(""));
 				}
-				const bool bDucking = VoiceClass != nullptr && VoiceClass != Effects && VoiceClass->ParentClass == Effects && bPassive && bEffectsOnly
-					&& Duck->FadeOutTime > 0.0f;
-				Check(TEXT("FALA"), TEXT("a line with a voice ducks the effects, never the music nor itself, and they come back faded"), bDucking,
-					FString::Printf(TEXT("words in %s (under %s), duck %s: %s, fade %.2f/%.2f s"), *GetNameSafe(VoiceClass),
-						VoiceClass != nullptr ? *GetNameSafe(VoiceClass->ParentClass) : TEXT("-"), *GetNameSafe(Duck),
-						Duck != nullptr && Duck->SoundClassEffects.Num() > 0
-							? *FString::Printf(TEXT("%s to %.2f%s"), *GetNameSafe(Duck->SoundClassEffects[0].SoundClassObject), Duck->SoundClassEffects[0].VolumeAdjuster,
-								Duck->SoundClassEffects[0].bApplyToChildren ? TEXT(" with children") : TEXT(""))
-							: TEXT("no adjuster"),
+				const bool bDucking = WordsClass != nullptr && WordsClass == VoiceClass && bPassive && bClean
+					&& Ducked.Num() == 2 && Ducked.Contains(Effects) && Ducked.Contains(Environment) && Duck->FadeOutTime > 0.0f;
+				Check(TEXT("FALA"), TEXT("a line ducks the effects and the environment, never the music nor itself, and they come back faded"), bDucking,
+					FString::Printf(TEXT("words in %s, duck %s: %s, fade %.2f/%.2f s"), *GetNameSafe(WordsClass), *GetNameSafe(Duck),
+						Adjusters.IsEmpty() ? TEXT("no adjuster") : *Adjusters,
 						Duck != nullptr ? Duck->FadeInTime : 0.0f, Duck != nullptr ? Duck->FadeOutTime : 0.0f));
+
+				// The words reach a normal playing zoom whole: a camera at middle height frames its
+				// subject from some 14000 cm. Far off they still fade, and the calls keep their own curve.
+				const auto SpeechDb = [&Voice](const float Distance)
+				{
+					return Distance <= Voice.SpeechInnerRadius ? 0.0f
+						: FMath::Min(1.0f, (Distance - Voice.SpeechInnerRadius) / FMath::Max(1.0f, Voice.SpeechFalloffDistance)) * Voice.SpeechAttenuationAtMax;
+				};
+				const float AtMiddle = SpeechDb(15000.0f);
+				const float AtOverview = SpeechDb(33000.0f);
+				Check(TEXT("FALA"), TEXT("a line is heard whole at a middle zoom and still fades far off, on a curve wider than the calls'"),
+					AtMiddle >= -6.0f && AtOverview <= -20.0f && Voice.GetSpeechReach() >= 33000.0f && Voice.SpeechInnerRadius > Voice.VoiceInnerRadius,
+					FString::Printf(TEXT("words full to %.0f cm, %.1f dB at 15000, %.1f dB at 33000, reach %.0f; calls full to %.0f"),
+						Voice.SpeechInnerRadius, AtMiddle, AtOverview, Voice.GetSpeechReach(), Voice.VoiceInnerRadius));
 
 				const UBDPalaceData* Palace = LoadObject<UBDPalaceData>(nullptr, TEXT("/Game/BD/Data/DA_PalaceData.DA_PalaceData"));
 				const UBDEnemyData* Candidate = LoadObject<UBDEnemyData>(nullptr, TEXT("/Game/BD/Data/DA_Candidate.DA_Candidate"));
@@ -1842,22 +1903,25 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					FString::Printf(TEXT("%d skin(s) in the pool, 200 draws: %s"), WaveEnemy->GetSkinCount(), *Tally));
 			}
 
-			// Its sound: the words and the call through the effects class, so the options
-			// own them, and a step on its loop wherever a foot lands. Sound itself cannot be
-			// heard in a -nosound run; the wiring can be checked.
+			// Its sound: the words through the voice class, the call, steps and falls through the
+			// effects, so each slider of the options owns its own, and a step on its loop wherever
+			// a foot lands. Sound itself cannot be heard in a -nosound run; the wiring can be checked.
 			if (WaveEnemy->IsVocal() || !WaveEnemy->FootstepSound.IsNull())
 			{
 				const USoundClass* Effects = UBDUISettings::Get().EffectsSoundClass.LoadSynchronous();
+				const USoundClass* VoiceClass = UBDUISettings::Get().VoiceSoundClass.LoadSynchronous();
 				int32 Routed = 0;
 				int32 Sounds = 0;
+				int32 Slot = 0;
+				// The words first: the one slot of the voices.
 				for (const TSoftObjectPtr<USoundBase>& Each : { WaveEnemy->SpeechSound, WaveEnemy->CallSound, WaveEnemy->FootstepSound, WaveEnemy->DeathSound, WaveEnemy->BodyFallSound })
 				{
+					const USoundClass* Wanted = Slot++ == 0 ? VoiceClass : Effects;
 					if (const USoundBase* Sound = Each.LoadSynchronous())
 					{
 						++Sounds;
-						// Under the effects class: itself, or the voice class that hangs from it.
 						const USoundClass* Class = Sound->GetSoundClass();
-						Routed += Class != nullptr && (Class == Effects || Class->ParentClass == Effects) ? 1 : 0;
+						Routed += Class != nullptr && Class == Wanted ? 1 : 0;
 					}
 				}
 				int32 Steps = 0;
@@ -1878,10 +1942,10 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						return Cast<UBDAnimNotify_BodyFall>(Event.Notify) != nullptr;
 					}) ? 1 : 0;
 				}
-				Check(TEXT("SOM"), TEXT("a vocal creep's sounds go through the effects class, its loop steps where the feet land and every fall lands with a thud"),
+				Check(TEXT("SOM"), TEXT("a vocal creep's words go through the voice class and its other sounds through the effects, its loop steps where the feet land and every fall lands with a thud"),
 					Sounds > 0 && Routed == Sounds && (WaveEnemy->FootstepSound.IsNull() || Steps > 0)
 						&& (WaveEnemy->BodyFallSound.IsNull() || FallsLanding == WaveEnemy->DeathAnimations.Num()),
-					FString::Printf(TEXT("%d of %d sounds on %s, %d step notifies on the loop, %d of %d falls land"), Routed, Sounds, *GetNameSafe(Effects), Steps,
+					FString::Printf(TEXT("%d of %d sounds on their class (%s, %s), %d step notifies on the loop, %d of %d falls land"), Routed, Sounds, *GetNameSafe(VoiceClass), *GetNameSafe(Effects), Steps,
 						FallsLanding, WaveEnemy->DeathAnimations.Num()));
 			}
 		}

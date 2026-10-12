@@ -171,20 +171,43 @@ namespace BDUIDebug
 		}
 
 		const UBDSettingsSave& Saved = Settings->Get();
-		UE_LOG(LogBDUI, Log, TEXT("BD.UI.Status: screen %s, options %s, game menu %s | quality %d, %dx%d, window %d, vsync %s | music %d, effects %d, muted %s | language %s."),
+		FString Audio;
+		for (int32 Index = 0; Index < static_cast<int32>(EBDSoundCategory::Count); ++Index)
+		{
+			const EBDSoundCategory Category = static_cast<EBDSoundCategory>(Index);
+			Audio += FString::Printf(TEXT("%s%s %d%s"), Audio.IsEmpty() ? TEXT("") : TEXT(", "),
+				*StaticEnum<EBDSoundCategory>()->GetNameStringByValue(Index).ToLower(), Saved.GetVolume(Category),
+				Saved.IsMuted(Category) ? TEXT(" muted") : TEXT(""));
+		}
+		UE_LOG(LogBDUI, Log, TEXT("BD.UI.Status: screen %s, options %s, game menu %s | quality %d, %dx%d, window %d, vsync %s | %s | language %s."),
 			*StaticEnum<EBDScreen>()->GetNameStringByValue(static_cast<int64>(UI->GetCurrentScreen())),
 			UI->IsOptionsOpen() ? TEXT("open") : TEXT("closed"),
 			UI->IsPauseMenuOpen() ? TEXT("open") : TEXT("closed"),
 			Saved.QualityLevel, Saved.Resolution.X, Saved.Resolution.Y, static_cast<int32>(Saved.WindowMode), Saved.bVSync ? TEXT("on") : TEXT("off"),
-			Saved.MusicVolume, Saved.EffectsVolume, Saved.bMuted ? TEXT("yes") : TEXT("no"),
-			BDLoc::GetCultureCode(Saved.Language));
+			*Audio, BDLoc::GetCultureCode(Saved.Language));
+	}
+
+	/** "voice", "music", "environment" or "effects", any case; false for anything else. */
+	static bool ParseCategory(const FString& Text, EBDSoundCategory& OutCategory)
+	{
+		for (int32 Index = 0; Index < static_cast<int32>(EBDSoundCategory::Count); ++Index)
+		{
+			if (StaticEnum<EBDSoundCategory>()->GetNameStringByValue(Index).Equals(Text, ESearchCase::IgnoreCase))
+			{
+				OutCategory = static_cast<EBDSoundCategory>(Index);
+				return true;
+			}
+		}
+		return false;
 	}
 
 	static void ExecVolume(const TArray<FString>& Args, UWorld* World)
 	{
-		if (Args.Num() != 2)
+		const bool bMute = Args.Num() == 3 && Args[0].Equals(TEXT("mute"), ESearchCase::IgnoreCase);
+		EBDSoundCategory Category = EBDSoundCategory::Voice;
+		if (!(Args.Num() == 2 || bMute) || !ParseCategory(Args[bMute ? 1 : 0], Category))
 		{
-			UE_LOG(LogBDUI, Error, TEXT("Usage: BD.UI.Volume <music|effects|mute> <0..100 | 0|1>"));
+			UE_LOG(LogBDUI, Error, TEXT("Usage: BD.UI.Volume <voice|music|environment|effects> <0..100>, or BD.UI.Volume mute <category> <0|1>"));
 			return;
 		}
 
@@ -194,18 +217,14 @@ namespace BDUIDebug
 			return;
 		}
 
-		const int32 Value = FCString::Atoi(*Args[1]);
-		if (Args[0].Equals(TEXT("music"), ESearchCase::IgnoreCase))
+		const int32 Value = FCString::Atoi(*Args.Last());
+		if (bMute)
 		{
-			Settings->SetMusicVolume(Value);
-		}
-		else if (Args[0].Equals(TEXT("effects"), ESearchCase::IgnoreCase))
-		{
-			Settings->SetEffectsVolume(Value);
+			Settings->SetMuted(Category, Value != 0);
 		}
 		else
 		{
-			Settings->SetMuted(Value != 0);
+			Settings->SetVolume(Category, Value);
 		}
 		ExecStatus(Args, World);
 	}
@@ -278,7 +297,7 @@ namespace BDUIDebug
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdVolume(
 		TEXT("BD.UI.Volume"),
-		TEXT("BD.UI.Volume <music|effects|mute> <value>: sets a volume or the mute, saved like the options panel does."),
+		TEXT("BD.UI.Volume <voice|music|environment|effects> <0..100>, or BD.UI.Volume mute <category> <0|1>: sets a category's volume or mute, saved like the options panel does."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecVolume));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdClean(

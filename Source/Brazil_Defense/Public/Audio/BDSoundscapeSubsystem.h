@@ -52,7 +52,7 @@ struct FBDSoundStrand
  *   it ends, a fade out when the wave is over and a new track when the next one starts.
  *   On the music class, so the options' music slider and the mute own it.
  * - Ambience always: the city and the birds by day, the night insects and the owl by night,
- *   fewer cars; mixed by the day/night cycle and lowered under the music. On the effects class.
+ *   fewer cars; mixed by the day/night cycle and lowered under the music. On the environment class.
  *
  * Keeps playing through a pause: what the player hears does not stop with the board.
  * What goes in the slots is UBDAudioSettings'.

@@ -34,7 +34,7 @@ int32 UBDBuildSoundCueCommandlet::Main(const FString& Params)
 	FString Prefix;
 	if (!FParse::Value(*Params, TEXT("Cue="), CuePath) || !FParse::Value(*Params, TEXT("Folder="), Folder))
 	{
-		UE_LOG(LogBDDebug, Error, TEXT("Usage: -run=BDBuildSoundCue -Cue=/Game/Path/SCue_X -Folder=/Game/Path [-Prefix=Name_] [-Exclude=Text] [-Pitch=0.05] [-Volume=0.0] [-CuePitch=1.0]"));
+		UE_LOG(LogBDDebug, Error, TEXT("Usage: -run=BDBuildSoundCue -Cue=/Game/Path/SCue_X -Folder=/Game/Path [-Prefix=Name_] [-Exclude=Text] [-Pitch=0.05] [-Volume=0.0] [-CuePitch=1.0] [-Class=Voice|Music|Environment|Effects]"));
 		return 1;
 	}
 	FParse::Value(*Params, TEXT("Prefix="), Prefix);
@@ -46,6 +46,8 @@ int32 UBDBuildSoundCueCommandlet::Main(const FString& Params)
 	FParse::Value(*Params, TEXT("Pitch="), PitchSpread);
 	FParse::Value(*Params, TEXT("Volume="), VolumeSpread);
 	FParse::Value(*Params, TEXT("CuePitch="), CuePitch);
+	FString ClassName;
+	FParse::Value(*Params, TEXT("Class="), ClassName);
 	Folder.RemoveFromEnd(TEXT("/"));
 
 	// The cue graph is built through the audio editor; without it the cue has no graph
@@ -141,9 +143,29 @@ int32 UBDBuildSoundCueCommandlet::Main(const FString& Params)
 	Cue->LinkGraphNodesFromSoundNodes();
 
 	Cue->PitchMultiplier = CuePitch;
-	if (USoundClass* Effects = UBDUISettings::Get().EffectsSoundClass.LoadSynchronous())
+	// -Class picks the category; without it a new cue goes to the effects and a rebuilt one
+	// keeps the class it had, so rebuilding a bank of words leaves it on the voices.
+	const UBDUISettings& UI = UBDUISettings::Get();
+	USoundClass* Class = nullptr;
+	if (ClassName.Equals(TEXT("Voice"), ESearchCase::IgnoreCase))
 	{
-		Cue->SoundClassObject = Effects;
+		Class = UI.VoiceSoundClass.LoadSynchronous();
+	}
+	else if (ClassName.Equals(TEXT("Music"), ESearchCase::IgnoreCase))
+	{
+		Class = UI.MusicSoundClass.LoadSynchronous();
+	}
+	else if (ClassName.Equals(TEXT("Environment"), ESearchCase::IgnoreCase))
+	{
+		Class = UI.EnvironmentSoundClass.LoadSynchronous();
+	}
+	else if (ClassName.Equals(TEXT("Effects"), ESearchCase::IgnoreCase) || Cue->SoundClassObject == nullptr)
+	{
+		Class = UI.EffectsSoundClass.LoadSynchronous();
+	}
+	if (Class != nullptr)
+	{
+		Cue->SoundClassObject = Class;
 	}
 	Cue->PostEditChange();
 	Cue->MarkPackageDirty();

@@ -277,15 +277,26 @@ public:
 	float CandidateNoticeSeconds = 4.0f;
 
 	//~ Audio -----------------------------------------------------------------
-	// The option sliders drive these through a sound mix override, so any sound put on
-	// one of the classes follows the sliders from day one.
+	// Four classes side by side under the master, each with its own slider and mute in the
+	// options, driven through a sound mix override: any sound put on one of them follows
+	// its slider from day one. None hangs under another (BDSetupSoundClasses lays them out),
+	// so a slider moves its class and nothing else.
 
 	UPROPERTY(config, EditAnywhere, Category = "Audio", meta = (AllowedClasses = "/Script/Engine.SoundClass"))
 	TSoftObjectPtr<USoundClass> MasterSoundClass;
 
+	/** Every line said: the militants, the player's people, the ministers. */
+	UPROPERTY(config, EditAnywhere, Category = "Audio", meta = (AllowedClasses = "/Script/Engine.SoundClass"))
+	TSoftObjectPtr<USoundClass> VoiceSoundClass;
+
 	UPROPERTY(config, EditAnywhere, Category = "Audio", meta = (AllowedClasses = "/Script/Engine.SoundClass"))
 	TSoftObjectPtr<USoundClass> MusicSoundClass;
 
+	/** The ambience: the city, the birds, the night. */
+	UPROPERTY(config, EditAnywhere, Category = "Audio", meta = (AllowedClasses = "/Script/Engine.SoundClass"))
+	TSoftObjectPtr<USoundClass> EnvironmentSoundClass;
+
+	/** Shots, hooves, brays, hits, the urn, the buses, the falls. */
 	UPROPERTY(config, EditAnywhere, Category = "Audio", meta = (AllowedClasses = "/Script/Engine.SoundClass"))
 	TSoftObjectPtr<USoundClass> EffectsSoundClass;
 

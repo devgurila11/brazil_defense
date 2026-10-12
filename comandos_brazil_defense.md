@@ -285,16 +285,22 @@ própria chave. Idioma troca em runtime e todo texto refaz na hora.
 Opções (gráficos / áudio / idioma) persistem em `Saved/SaveGames/
 BDSettings.sav`, aplicadas e salvas a cada mudança. Resolução e modo
 de janela não são aplicados dentro do editor (só em janela própria).
-Os sliders de volume passam por `SMix_Settings` sobre `SC_Master` /
-`SC_Music` / `SC_Effects` (`Content/BD/Audio`) — ainda não há som no
-projeto; qualquer som posto nessas classes já obedece.
+Áudio em 4 categorias, cada uma com slider e mudo próprios: Vozes
+(`SC_Voice`), Música (`SC_Music`), Ambiente (`SC_Environment`) e Efeitos
+(`SC_Effects`), irmãs sob `SC_Master` (`Content/BD/Audio`), via
+`SMix_Settings`. Padrão 80/20/40/50. Enquanto toca qualquer fala, o
+`SMix_Speech_Duck` (passivo em `SC_Voice`) baixa Efeitos e Ambiente para
+0,5 (Project Settings > Creep Sound > Ducking); a música não se mexe.
+A hierarquia e o mix são montados por
+`-run=BDSetupSoundClasses [-DryRun]`, que também lista a classe de cada som.
 
 ```
 BD.UI.Status
 BD.UI.Language <en|pt>
 BD.UI.Options
 BD.UI.Pause
-BD.UI.Volume <music|effects|mute> <valor>
+BD.UI.Volume <voice|music|environment|effects> <0..100>
+BD.UI.Volume mute <categoria> <0|1>
 BD.UI.Play
 BD.UI.Menu
 ```

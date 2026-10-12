@@ -153,7 +153,7 @@ void UBDSoundscapeSubsystem::Tick(const float DeltaTime)
 	const UBDAudioSettings& Settings = UBDAudioSettings::Get();
 	const UBDUISettings& UI = UBDUISettings::Get();
 	USoundClass* MusicClass = UI.MusicSoundClass.LoadSynchronous();
-	USoundClass* EffectsClass = UI.EffectsSoundClass.LoadSynchronous();
+	USoundClass* EnvironmentClass = UI.EnvironmentSoundClass.LoadSynchronous();
 
 	const bool bMusic = WantsMusic() && Settings.BattleMusic.Num() > 0;
 	StepStrand(Music, Settings.BattleMusic, bMusic, Settings.MusicVolume, Settings.MusicCrossfade,
@@ -167,11 +167,11 @@ void UBDSoundscapeSubsystem::Tick(const float DeltaTime)
 	const float BirdsGain = Settings.BirdsVolume * (1.0f - NightAmount) * Duck;
 	const float NightGain = Settings.NightVolume * NightAmount * Duck;
 	StepStrand(City, Settings.AmbienceCityDay, CityGain > SilentGain, CityGain, Settings.AmbienceCrossfade,
-		AmbienceFade, AmbienceFade, EffectsClass, Seconds, TEXT("City"));
+		AmbienceFade, AmbienceFade, EnvironmentClass, Seconds, TEXT("City"));
 	StepStrand(Birds, Settings.AmbienceBirdsDay, BirdsGain > SilentGain, BirdsGain, Settings.AmbienceCrossfade,
-		AmbienceFade, AmbienceFade, EffectsClass, Seconds, TEXT("Birds"));
+		AmbienceFade, AmbienceFade, EnvironmentClass, Seconds, TEXT("Birds"));
 	StepStrand(Night, Settings.AmbienceNight, NightGain > SilentGain, NightGain, Settings.AmbienceCrossfade,
-		AmbienceFade, AmbienceFade, EffectsClass, Seconds, TEXT("Night"));
+		AmbienceFade, AmbienceFade, EnvironmentClass, Seconds, TEXT("Night"));
 
 	ReportTimer -= Seconds;
 	if (ReportTimer <= 0.0f)

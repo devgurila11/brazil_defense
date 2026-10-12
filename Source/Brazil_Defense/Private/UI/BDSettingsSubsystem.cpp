@@ -14,11 +14,106 @@
 
 const TCHAR* UBDSettingsSave::SlotName = TEXT("BDSettings");
 
+int32 UBDSettingsSave::GetVolume(const EBDSoundCategory Category) const
+{
+	switch (Category)
+	{
+	case EBDSoundCategory::Voice:
+		return VoiceVolume;
+	case EBDSoundCategory::Music:
+		return MusicVolume;
+	case EBDSoundCategory::Environment:
+		return EnvironmentVolume;
+	default:
+		return EffectsVolume;
+	}
+}
+
+bool UBDSettingsSave::IsMuted(const EBDSoundCategory Category) const
+{
+	switch (Category)
+	{
+	case EBDSoundCategory::Voice:
+		return bVoiceMuted;
+	case EBDSoundCategory::Music:
+		return bMusicMuted;
+	case EBDSoundCategory::Environment:
+		return bEnvironmentMuted;
+	default:
+		return bEffectsMuted;
+	}
+}
+
+void UBDSettingsSave::SetVolume(const EBDSoundCategory Category, const int32 Volume)
+{
+	switch (Category)
+	{
+	case EBDSoundCategory::Voice:
+		VoiceVolume = Volume;
+		break;
+	case EBDSoundCategory::Music:
+		MusicVolume = Volume;
+		break;
+	case EBDSoundCategory::Environment:
+		EnvironmentVolume = Volume;
+		break;
+	default:
+		EffectsVolume = Volume;
+		break;
+	}
+}
+
+void UBDSettingsSave::SetMuted(const EBDSoundCategory Category, const bool bMute)
+{
+	switch (Category)
+	{
+	case EBDSoundCategory::Voice:
+		bVoiceMuted = bMute;
+		break;
+	case EBDSoundCategory::Music:
+		bMusicMuted = bMute;
+		break;
+	case EBDSoundCategory::Environment:
+		bEnvironmentMuted = bMute;
+		break;
+	default:
+		bEffectsMuted = bMute;
+		break;
+	}
+}
+
+void UBDSettingsSave::ResetAudio()
+{
+	const UBDSettingsSave* Defaults = GetDefault<UBDSettingsSave>();
+	for (int32 Index = 0; Index < static_cast<int32>(EBDSoundCategory::Count); ++Index)
+	{
+		const EBDSoundCategory Category = static_cast<EBDSoundCategory>(Index);
+		SetVolume(Category, Defaults->GetVolume(Category));
+		SetMuted(Category, Defaults->IsMuted(Category));
+	}
+	bMuted = false;
+	AudioLayout = CurrentAudioLayout;
+}
+
 namespace BDSettingsPrivate
 {
 	static constexpr int32 LowestQuality = 0;
 	static constexpr int32 HighestQuality = 3;
 	static constexpr int32 VolumeMax = 100;
+
+	/** "voices 80, music 20 (muted), ...", for the log. */
+	static FString DescribeAudio(const UBDSettingsSave& Saved)
+	{
+		FString Text;
+		for (int32 Index = 0; Index < static_cast<int32>(EBDSoundCategory::Count); ++Index)
+		{
+			const EBDSoundCategory Category = static_cast<EBDSoundCategory>(Index);
+			Text += FString::Printf(TEXT("%s%s %d%s"), Text.IsEmpty() ? TEXT("") : TEXT(", "),
+				*StaticEnum<EBDSoundCategory>()->GetNameStringByValue(Index).ToLower(),
+				Saved.GetVolume(Category), Saved.IsMuted(Category) ? TEXT(" (muted)") : TEXT(""));
+		}
+		return Text;
+	}
 
 	static EWindowMode::Type ToEngineWindowMode(const EBDWindowMode Mode)
 	{
@@ -65,11 +160,11 @@ void UBDSettingsSubsystem::Load()
 
 	if (Settings != nullptr)
 	{
-		UE_LOG(LogBDUI, Log, TEXT("Settings loaded: quality %d, %dx%d %s, vsync %s, music %d, effects %d, muted %s, language %s."),
+		UpgradeAudioLayout();
+		UE_LOG(LogBDUI, Log, TEXT("Settings loaded: quality %d, %dx%d %s, vsync %s, %s, language %s."),
 			Settings->QualityLevel, Settings->Resolution.X, Settings->Resolution.Y,
 			*StaticEnum<EBDWindowMode>()->GetNameStringByValue(static_cast<int64>(Settings->WindowMode)),
-			Settings->bVSync ? TEXT("on") : TEXT("off"), Settings->MusicVolume, Settings->EffectsVolume,
-			Settings->bMuted ? TEXT("yes") : TEXT("no"),
+			Settings->bVSync ? TEXT("on") : TEXT("off"), *BDSettingsPrivate::DescribeAudio(*Settings),
 			*StaticEnum<EBDLanguage>()->GetNameStringByValue(static_cast<int64>(Settings->Language)));
 		return;
 	}
@@ -77,8 +172,30 @@ void UBDSettingsSubsystem::Load()
 	// First run, or a save that no longer reads: the defaults of the class, written out
 	// so the next run finds them.
 	Settings = Cast<UBDSettingsSave>(UGameplayStatics::CreateSaveGameObject(UBDSettingsSave::StaticClass()));
+	Settings->AudioLayout = UBDSettingsSave::CurrentAudioLayout;
 	Save();
 	UE_LOG(LogBDUI, Log, TEXT("No settings save: defaults written to slot %s."), UBDSettingsSave::SlotName);
+}
+
+void UBDSettingsSubsystem::UpgradeAudioLayout()
+{
+	if (Settings == nullptr || Settings->AudioLayout >= UBDSettingsSave::CurrentAudioLayout)
+	{
+		return;
+	}
+
+	// The old effects slider held the words and the ambience too: no number of it means
+	// what one of the four sliders means now, so they start from the defaults. A save that
+	// was muted stays silent, on all four.
+	const bool bWasMuted = Settings->bMuted;
+	Settings->ResetAudio();
+	for (int32 Index = 0; Index < static_cast<int32>(EBDSoundCategory::Count); ++Index)
+	{
+		Settings->SetMuted(static_cast<EBDSoundCategory>(Index), bWasMuted);
+	}
+	Save();
+	UE_LOG(LogBDUI, Log, TEXT("Settings: the two-slider audio of the save became the four categories at their defaults%s."),
+		bWasMuted ? TEXT(", all muted as the save was") : TEXT(""));
 }
 
 void UBDSettingsSubsystem::Save()
@@ -233,81 +350,67 @@ void UBDSettingsSubsystem::ApplyAudio(UWorld* World)
 
 	const UBDUISettings& UISettings = UBDUISettings::Get();
 	USoundMix* Mix = UISettings.SettingsSoundMix.LoadSynchronous();
-	USoundClass* Master = UISettings.MasterSoundClass.LoadSynchronous();
-	USoundClass* Music = UISettings.MusicSoundClass.LoadSynchronous();
-	USoundClass* Effects = UISettings.EffectsSoundClass.LoadSynchronous();
-
 	if (Mix == nullptr)
 	{
 		UE_LOG(LogBDUI, Warning, TEXT("No settings sound mix configured (Project Settings > Brazil Defense - Interface): volumes are saved but drive nothing."));
 		return;
 	}
 
+	// The class of each category, in the order of EBDSoundCategory.
+	USoundClass* const Classes[] = {
+		UISettings.VoiceSoundClass.LoadSynchronous(), UISettings.MusicSoundClass.LoadSynchronous(),
+		UISettings.EnvironmentSoundClass.LoadSynchronous(), UISettings.EffectsSoundClass.LoadSynchronous() };
+	static_assert(UE_ARRAY_COUNT(Classes) == static_cast<int32>(EBDSoundCategory::Count), "one class per sound category");
+
 	// Kept alive past every map load: see HeldClasses.
 	HeldMix = Mix;
-	for (USoundClass* Class : { Master, Music, Effects })
+	if (USoundClass* Master = UISettings.MasterSoundClass.LoadSynchronous())
 	{
-		if (Class != nullptr)
-		{
-			HeldClasses.AddUnique(Class);
-		}
+		HeldClasses.AddUnique(Master);
 	}
 
-	// Mute is the master class at zero; the two sliders keep their values underneath it,
-	// so unmuting brings back exactly what was set.
-	const float MasterVolume = Settings->bMuted ? 0.0f : 1.0f;
-	const float MusicVolume = static_cast<float>(FMath::Clamp(Settings->MusicVolume, 0, BDSettingsPrivate::VolumeMax)) / BDSettingsPrivate::VolumeMax;
-	const float EffectsVolume = static_cast<float>(FMath::Clamp(Settings->EffectsVolume, 0, BDSettingsPrivate::VolumeMax)) / BDSettingsPrivate::VolumeMax;
-
-	const auto Override = [World, Mix](USoundClass* Class, const float Volume)
+	// A mute is its class at zero; the slider keeps its value underneath, so unmuting brings
+	// back exactly what was set. The four are siblings, so none carries another along.
+	for (int32 Index = 0; Index < static_cast<int32>(EBDSoundCategory::Count); ++Index)
 	{
-		if (Class != nullptr)
+		USoundClass* Class = Classes[Index];
+		if (Class == nullptr)
 		{
-			UGameplayStatics::SetSoundMixClassOverride(World, Mix, Class, Volume, /*Pitch*/ 1.0f, /*FadeIn*/ 0.0f, /*bApplyToChildren*/ true);
+			UE_LOG(LogBDUI, Warning, TEXT("No sound class for %s (Project Settings > Brazil Defense - Interface): its slider drives nothing."),
+				*StaticEnum<EBDSoundCategory>()->GetNameStringByValue(Index));
+			continue;
 		}
-	};
-
-	Override(Master, MasterVolume);
-	Override(Music, MusicVolume);
-	Override(Effects, EffectsVolume);
+		HeldClasses.AddUnique(Class);
+		const EBDSoundCategory Category = static_cast<EBDSoundCategory>(Index);
+		const float Volume = Settings->IsMuted(Category) ? 0.0f
+			: static_cast<float>(FMath::Clamp(Settings->GetVolume(Category), 0, BDSettingsPrivate::VolumeMax)) / BDSettingsPrivate::VolumeMax;
+		UGameplayStatics::SetSoundMixClassOverride(World, Mix, Class, Volume, /*Pitch*/ 1.0f, /*FadeIn*/ 0.0f, /*bApplyToChildren*/ false);
+	}
 	UGameplayStatics::PushSoundMixModifier(World, Mix);
 
-	UE_LOG(LogBDUI, Verbose, TEXT("Audio applied on %s: master %.2f, music %.2f, effects %.2f."),
-		*World->GetName(), MasterVolume, MusicVolume, EffectsVolume);
+	UE_LOG(LogBDUI, Verbose, TEXT("Audio applied on %s: %s."), *World->GetName(), *BDSettingsPrivate::DescribeAudio(*Settings));
 }
 
-void UBDSettingsSubsystem::SetMusicVolume(const int32 Volume)
+void UBDSettingsSubsystem::SetVolume(const EBDSoundCategory Category, const int32 Volume)
 {
 	if (Settings == nullptr)
 	{
 		return;
 	}
 
-	Settings->MusicVolume = FMath::Clamp(Volume, 0, BDSettingsPrivate::VolumeMax);
+	Settings->SetVolume(Category, FMath::Clamp(Volume, 0, BDSettingsPrivate::VolumeMax));
 	ApplyAudio(GetGameInstance() != nullptr ? GetGameInstance()->GetWorld() : nullptr);
 	Save();
 }
 
-void UBDSettingsSubsystem::SetEffectsVolume(const int32 Volume)
+void UBDSettingsSubsystem::SetMuted(const EBDSoundCategory Category, const bool bMuted)
 {
 	if (Settings == nullptr)
 	{
 		return;
 	}
 
-	Settings->EffectsVolume = FMath::Clamp(Volume, 0, BDSettingsPrivate::VolumeMax);
-	ApplyAudio(GetGameInstance() != nullptr ? GetGameInstance()->GetWorld() : nullptr);
-	Save();
-}
-
-void UBDSettingsSubsystem::SetMuted(const bool bMuted)
-{
-	if (Settings == nullptr)
-	{
-		return;
-	}
-
-	Settings->bMuted = bMuted;
+	Settings->SetMuted(Category, bMuted);
 	ApplyAudio(GetGameInstance() != nullptr ? GetGameInstance()->GetWorld() : nullptr);
 	Save();
 }

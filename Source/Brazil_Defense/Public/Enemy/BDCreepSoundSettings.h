@@ -112,6 +112,30 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
 	float SpeechStereoSpread = 2000.0f;
 
+	/**
+	 * The words carry further than the calls: the listener is the camera, high over the
+	 * board, and a line is the charm of the game, so it is heard whole at a normal playing
+	 * zoom, not only with the camera on top of the speaker. Full volume up to this far from
+	 * the camera; a camera at middle height (some 9000 cm up, looking down at 40 degrees)
+	 * sits about 14000 from what it frames.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "cm"))
+	float SpeechInnerRadius = 12000.0f;
+
+	/**
+	 * Past the inner radius a line fades over this distance, down to SpeechAttenuationAtMax,
+	 * and beyond it is not said at all. Inner plus falloff is the reach: 34000 keeps a faint
+	 * line at the overview, which frames the board from some 33000.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "100.0", UIMin = "100.0", ForceUnits = "cm"))
+	float SpeechFalloffDistance = 22000.0f;
+
+	/** The fade is even in decibels: -32 over 22000 is about 1.5 dB less every 1000 cm. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech", meta = (ClampMin = "-90.0", ClampMax = "0.0", UIMin = "-90.0", UIMax = "0.0"))
+	float SpeechAttenuationAtMax = -32.0f;
+
+	float GetSpeechReach() const { return SpeechInnerRadius + SpeechFalloffDistance; }
+
 	//~ Celebration ------------------------------------------------------------
 	// The player's people say a line of their own, now and then, when one of them downs a
 	// creep: each from his own bank (the celebration sound on his data), never another's.
@@ -136,17 +160,22 @@ public:
 
 	//~ Ducking ----------------------------------------------------------------
 	// While any line with a voice sounds (the voice class, SC_Voice), the effects - shots,
-	// brays, hooves, hits, the ambience - step back so the words come through. The music
-	// does not move. The voice class pushes the duck mix by itself (a passive mix); these
-	// are its numbers, written on it when a world starts.
+	// brays, hooves, hits - and the environment - the city, the birds, the night - step back
+	// so the words come through over everything. The music does not move, nor do the words.
+	// The voice class pushes the duck mix by itself (a passive mix), for as long as any line
+	// sounds; these are its numbers, written on it when a world starts.
 
-	/** The duck mix the voice class pushes; its first adjuster is the effects class. */
+	/** The duck mix the voice class pushes: one adjuster for the effects class, one for the environment. */
 	UPROPERTY(config, EditAnywhere, Category = "Ducking", meta = (AllowedClasses = "/Script/Engine.SoundMix"))
 	TSoftObjectPtr<USoundMix> SpeechDuckMix;
 
 	/** Effects volume while a line sounds. */
 	UPROPERTY(config, EditAnywhere, Category = "Ducking", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
-	float DuckEffectsVolume = 0.55f;
+	float DuckEffectsVolume = 0.5f;
+
+	/** Environment volume while a line sounds. */
+	UPROPERTY(config, EditAnywhere, Category = "Ducking", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float DuckEnvironmentVolume = 0.5f;
 
 	/** Seconds the effects take to step back, and to come back once the last line ends. */
 	UPROPERTY(config, EditAnywhere, Category = "Ducking", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))

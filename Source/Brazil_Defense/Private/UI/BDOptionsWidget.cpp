@@ -33,6 +33,12 @@ namespace BDOptionsPrivate
 	static constexpr float RowGap = 6.0f;
 	static constexpr float SectionGap = 24.0f;
 	static constexpr int32 VolumeMax = 100;
+	static constexpr float ValueWidth = 44.0f;
+
+	/** The name of each sound category's row, in the order of EBDSoundCategory. */
+	static const TCHAR* const VolumeKeys[] = {
+		TEXT("Options.VoiceVolume"), TEXT("Options.MusicVolume"), TEXT("Options.EnvironmentVolume"), TEXT("Options.EffectsVolume") };
+	static_assert(UE_ARRAY_COUNT(VolumeKeys) == static_cast<int32>(EBDSoundCategory::Count), "one row name per sound category");
 
 	/** Quality entries as the list shows them: index 0 is Auto, then Low..Epic = levels 0..3. */
 	static const TCHAR* const QualityKeys[] = {
@@ -109,34 +115,49 @@ void UBDOptionsWidget::BuildTree()
 	//~ Audio
 	AddSection(Column, AudioHeading);
 
-	const auto MakeVolumeRow = [this, Column](TObjectPtr<UTextBlock>& Label, TObjectPtr<USlider>& Slider, TObjectPtr<UTextBlock>& Value)
+	// A row per category: the slider, its number, and the mute with its word at the end.
+	const int32 Categories = static_cast<int32>(EBDSoundCategory::Count);
+	VolumeLabels.SetNum(Categories);
+	VolumeSliders.SetNum(Categories);
+	VolumeValues.SetNum(Categories);
+	MuteBoxes.SetNum(Categories);
+	MuteLabels.SetNum(Categories);
+	for (int32 Index = 0; Index < Categories; ++Index)
 	{
 		UHorizontalBox* Row = MakeRow();
-		Slider = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass());
+		USlider* Slider = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass());
 		Slider->SetMinValue(0.0f);
 		Slider->SetMaxValue(static_cast<float>(VolumeMax));
 		Slider->SetStepSize(1.0f);
+		Slider->OnValueChanged.AddDynamic(this, &UBDOptionsWidget::HandleVolumeChanged);
 		UHorizontalBoxSlot* SliderSlot = Row->AddChildToHorizontalBox(Slider);
 		SliderSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 		SliderSlot->SetVerticalAlignment(VAlign_Center);
+		VolumeSliders[Index] = Slider;
 
-		Value = MakeText(RowFontSize, ColorMuted);
-		UHorizontalBoxSlot* ValueSlot = Row->AddChildToHorizontalBox(Value);
+		// Wide enough for "100", so the slider does not shift as the number grows.
+		USizeBox* ValueBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+		ValueBox->SetWidthOverride(ValueWidth);
+		VolumeValues[Index] = MakeText(RowFontSize, ColorMuted);
+		ValueBox->AddChild(VolumeValues[Index]);
+		UHorizontalBoxSlot* ValueSlot = Row->AddChildToHorizontalBox(ValueBox);
 		ValueSlot->SetPadding(FMargin(12.0f, 0.0f, 0.0f, 0.0f));
 		ValueSlot->SetVerticalAlignment(VAlign_Center);
 
-		AddRow(Column, Label, Row);
-	};
+		UCheckBox* Mute = WidgetTree->ConstructWidget<UCheckBox>(UCheckBox::StaticClass());
+		Mute->OnCheckStateChanged.AddDynamic(this, &UBDOptionsWidget::HandleMuteChanged);
+		UHorizontalBoxSlot* MuteSlot = Row->AddChildToHorizontalBox(Mute);
+		MuteSlot->SetPadding(FMargin(8.0f, 0.0f, 0.0f, 0.0f));
+		MuteSlot->SetVerticalAlignment(VAlign_Center);
+		MuteBoxes[Index] = Mute;
 
-	MakeVolumeRow(MusicLabel, MusicSlider, MusicValue);
-	MusicSlider->OnValueChanged.AddDynamic(this, &UBDOptionsWidget::HandleMusicChanged);
+		MuteLabels[Index] = MakeText(RowFontSize, ColorMuted);
+		UHorizontalBoxSlot* MuteLabelSlot = Row->AddChildToHorizontalBox(MuteLabels[Index]);
+		MuteLabelSlot->SetPadding(FMargin(6.0f, 0.0f, 0.0f, 0.0f));
+		MuteLabelSlot->SetVerticalAlignment(VAlign_Center);
 
-	MakeVolumeRow(EffectsLabel, EffectsSlider, EffectsValue);
-	EffectsSlider->OnValueChanged.AddDynamic(this, &UBDOptionsWidget::HandleEffectsChanged);
-
-	MutedBox = WidgetTree->ConstructWidget<UCheckBox>(UCheckBox::StaticClass());
-	MutedBox->OnCheckStateChanged.AddDynamic(this, &UBDOptionsWidget::HandleMutedChanged);
-	AddRow(Column, MutedLabel, MutedBox);
+		AddRow(Column, VolumeLabels[Index], Row);
+	}
 
 	//~ Controls
 	AddSection(Column, ControlsHeading);
@@ -209,9 +230,11 @@ void UBDOptionsWidget::RefreshTexts()
 	ResolutionLabel->SetText(Loc(TEXT("Options.Resolution")));
 	WindowModeLabel->SetText(Loc(TEXT("Options.WindowMode")));
 	VSyncLabel->SetText(Loc(TEXT("Options.VSync")));
-	MusicLabel->SetText(Loc(TEXT("Options.MusicVolume")));
-	EffectsLabel->SetText(Loc(TEXT("Options.EffectsVolume")));
-	MutedLabel->SetText(Loc(TEXT("Options.Muted")));
+	for (int32 Index = 0; Index < VolumeLabels.Num(); ++Index)
+	{
+		VolumeLabels[Index]->SetText(Loc(VolumeKeys[Index]));
+		MuteLabels[Index]->SetText(Loc(TEXT("Options.Muted")));
+	}
 	ControlsHeading->SetText(Loc(TEXT("Options.Controls")));
 	InvertSidewaysLabel->SetText(Loc(TEXT("Options.InvertSideways")));
 	LanguageLabel->SetText(Loc(TEXT("Options.LanguageSelect")));
@@ -280,11 +303,13 @@ void UBDOptionsWidget::SyncFromSettings()
 	WindowModeList->SetSelectedIndex(FMath::Clamp(static_cast<int32>(Saved.WindowMode), 0, static_cast<int32>(EBDWindowMode::Count) - 1));
 	VSyncBox->SetIsChecked(Saved.bVSync);
 
-	MusicSlider->SetValue(static_cast<float>(Saved.MusicVolume));
-	MusicValue->SetText(FText::AsNumber(Saved.MusicVolume));
-	EffectsSlider->SetValue(static_cast<float>(Saved.EffectsVolume));
-	EffectsValue->SetText(FText::AsNumber(Saved.EffectsVolume));
-	MutedBox->SetIsChecked(Saved.bMuted);
+	for (int32 Index = 0; Index < VolumeSliders.Num(); ++Index)
+	{
+		const EBDSoundCategory Category = static_cast<EBDSoundCategory>(Index);
+		VolumeSliders[Index]->SetValue(static_cast<float>(Saved.GetVolume(Category)));
+		VolumeValues[Index]->SetText(FText::AsNumber(Saved.GetVolume(Category)));
+		MuteBoxes[Index]->SetIsChecked(Saved.IsMuted(Category));
+	}
 	InvertSidewaysBox->SetIsChecked(Saved.bInvertCameraSideways);
 
 	LanguageList->SetSelectedIndex(FMath::Clamp(static_cast<int32>(Saved.Language), 0, static_cast<int32>(EBDLanguage::Count) - 1));
@@ -348,46 +373,39 @@ void UBDOptionsWidget::HandleVSyncChanged(const bool bChecked)
 	}
 }
 
-void UBDOptionsWidget::HandleMusicChanged(const float Value)
+void UBDOptionsWidget::HandleVolumeChanged(float /*Value*/)
 {
-	const int32 Volume = FMath::RoundToInt(Value);
-	MusicValue->SetText(FText::AsNumber(Volume));
-	if (bSyncing)
+	// The event does not say which slider moved: every number follows its slider, and the
+	// one that differs from the save is written.
+	UBDSettingsSubsystem* Subsystem = GetSettings();
+	for (int32 Index = 0; Index < VolumeSliders.Num(); ++Index)
 	{
-		return;
-	}
-
-	if (UBDSettingsSubsystem* Subsystem = GetSettings())
-	{
-		Subsystem->SetMusicVolume(Volume);
+		const int32 Volume = FMath::RoundToInt(VolumeSliders[Index]->GetValue());
+		VolumeValues[Index]->SetText(FText::AsNumber(Volume));
+		const EBDSoundCategory Category = static_cast<EBDSoundCategory>(Index);
+		if (!bSyncing && Subsystem != nullptr && Subsystem->Get().GetVolume(Category) != Volume)
+		{
+			Subsystem->SetVolume(Category, Volume);
+		}
 	}
 }
 
-void UBDOptionsWidget::HandleEffectsChanged(const float Value)
+void UBDOptionsWidget::HandleMuteChanged(bool /*bChecked*/)
 {
-	const int32 Volume = FMath::RoundToInt(Value);
-	EffectsValue->SetText(FText::AsNumber(Volume));
-	if (bSyncing)
+	UBDSettingsSubsystem* Subsystem = GetSettings();
+	if (bSyncing || Subsystem == nullptr)
 	{
 		return;
 	}
 
-	if (UBDSettingsSubsystem* Subsystem = GetSettings())
+	for (int32 Index = 0; Index < MuteBoxes.Num(); ++Index)
 	{
-		Subsystem->SetEffectsVolume(Volume);
-	}
-}
-
-void UBDOptionsWidget::HandleMutedChanged(const bool bChecked)
-{
-	if (bSyncing)
-	{
-		return;
-	}
-
-	if (UBDSettingsSubsystem* Subsystem = GetSettings())
-	{
-		Subsystem->SetMuted(bChecked);
+		const EBDSoundCategory Category = static_cast<EBDSoundCategory>(Index);
+		const bool bMute = MuteBoxes[Index]->IsChecked();
+		if (Subsystem->Get().IsMuted(Category) != bMute)
+		{
+			Subsystem->SetMuted(Category, bMute);
+		}
 	}
 }
 

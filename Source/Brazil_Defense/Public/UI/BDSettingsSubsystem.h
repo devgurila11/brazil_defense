@@ -14,8 +14,8 @@ class USoundMix;
 /**
  * The one owner of UBDSettingsSave. Loads it when the game instance starts, before any
  * screen is up, and applies it: scalability, window and resolution through the engine's
- * game user settings, volumes through a sound mix override on the classes named in
- * UBDUISettings, language through BDLoc. The options panel writes through the setters
+ * game user settings, the four volumes and mutes through a sound mix override on the
+ * classes named in UBDUISettings, language through BDLoc. The options panel writes through the setters
  * here, each of which applies and saves on the spot, so there is no Apply button and
  * nothing to lose by closing the game.
  *
@@ -48,13 +48,11 @@ public:
 
 	//~ Audio -----------------------------------------------------------------
 
-	/** 0..100. */
-	void SetMusicVolume(int32 Volume);
+	/** 0..100, for one category: its class alone moves. */
+	void SetVolume(EBDSoundCategory Category, int32 Volume);
 
-	/** 0..100. */
-	void SetEffectsVolume(int32 Volume);
-
-	void SetMuted(bool bMuted);
+	/** Silences one category; its slider keeps its value underneath. */
+	void SetMuted(EBDSoundCategory Category, bool bMuted);
 
 	//~ Controls -----------------------------------------------------------------
 
@@ -72,6 +70,9 @@ public:
 
 private:
 	void Load();
+
+	/** A save of the two-slider panel takes the four categories' defaults, its one mute on all four. */
+	void UpgradeAudioLayout();
 	void ApplyGraphics();
 	void ApplyAudio(UWorld* World);
 	void ApplyLanguage();

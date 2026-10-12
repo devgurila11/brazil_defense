@@ -263,6 +263,40 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-12 (áudio em 4 categorias, ducking do ambiente, falas que chegam longe)** (desde 3c57cb0):
+  - Briefing 10:00. **Quatro classes irmãs** sob `SC_Master`: `SC_Voice` (todas as
+    falas), `SC_Music`, `SC_Environment` (nova: cidade, pássaros, noite) e `SC_Effects`
+    (tiro, casco, zurro, grito, urna, ônibus, tombo). `SC_Voice` deixou de ser filha de
+    `SC_Effects`. Montado pelo commandlet novo `-run=BDSetupSoundClasses [-DryRun]`
+    (idempotente; lista a classe de cada som). As 12 waves `AMB_*` passaram para
+    `SC_Environment`, e a ambiência toca com o override dessa classe.
+  - **Menu Options** — 4 linhas (Vozes, Música, Ambiente, Efeitos), cada uma com
+    slider, número e mudo próprio; o mudo geral saiu. Override de cada classe no
+    `SMix_Settings` sem passar para as filhas; mudo = a classe em 0, o slider guarda o
+    valor. `BD.UI.Volume <voice|music|environment|effects> <n>` e
+    `BD.UI.Volume mute <categoria> <0|1>`.
+  - **Padrões** — Vozes 80, Música 20, Ambiente 40, Efeitos 50. **Decisão minha:** o save
+    do layout antigo (dois sliders; o de efeitos incluía falas e ambiente) é trazido uma
+    vez para os quatro padrões (`AudioLayout` 0 → 1); se estava mudo, os quatro ficam
+    mudos. O save daqui já foi migrado (80/20/40/50). Dali em diante a escolha do
+    jogador é respeitada.
+  - **Ducking** — `SMix_Speech_Duck` (passivo em `SC_Voice`) agora tem dois ajustes:
+    `SC_Effects` 0,5 e `SC_Environment` 0,5, sem filhas; música e vozes não abaixam; fade
+    0,4 s. `DuckEffectsVolume` e `DuckEnvironmentVolume` em Project Settings › Creep
+    Sound › Ducking. Medido com som real: 15,4 s abaixado em 15,4 s de fala. O
+    abaixamento do ambiente sob a música (`AmbienceUnderMusic`) continua igual.
+  - **Atenuação das falas** — curva própria (`SpeechInnerRadius` 12000, `SpeechFalloffDistance`
+    22000, `SpeechAttenuationAtMax` -32 dB), antes a mesma dos zurros (5000 / 27000 /
+    -48). A queda é linear em dB: a 15000 cm (câmera em zoom médio) a fala perde 4,4 dB
+    (antes 17,8); na visão geral (~33000) perde 30,5 dB. Alcance das falas 34000 (antes
+    32000). Zurros, passos, mortes e tombos não mudaram.
+  - `BDBuildSoundCue` ganhou `-Class=Voice|Music|Environment|Effects`; sem ele um cue
+    refeito mantém a classe que tinha (antes voltava para efeitos).
+  - Regressão: checks novos AUDIO (quatro irmãs; padrões e migração), FALA (ducking dos
+    dois; curva das falas); SOM agora exige fala em `SC_Voice` e o resto em `SC_Effects`.
+    92/92, os dois alvos compilados. **Falta ver/ouvir na tela**: o menu com 4 linhas e
+    o volume das falas no zoom de jogo.
+
 - **2026-10-11 (desempenho: resolução por nível, LODs dos personagens, teste da cerca) — 3714619** (desde 1c25138):
   - Briefing 14:20 (otimização da cena horda). Medido na cena de referência
     (§13, Rodada 7): o gargalo é a GPU. O "Draw" do stat unit era 14,4 ms de espera

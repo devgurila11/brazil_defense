@@ -18,6 +18,18 @@ enum class EBDWindowMode : uint8
 	Count UMETA(Hidden)
 };
 
+/** The four sound categories of the options, each with a slider and a mute of its own, in the order of the panel. */
+UENUM(BlueprintType)
+enum class EBDSoundCategory : uint8
+{
+	Voice UMETA(DisplayName = "Voices"),
+	Music UMETA(DisplayName = "Music"),
+	Environment UMETA(DisplayName = "Environment"),
+	Effects UMETA(DisplayName = "Effects"),
+
+	Count UMETA(Hidden)
+};
+
 /**
  * The player's settings, as one save slot. Graphics, audio and language; nothing about
  * a match. Written on every change in the options panel and read once at startup by
@@ -49,17 +61,58 @@ public:
 	bool bVSync = true;
 
 	//~ Audio -----------------------------------------------------------------
+	// One volume, 0..100, and one mute per category. The words lead: they are the charm
+	// of the game, so they start loudest and the music sits well under them.
 
-	/** 0..100. */
 	UPROPERTY()
-	int32 MusicVolume = 80;
+	int32 VoiceVolume = 80;
 
-	/** 0..100. */
 	UPROPERTY()
-	int32 EffectsVolume = 80;
+	int32 MusicVolume = 20;
 
+	UPROPERTY()
+	int32 EnvironmentVolume = 40;
+
+	UPROPERTY()
+	int32 EffectsVolume = 50;
+
+	UPROPERTY()
+	bool bVoiceMuted = false;
+
+	UPROPERTY()
+	bool bMusicMuted = false;
+
+	UPROPERTY()
+	bool bEnvironmentMuted = false;
+
+	UPROPERTY()
+	bool bEffectsMuted = false;
+
+	/**
+	 * The one mute of the two-slider panel, before the four categories. Read once, when an
+	 * older save is brought up to them (see AudioLayout), and cleared.
+	 */
 	UPROPERTY()
 	bool bMuted = false;
+
+	/**
+	 * Which audio layout the save was written with: 0 for the two sliders (music, and effects
+	 * with the words and the ambience inside), CurrentAudioLayout for the four categories. A
+	 * save of the old layout takes the four defaults once, since its effects number covered
+	 * what three sliders own now.
+	 */
+	UPROPERTY()
+	int32 AudioLayout = 0;
+
+	static constexpr int32 CurrentAudioLayout = 1;
+
+	int32 GetVolume(EBDSoundCategory Category) const;
+	bool IsMuted(EBDSoundCategory Category) const;
+	void SetVolume(EBDSoundCategory Category, int32 Volume);
+	void SetMuted(EBDSoundCategory Category, bool bMute);
+
+	/** The audio fields back to the class defaults, in the current layout. */
+	void ResetAudio();
 
 	//~ Controls -----------------------------------------------------------------
 

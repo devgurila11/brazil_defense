@@ -22,7 +22,9 @@
 #include "Sound/SoundBase.h"
 #include "Sound/SoundConcurrency.h"
 #include "Wave/BDWaveSubsystem.h"
+#include "Sound/SoundClass.h"
 #include "Sound/SoundMix.h"
+#include "UI/BDUISettings.h"
 
 namespace BDCreepSoundPrivate
 {
@@ -181,9 +183,11 @@ void UBDCreepSoundSubsystem::EnsureObjects()
 		Settings.VoiceInnerRadius, Settings.VoiceFalloffDistance, Settings.VoiceAttenuationAtMax);
 
 	// The words pan all the way by where the creep stands, with no blend towards the middle
-	// near the listener: the point is one sentence in each ear.
+	// near the listener: the point is one sentence in each ear. Their curve is their own,
+	// wider than the calls', so a line is heard at a normal playing zoom.
 	SpeechAttenuation = NewObject<USoundAttenuation>(this, TEXT("CreepSpeechAttenuation"));
-	SpeechAttenuation->Attenuation = VoiceAttenuation->Attenuation;
+	SpeechAttenuation->Attenuation = BDCreepSoundPrivate::MakeAttenuation(
+		Settings.SpeechInnerRadius, Settings.SpeechFalloffDistance, Settings.SpeechAttenuationAtMax);
 	SpeechAttenuation->Attenuation.StereoSpread = Settings.SpeechStereoSpread;
 	SpeechAttenuation->Attenuation.NonSpatializedRadiusStart = 0.0f;
 	SpeechAttenuation->Attenuation.NonSpatializedRadiusEnd = 0.0f;
@@ -215,7 +219,9 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 
 	++VoicesRequested;
 	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
-	if (!BDCreepSoundPrivate::InRange(*Creep.GetWorld(), Creep.GetActorLocation(), Settings.VoiceInnerRadius + Settings.VoiceFalloffDistance))
+	// A line carries further than a call.
+	if (!BDCreepSoundPrivate::InRange(*Creep.GetWorld(), Creep.GetActorLocation(),
+		bSpeak ? Settings.GetSpeechReach() : Settings.VoiceInnerRadius + Settings.VoiceFalloffDistance))
 	{
 		return false;
 	}
@@ -329,11 +335,25 @@ void UBDCreepSoundSubsystem::ApplyDuckSettings()
 	USoundMix* Duck = Settings.SpeechDuckMix.LoadSynchronous();
 	if (Duck == nullptr || Duck->SoundClassEffects.IsEmpty())
 	{
-		UE_LOG(LogBDWave, Warning, TEXT("No speech duck mix with an effects adjuster (Project Settings > Brazil Defense - Creep Sound > Ducking): the effects will not step back for the words."));
+		UE_LOG(LogBDWave, Warning, TEXT("No speech duck mix with adjusters (Project Settings > Brazil Defense - Creep Sound > Ducking; BDSetupSoundClasses makes them): the effects and the environment will not step back for the words."));
 		return;
 	}
-	Duck->SoundClassEffects[0].VolumeAdjuster = Settings.DuckEffectsVolume;
-	Duck->SoundClassEffects[0].bApplyToChildren = false;
+	// Each adjuster by its class, whatever the order: the effects and the environment have numbers of their own.
+	const UBDUISettings& UI = UBDUISettings::Get();
+	const USoundClass* Effects = UI.EffectsSoundClass.LoadSynchronous();
+	const USoundClass* Environment = UI.EnvironmentSoundClass.LoadSynchronous();
+	for (FSoundClassAdjuster& Adjuster : Duck->SoundClassEffects)
+	{
+		if (Adjuster.SoundClassObject == Effects)
+		{
+			Adjuster.VolumeAdjuster = Settings.DuckEffectsVolume;
+		}
+		else if (Adjuster.SoundClassObject == Environment)
+		{
+			Adjuster.VolumeAdjuster = Settings.DuckEnvironmentVolume;
+		}
+		Adjuster.bApplyToChildren = false;
+	}
 	Duck->FadeInTime = Settings.DuckFadeSeconds;
 	Duck->FadeOutTime = Settings.DuckFadeSeconds;
 }
@@ -384,7 +404,7 @@ UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::TryCelebrateCounted
 
 	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
 	USoundBase* Words = BDCreepSoundPrivate::Resolve(Bank);
-	if (Words == nullptr || !BDCreepSoundPrivate::InRange(*World, Speaker.GetActorLocation(), Settings.VoiceInnerRadius + Settings.VoiceFalloffDistance))
+	if (Words == nullptr || !BDCreepSoundPrivate::InRange(*World, Speaker.GetActorLocation(), Settings.GetSpeechReach()))
 	{
 		return ECelebration::Unheard;
 	}
@@ -432,7 +452,7 @@ bool UBDCreepSoundSubsystem::SayAlways(AActor& Speaker, const TSoftObjectPtr<USo
 	USoundBase* Words = BDCreepSoundPrivate::Resolve(Bank);
 	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
 	if (World == nullptr || Words == nullptr
-		|| !BDCreepSoundPrivate::InRange(*World, Speaker.GetActorLocation(), Settings.VoiceInnerRadius + Settings.VoiceFalloffDistance))
+		|| !BDCreepSoundPrivate::InRange(*World, Speaker.GetActorLocation(), Settings.GetSpeechReach()))
 	{
 		UE_LOG(LogBDWave, Verbose, TEXT("%s keeps a line to himself: %s."), *Speaker.GetName(),
 			Words == nullptr ? TEXT("no bank") : TEXT("the camera is out of earshot"));

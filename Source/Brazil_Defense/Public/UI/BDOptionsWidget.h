@@ -49,14 +49,13 @@ private:
 	UFUNCTION()
 	void HandleVSyncChanged(bool bChecked);
 
+	/** Any of the four sliders: each one that no longer matches the save writes its category. */
 	UFUNCTION()
-	void HandleMusicChanged(float Value);
+	void HandleVolumeChanged(float Value);
 
+	/** Any of the four mutes, the same way. */
 	UFUNCTION()
-	void HandleEffectsChanged(float Value);
-
-	UFUNCTION()
-	void HandleMutedChanged(bool bChecked);
+	void HandleMuteChanged(bool bChecked);
 
 	UFUNCTION()
 	void HandleInvertSidewaysChanged(bool bChecked);
@@ -103,29 +102,23 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UCheckBox> VSyncBox;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> MusicLabel;
+	// One row per sound category, indexed by EBDSoundCategory: the name, the slider, its
+	// number and the mute with its word.
 
 	UPROPERTY(Transient)
-	TObjectPtr<USlider> MusicSlider;
+	TArray<TObjectPtr<UTextBlock>> VolumeLabels;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> MusicValue;
+	TArray<TObjectPtr<USlider>> VolumeSliders;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> EffectsLabel;
+	TArray<TObjectPtr<UTextBlock>> VolumeValues;
 
 	UPROPERTY(Transient)
-	TObjectPtr<USlider> EffectsSlider;
+	TArray<TObjectPtr<UCheckBox>> MuteBoxes;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> EffectsValue;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> MutedLabel;
-
-	UPROPERTY(Transient)
-	TObjectPtr<UCheckBox> MutedBox;
+	TArray<TObjectPtr<UTextBlock>> MuteLabels;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> ControlsHeading;
