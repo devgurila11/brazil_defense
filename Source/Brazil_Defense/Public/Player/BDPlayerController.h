@@ -86,7 +86,7 @@ private:
 	void HandleTogglePause();
 	void HandleResetCamera();
 
-	/** H: hides everything drawn over the game, or brings it back. */
+	/** H: hides the panel, keeps what floats over the actors; again brings the panel back. */
 	void HandleToggleCleanView();
 
 	/** Puts the piece of a palette slot in hand, as the HUD button would. */

@@ -5,21 +5,8 @@
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
-#include "DrawDebugHelpers.h"
 #include "Engine/World.h"
-#include "Grid/BDGridDebug.h"
 #include "Match/BDGameBalanceSettings.h"
-
-namespace BDCandidatePrivate
-{
-	/** The bar hangs this far over the top of the mesh. */
-	static constexpr float BarClearance = 60.0f;
-	static constexpr float BarWidth = 360.0f;
-	static constexpr float BarThickness = 18.0f;
-
-	static const FColor BarBackground(40, 40, 40, 255);
-	static const FColor BarForeground(255, 40, 40, 255);
-}
 
 ABDCandidate::ABDCandidate()
 {
@@ -59,10 +46,6 @@ void ABDCandidate::Tick(const float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	ApplyDebugTint();
-	if (IsValid(this))
-	{
-		DrawHealthBar();
-	}
 }
 
 void ABDCandidate::SetDebugTint(const FLinearColor& Color)
@@ -85,40 +68,6 @@ void ABDCandidate::ApplyDebugTint()
 		Dynamic->SetVectorParameterValue(TEXT("TintColor"), PendingTint);
 	}
 	bTintPending = false;
-}
-
-void ABDCandidate::DrawHealthBar() const
-{
-	using namespace BDCandidatePrivate;
-
-	const UWorld* World = GetWorld();
-	const UStaticMeshComponent* Body = GetMesh();
-	if (World == nullptr || Body == nullptr || GetMaxHealth() <= 0.0f)
-	{
-		return;
-	}
-
-	// Not gated by the grid debug switch: the bar is the one reading of the candidate the
-	// player has until the HUD draws it, the way the urn zone paints itself.
-	// Untouched, no bar: the same rule as the creeps, whose bars only show once they are hit.
-	if (GetCurrentHealth() >= GetMaxHealth())
-	{
-		return;
-	}
-
-	const FBoxSphereBounds Bounds = Body->Bounds;
-	const FVector Center(Bounds.Origin.X, Bounds.Origin.Y, Bounds.Origin.Z + Bounds.BoxExtent.Z + BarClearance);
-	const FVector Left = Center - FVector(0.0f, BarWidth * 0.5f, 0.0f);
-	const FVector Right = Center + FVector(0.0f, BarWidth * 0.5f, 0.0f);
-	const float Fraction = FMath::Clamp(GetCurrentHealth() / GetMaxHealth(), 0.0f, 1.0f);
-
-	DrawDebugLine(World, Left, Right, BarBackground,
-		BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority, BarThickness);
-	if (Fraction > 0.0f)
-	{
-		DrawDebugLine(World, Left, FMath::Lerp(Left, Right, Fraction), BarForeground,
-			BDGridDebug::bPersistentLines, BDGridDebug::SingleFrameLifeTime, BDGridDebug::DepthPriority, BarThickness * 0.7f);
-	}
 }
 
 void ABDCandidate::Arrive()

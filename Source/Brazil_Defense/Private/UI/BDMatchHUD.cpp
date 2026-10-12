@@ -7,6 +7,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "CanvasItem.h"
 #include "CanvasTypes.h"
+#include "Components/StaticMeshComponent.h"
 #include "Enemy/BDEnemyBase.h"
 #include "Engine/Canvas.h"
 #include "Engine/World.h"
@@ -37,6 +38,7 @@ void ABDMatchHUD::DrawHUD()
 	DrawPieceStars();
 	DrawAgentBars();
 	DrawCreepBars();
+	DrawCandidateBars();
 	// Last, over the bars: who is talking reads over everything else.
 	DrawSpeechMarks();
 }
@@ -231,6 +233,59 @@ void ABDMatchHUD::DrawCreepBars()
 	{
 		LastReport = FPlatformTime::Seconds();
 		UE_LOG(LogBDUI, Verbose, TEXT("Creep bars: %d drawn, first at %.0f,%.0f width %.0f."), Drawn, FirstX, FirstY, FirstW);
+	}
+}
+
+void ABDMatchHUD::DrawCandidateBars()
+{
+	// The look it had as debug lines: wide, thick, red on dark, over the top of the mesh.
+	static constexpr float BarClearance = 60.0f;
+	static constexpr float BarWorldWidth = 360.0f;
+	static constexpr float BarAspect = 18.0f / 360.0f;
+	static const FLinearColor BarBackground(FColor(40, 40, 40, 255));
+	static const FLinearColor BarForeground(FColor(255, 40, 40, 255));
+
+	const UWorld* World = GetWorld();
+	const UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+	if (Canvas == nullptr || Waves == nullptr || PlayerOwner == nullptr || PlayerOwner->PlayerCameraManager == nullptr)
+	{
+		return;
+	}
+
+	const FVector CameraRight = FRotationMatrix(PlayerOwner->PlayerCameraManager->GetCameraRotation()).GetUnitAxis(EAxis::Y);
+	const FVector HalfWidth = CameraRight * (BarWorldWidth * 0.5f);
+	for (const ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
+	{
+		const UStaticMeshComponent* Body = Enemy != nullptr ? Enemy->GetMesh() : nullptr;
+		if (Body == nullptr || !Enemy->IsCandidate() || Enemy->GetMaxHealth() <= 0.0f)
+		{
+			continue;
+		}
+		const float Fraction = FMath::Clamp(Enemy->GetCurrentHealth() / Enemy->GetMaxHealth(), 0.0f, 1.0f);
+		if (Fraction >= 1.0f)
+		{
+			// Untouched, no bar: the creeps' rule.
+			continue;
+		}
+
+		const FBoxSphereBounds& Bounds = Body->Bounds;
+		const FVector Center(Bounds.Origin.X, Bounds.Origin.Y, Bounds.Origin.Z + Bounds.BoxExtent.Z + BarClearance);
+		const FVector Left = Canvas->Project(Center - HalfWidth);
+		const FVector Right = Canvas->Project(Center + HalfWidth);
+		if (Left.Z <= 0.0f || Right.Z <= 0.0f)
+		{
+			continue;
+		}
+		const float Width = Right.X - Left.X;
+		if (Width < 2.0f)
+		{
+			continue;
+		}
+		const float Height = FMath::Max(2.0f, Width * BarAspect);
+		const float X = Left.X;
+		const float Y = Left.Y - Height * 0.5f;
+		DrawRect(BarBackground, X, Y, Width, Height);
+		DrawRect(BarForeground, X, Y + Height * 0.15f, Width * Fraction, Height * 0.7f);
 	}
 }
 

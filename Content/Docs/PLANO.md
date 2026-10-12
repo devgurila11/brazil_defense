@@ -263,6 +263,18 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-12 (tecla H esconde só o painel) — (id)** (desde c4b07ee):
+  - Briefing 12:00. O **H** (e `BD.HUD.Clean`) esconde só o painel: o widget do HUD
+    (placar, apuração, recursos, menu de peças, abates), as linhas de debug (alcances,
+    contornos) e as mensagens de tela. O canvas do `ABDMatchHUD` deixou de ser desligado
+    (`bShowHUD` fica como está): exclamações de fala, barras de vida, estrelas das
+    construções e a barra de tempo do Mito continuam na cena.
+  - **Barra do candidato** saiu das linhas de debug (que o H esconde) e passou para o
+    canvas do `ABDMatchHUD` (`DrawCandidateBars`), com o mesmo visual: 360 de largura no
+    mundo, vermelho sobre cinza escuro, acima do topo da malha, só depois do primeiro
+    dano; agora sempre de frente para a câmera.
+  - Regressão 92/92; alvos do editor e do jogo compilados. Falta ver na tela.
+
 - **2026-10-12 (áudio em 4 categorias, ducking do ambiente, falas que chegam longe) — 222efba** (desde 3c57cb0):
   - Briefing 10:00. **Quatro classes irmãs** sob `SC_Master`: `SC_Voice` (todas as
     falas), `SC_Music`, `SC_Environment` (nova: cidade, pássaros, noite) e `SC_Effects`

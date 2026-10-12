@@ -11,7 +11,8 @@
  * hundreds, and a bar is two rectangles. A creep shows one only once it has taken
  * damage; the bar is a fixed width in the world, so the camera's zoom sizes it, and it
  * is skipped once it would be thinner than a few pixels: the overview stays clean, the
- * close look reads every creep. The candidate keeps the bar of his own.
+ * close look reads every creep. The candidate gets a wider bar of his own, red on dark,
+ * over the top of his mesh, from the first hit.
  *
  * Over every palace, five stars facing the camera: as many filled as its level, the
  * rest only an outline. A smaller row of the same over every ground tower and every
@@ -47,6 +48,9 @@ public:
 
 private:
 	void DrawCreepBars();
+
+	/** Over every candidate once hit: his own bar, wider, red on dark. */
+	void DrawCandidateBars();
 	void DrawPalaceStars();
 
 	/** The palace's row over the ground towers and the platforms, smaller. */

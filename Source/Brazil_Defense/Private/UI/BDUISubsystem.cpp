@@ -146,7 +146,7 @@ void UBDUISubsystem::SetCleanView(const bool bClean)
 	}
 	bCleanView = bClean;
 	ApplyCleanView();
-	UE_LOG(LogBDUI, Log, TEXT("Clean view %s."), bCleanView ? TEXT("on: only the game is drawn") : TEXT("off: the HUD is back"));
+	UE_LOG(LogBDUI, Log, TEXT("Clean view %s."), bCleanView ? TEXT("on: the panel is hidden, the world marks stay") : TEXT("off: the panel is back"));
 }
 
 void UBDUISubsystem::ApplyCleanView()
@@ -156,13 +156,12 @@ void UBDUISubsystem::ApplyCleanView()
 		HUD->SetVisibility(bCleanView ? ESlateVisibility::Collapsed : ESlateVisibility::SelfHitTestInvisible);
 	}
 
+	// The canvas HUD (ABDMatchHUD) stays: all it draws floats over an actor in the world
+	// (speech marks, health bars, stars, the Agent's time), and the clean view is for
+	// watching exactly that without the panel in the way.
 	APlayerController* Controller = GetLocalController();
-	if (Controller != nullptr && Controller->GetHUD() != nullptr)
-	{
-		Controller->GetHUD()->bShowHUD = !bCleanView;
-	}
 
-	// Every debug line, whoever draws it, goes through these.
+	// Every debug line, whoever draws it, goes through these: the ranges, the outlines.
 	if (const UWorld* World = Controller != nullptr ? Controller->GetWorld() : nullptr)
 	{
 		for (int32 Type = 0; Type < static_cast<int32>(UWorld::ELineBatcherType::NUM); ++Type)

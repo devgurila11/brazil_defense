@@ -126,9 +126,11 @@ public:
 	//~ Clean view ---------------------------------------------------------------
 
 	/**
-	 * Everything drawn over the game, hidden or back: the HUD widget, the canvas (stars,
-	 * bars), every debug line (reaches, grid, routes) and the on-screen messages. Only the
-	 * game is left. H toggles it; a new HUD or a return to the menu keeps or clears it.
+	 * The panel, hidden or back: the HUD widget, every debug line (reaches, grid, routes)
+	 * and the on-screen messages. What floats over an actor stays (the canvas of
+	 * ABDMatchHUD: speech marks, health bars, stars, the Agent's time), so the fight reads
+	 * without the management in the way. H toggles it; a new HUD or a return to the menu
+	 * keeps or clears it.
 	 */
 	void SetCleanView(bool bClean);
 	void ToggleCleanView() { SetCleanView(!bCleanView); }

@@ -1,65 +1,39 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-12 10:00**
+**Versão: 2026-10-12 12:00**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Áudio: 4 categorias no menu + ênfase nas falas
+# Tecla "H": esconder só o PAINEL, manter o mundo
 
-Reorganizar o áudio em 4 categorias com controle próprio, dando ÊNFASE
-às FALAS (a graça do jogo) — elas não podem ficar abafadas por nada.
+Hoje o "H" esconde TUDO, inclusive coisas que pertencem ao mundo do
+jogo (exclamações de fala, barras de vida). Corrigir: o "H" deve
+esconder SÓ os dados de PAINEL (interface sobreposta de gerenciamento)
+e MANTER tudo que é do mundo do jogo (billboards sobre os atores).
 
-## 1. Quatro Sound Classes separadas, cada uma com slider + mudo
+## Com "H" — SOME (painel/interface de gerenciamento)
+- Placar de votos (azul/vermelho), a barra de apuração.
+- Medidores de recurso (fundos públicos, cota de separador).
+- Menu de peças / barra de construção.
+- Placar de abates lateral (ícones de tipo).
+- Overlays de debug (alcances on-click, etc.).
+- Qualquer elemento fixo na tela (HUD 2D sobreposto).
 
-Hoje há basicamente Music e Effects (com Voice e ambiente dentro).
-Separar em QUATRO, cada uma controlada por um slider próprio E um
-checkbox de MUDO no menu Options:
+## Com "H" — FICA (mundo do jogo)
+- Exclamações de fala (indicam quem está falando) — NUNCA esconder.
+- Barras de vida dos NPCs.
+- Estrelas de evolução das construções.
+- Barra de tempo do Mito, barra do candidato.
+- Qualquer indicador que flutua SOBRE um ator na cena (billboard no
+  mundo).
 
-- VOICES — todas as falas (militantes, Nicole, Mito, ministros futuros).
-- MUSIC — a trilha.
-- ENVIRONMENT — ambiência (cidade, pássaros, coruja, grilos).
-- EFFECTS — tiros, casco, relincho, impacto, urna, motor, buzina, tombo.
-
-Reorganizar as Sound Classes: SC_Voice, SC_Music, SC_Environment,
-SC_Effects, independentes. Cada slider e cada mudo afeta só a sua.
-Persistir no SaveGame de configurações, como já é.
-
-## 2. Volumes default
-- VOICES: 80% (destaque — a fala é a estrela).
-- MUSIC: 20%.
-- EFFECTS: 50%.
-- ENVIRONMENT: 40%.
-- São os valores iniciais (sem config salva); config do jogador é
-  respeitada.
-
-## 3. Ducking com ênfase nas falas
-- Quando QUALQUER fala toca: EFFECTS e ENVIRONMENT abaixam (os dois
-  cedem, para a fala sobressair sobre tudo).
-- MUSIC fica CONSTANTE (não abaixa).
-- VOICES nunca abaixa.
-- Volta suave (~0,4s) quando a última fala acaba. Abaixa enquanto
-  houver qualquer fala tocando.
-- Ajustar o quanto abaixa para a fala ficar NÍTIDA sobre effects e
-  environment (ex: ~45-55%), ajustável em settings.
-
-## 4. Atenuação das falas — audível num zoom razoável
-- Hoje a fala só se ouve bem com o zoom quase colado no ator. Como o
-  ouvinte é a câmera (no alto), a curva precisa ser mais GENEROSA para
-  as falas serem audíveis num zoom RAZOÁVEL de jogo, não só coladas.
-- Ajustar a curva de atenuação das FALAS: aumentar o raio interno
-  (onde o volume ainda é cheio) e/ou suavizar a queda, para que numa
-  distância normal de jogo (câmera em zoom médio) a fala seja bem
-  ouvida.
-- Mantém a lógica de atenuar por distância (fala muito longe ainda cai),
-  só que generosa o bastante para o zoom de jogo normal.
-- Isso vale só para as FALAS (SC_Voice) — não mexer na atenuação dos
-  outros sons.
+## Regra geral
+- Critério: elemento FIXO NA TELA (painel/HUD 2D) = some com H.
+  Elemento que FLUTUA SOBRE UM ATOR no mundo (billboard) = fica.
+- Objetivo: ver a cena/batalha viva (inimigos apanhando, falas
+  pipocando) sem os dados de gerenciamento atrapalhando.
 
 ## Entregável
-- Menu Options com 4 sliders + 4 checkboxes de mudo (Voices, Music,
-  Environment, Effects).
-- Defaults: Voices 80, Music 20, Effects 50, Environment 40.
-- Ducking: effects e environment abaixam nas falas; música constante;
-  voices nunca abaixa.
-- Atenuação das falas mais generosa (audível em zoom razoável).
+- "H" esconde só o painel; mantém exclamações, barras de vida,
+  estrelas e barras flutuantes do mundo.
 - BD.Test.Regression passa; compilar os dois alvos; commit.

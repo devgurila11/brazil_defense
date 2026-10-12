@@ -77,9 +77,6 @@ protected:
 private:
 	UBDCandidateSubsystem* GetCandidates() const;
 
-	/** The health bar over its head, drawn with debug lines until there is a HUD. */
-	void DrawHealthBar() const;
-
 	/** World time it was sent out at. */
 	float SpawnTimeSeconds = 0.0f;
 

@@ -302,7 +302,7 @@ namespace BDUIDebug
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdClean(
 		TEXT("BD.HUD.Clean"),
-		TEXT("BD.HUD.Clean [0|1]: hides everything drawn over the game (HUD, stars, bars, debug lines), or brings it back. What H does."),
+		TEXT("BD.HUD.Clean [0|1]: hides the panel (HUD widget, debug lines) and keeps what floats over the actors (speech marks, bars, stars), or brings the panel back. What H does."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecClean));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(
