@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-12 (rodízio dos 11 ministros, raio que cresce) — (id)** (desde 757599f):
+- **2026-10-12 (rodízio dos 11 ministros, raio que cresce) — 61977a2** (desde 757599f):
   - Respostas dele à 3b: o Mito chuta só no alcance dele (confirmado); o piscar fica.
   - **Rodízio** — o STF tem uma fila de 11 assentos (`UBDMinisterSubsystem::GetLine`). Cada
     candidato morto solta o próximo da fila; com todos fora, ninguém sai. O ministro que volta
