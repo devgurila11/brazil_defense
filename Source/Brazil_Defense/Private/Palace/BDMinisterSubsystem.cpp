@@ -165,6 +165,28 @@ int32 UBDMinisterSubsystem::SpawnMinisters(const int32 Count)
 	return Spawned;
 }
 
+bool UBDMinisterSubsystem::NotifyCandidateKilled()
+{
+	const UBDMinisterSettings& Settings = UBDMinisterSettings::Get();
+	if (!Settings.bReleaseOnCandidateKilled)
+	{
+		return false;
+	}
+	const int32 Out = GetMinisters().Num();
+	if (Out >= Settings.MaxOnBoard)
+	{
+		UE_LOG(LogBDMinister, Log, TEXT("Candidate down, but %d of %d ministers are already out: nobody leaves the STF."), Out, Settings.MaxOnBoard);
+		return false;
+	}
+	if (SpawnMinisters(1) == 0)
+	{
+		return false;
+	}
+	++ReleasedByKills;
+	UE_LOG(LogBDMinister, Log, TEXT("Candidate down: a minister comes out of the STF (%d out, %d let out by kills)."), Out + 1, ReleasedByKills);
+	return true;
+}
+
 TArray<ABDMinister*> UBDMinisterSubsystem::GetMinisters() const
 {
 	TArray<ABDMinister*> Out;

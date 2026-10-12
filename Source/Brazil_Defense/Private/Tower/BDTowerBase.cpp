@@ -424,7 +424,8 @@ void ABDTowerBase::NotifyReleasedSlot()
 
 bool ABDTowerBase::IsValidTarget(const ABDEnemyBase* Enemy, const float RangeSquared) const
 {
-	if (Enemy == nullptr || !IsValid(Enemy) || Enemy->HasArrived())
+	// Covered by a minister: out of reach of every defender while he reads.
+	if (Enemy == nullptr || !IsValid(Enemy) || Enemy->HasArrived() || Enemy->IsSheltered())
 	{
 		return false;
 	}

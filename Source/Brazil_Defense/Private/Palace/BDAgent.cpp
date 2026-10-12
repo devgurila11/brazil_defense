@@ -489,7 +489,7 @@ bool ABDAgent::TurnTowards(const float WantedYaw, const float DeltaSeconds, cons
 bool ABDAgent::IsValidTarget(const ABDEnemyBase* Enemy, const float RadiusSquared) const
 {
 	return Enemy != nullptr && IsValid(Enemy) && !Enemy->HasArrived() && !Enemy->IsDoomed()
-		&& Enemy->GetCurrentHealth() > 0.0f
+		&& Enemy->GetCurrentHealth() > 0.0f && !Enemy->IsSheltered()
 		&& FVector::DistSquared2D(Enemy->GetActorLocation(), GetActorLocation()) <= RadiusSquared;
 }
 

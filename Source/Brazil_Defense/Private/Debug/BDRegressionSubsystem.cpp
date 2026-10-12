@@ -1664,6 +1664,86 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						Minister->GetLastFlightPeak(), *Minister->Describe(), KickLines, BlackMarks));
 				Minister->Destroy();
 			}
+
+			// The refuge (slice 3b): a militant inside his radius stops him and he reads; the
+			// militant is covered (no hit lands, no defender aims) and the dome goes up. With
+			// the radius empty he reads on and then walks. The Agent's kick drops the cover.
+			UBDWaveSubsystem* RefugeWaves = World->GetSubsystem<UBDWaveSubsystem>();
+			const int32 RefugeBefore = Ministers->GetMinisters().Num();
+			Ministers->SpawnMinisters(1);
+			const TArray<ABDMinister*> RefugeOut = Ministers->GetMinisters();
+			ABDMinister* Reader = RefugeOut.Num() > RefugeBefore ? RefugeOut.Last() : nullptr;
+			ABDEnemyBase* Covered = RefugeWaves != nullptr ? RefugeWaves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), 0) : nullptr;
+			if (Reader != nullptr && Covered != nullptr && Kicker != nullptr)
+			{
+				const float Cell = Grid->GetCellSize();
+				const float Frame30 = 1.0f / 30.0f;
+				Kicker->DebugWake();
+				const FVector Spot = Kicker->GetActorLocation() + Kicker->GetActorForwardVector() * Cell * 6.0f;
+				Reader->DebugPlaceOnBoard(Spot);
+				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * MinisterSettings.RefugeRadiusCells * 0.5f, 0.0f, 0.0f));
+				Reader->Tick(Frame30);
+				const float HealthBefore = Covered->GetCurrentHealth();
+				Covered->ApplyDamage(HealthBefore * 0.5f, Kicker);
+				const bool bCoverHeld = FMath::IsNearlyEqual(Covered->GetCurrentHealth(), HealthBefore);
+				Check(TEXT("REFUGIO"), TEXT("a militant in a minister's radius stops him reading, under the dome: covered, no hit lands"),
+					Reader->GetState() == EBDMinisterState::Reading && Reader->IsShieldUp() && Reader->GetShelteredCount() == 1
+						&& Covered->IsSheltered() && bCoverHeld,
+					FString::Printf(TEXT("%s, militant %s, %.0f -> %.0f hp"), *Reader->Describe(),
+						Covered->IsSheltered() ? TEXT("covered") : TEXT("in plain sight"), HealthBefore, Covered->GetCurrentHealth()));
+
+				// The radius empties: the dome goes, he reads on, and after the wait he walks.
+				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * (MinisterSettings.RefugeRadiusCells + 3.0f), 0.0f, 0.0f));
+				float Read = 0.0f;
+				bool bShieldDown = true;
+				while (Read < MinisterSettings.ResumeAfterSeconds - 0.5f)
+				{
+					Reader->Tick(Frame30);
+					Read += Frame30;
+					bShieldDown &= !Reader->IsShieldUp();
+				}
+				const bool bStillReading = Reader->GetState() == EBDMinisterState::Reading;
+				for (int32 Frame = 0; Frame < 30; ++Frame)
+				{
+					Reader->Tick(Frame30);
+				}
+				Check(TEXT("REFUGIO"), TEXT("with nobody in his radius the dome is down, he reads on and walks again after the wait"),
+					bShieldDown && bStillReading && Reader->GetState() != EBDMinisterState::Reading,
+					FString::Printf(TEXT("dome %s, reading at %.1f s %s, then %s"), bShieldDown ? TEXT("down") : TEXT("up"), Read,
+						bStillReading ? TEXT("yes") : TEXT("no"), *Reader->Describe()));
+
+				// Covering again, in the Agent's reach: he comes for him, and the kick drops the cover at once.
+				Reader->DebugPlaceOnBoard(Kicker->GetActorLocation() + Kicker->GetActorForwardVector() * Cell * 2.0f);
+				Covered->SetActorLocation(Reader->GetActorLocation() + FVector(Cell * MinisterSettings.RefugeRadiusCells * 0.5f, 0.0f, 0.0f));
+				Reader->Tick(Frame30);
+				const int32 KicksBefore = Kicker->GetMinistersKicked();
+				for (int32 Frame = 0; Frame < 300 && Kicker->GetMinistersKicked() == KicksBefore; ++Frame)
+				{
+					Reader->Tick(Frame30);
+					Kicker->Tick(Frame30);
+				}
+				const bool bKickedReading = Kicker->GetMinistersKicked() > KicksBefore && Reader->GetState() == EBDMinisterState::Flying;
+				const float HealthExposed = Covered->GetCurrentHealth();
+				Covered->ApplyDamage(1.0f, Kicker);
+				Check(TEXT("REFUGIO"), TEXT("the Agent kicks the reading minister: the dome is down and the militant is a target again"),
+					bKickedReading && !Reader->IsShieldUp() && !Covered->IsSheltered() && Covered->GetCurrentHealth() < HealthExposed,
+					FString::Printf(TEXT("%s, militant %s, %.0f -> %.0f hp"), *Reader->Describe(),
+						Covered->IsSheltered() ? TEXT("still covered") : TEXT("exposed"), HealthExposed, Covered->GetCurrentHealth()));
+			}
+			else
+			{
+				Check(TEXT("REFUGIO"), TEXT("a minister, a militant and the Agent for the refuge"), false,
+					FString::Printf(TEXT("minister %s, militant %s, agent %s"), Reader != nullptr ? TEXT("yes") : TEXT("no"),
+						Covered != nullptr ? TEXT("yes") : TEXT("no"), Kicker != nullptr ? TEXT("yes") : TEXT("no")));
+			}
+			if (Reader != nullptr)
+			{
+				Reader->Destroy();
+			}
+			if (Covered != nullptr)
+			{
+				Covered->Destroy();
+			}
 		}
 
 		// With a piece in hand, the right button and Escape put it back, and sell nothing:
@@ -2036,7 +2116,13 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		const int32 Expected = Match->GetCandidateFunds(Match->GetCurrentWave());
 		const int32 EarnedBefore = Match->GetLedger().BribeEarned;
 		const int32 FallenBefore = Candidates->GetFallenCount();
+		UBDMinisterSubsystem* Stf = UBDMinisterSubsystem::Get(World);
+		const int32 MinistersBefore = Stf != nullptr ? Stf->GetMinisters().Num() : 0;
 		Candidate->ApplyDamage(Candidate->GetMaxHealth() * 10.0f, nullptr);
+		const int32 MinistersAfter = Stf != nullptr ? Stf->GetMinisters().Num() : 0;
+		Check(TEXT("REFUGIO"), TEXT("a candidate killed lets one minister out of the STF"),
+			MinistersAfter == MinistersBefore + 1 || (MinistersBefore >= UBDMinisterSettings::Get().MaxOnBoard && MinistersAfter == MinistersBefore),
+			FString::Printf(TEXT("%d -> %d out"), MinistersBefore, MinistersAfter));
 		Bribes->FlushNow(TEXT("BD.Test.Regression"));
 		const int32 Earned = Match->GetLedger().BribeEarned - EarnedBefore;
 		Check(TEXT("CANDIDATO"), TEXT("killing a scheduled candidate pays his bribe"), Earned == Expected && Expected > 0,

@@ -6,12 +6,14 @@
 #include "BDLog.h"
 #include "Components/StaticMeshComponent.h"
 #include "Enemy/BDCreepSoundSubsystem.h"
+#include "Enemy/BDEnemyBase.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Grid/BDFreeWalk.h"
 #include "Grid/BDGridSubsystem.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Palace/BDMinisterSettings.h"
+#include "Wave/BDWaveSubsystem.h"
 
 namespace BDMinisterPrivate
 {
@@ -23,6 +25,19 @@ namespace BDMinisterPrivate
 
 	/** Close enough to a point of his route to take the next. */
 	static constexpr float ReachedDistance = 15.0f;
+
+	/** The least the cover outlasts the frame that gave it, in world seconds: renewed every frame, it never lapses between two. */
+	static constexpr float CoverHold = 0.3f;
+
+	static UStaticMeshComponent* MakePart(AActor& Owner, USceneComponent* Parent, const TCHAR* Name)
+	{
+		UStaticMeshComponent* Part = Owner.CreateDefaultSubobject<UStaticMeshComponent>(Name);
+		Part->SetupAttachment(Parent);
+		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Part->SetGenerateOverlapEvents(false);
+		Part->SetCanEverAffectNavigation(false);
+		return Part;
+	}
 }
 
 ABDMinister::ABDMinister()
@@ -33,11 +48,14 @@ ABDMinister::ABDMinister()
 	SetRootComponent(Root);
 
 	// Nothing collides with him and he collides with nothing; the cursor does not pick him either.
-	Block = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Block"));
-	Block->SetupAttachment(Root);
-	Block->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Block->SetGenerateOverlapEvents(false);
-	Block->SetCanEverAffectNavigation(false);
+	Block = BDMinisterPrivate::MakePart(*this, Root, TEXT("Block"));
+
+	// Put away until he reads, and until somebody is inside his radius.
+	Book = BDMinisterPrivate::MakePart(*this, Root, TEXT("Book"));
+	Book->SetVisibility(false);
+	Shield = BDMinisterPrivate::MakePart(*this, Root, TEXT("Shield"));
+	Shield->SetCastShadow(false);
+	Shield->SetVisibility(false);
 }
 
 UBDGridSubsystem* ABDMinister::GetGrid() const
@@ -75,6 +93,40 @@ void ABDMinister::InitializeMinister(const FVector& Outside, const FBDCellCoord&
 		UMaterialInstanceDynamic* Robe = UMaterialInstanceDynamic::Create(Material, this);
 		Robe->SetVectorParameterValue(TEXT("Color"), Settings.BlockColor);
 		Block->SetMaterial(0, Robe);
+
+		UMaterialInstanceDynamic* Cover = UMaterialInstanceDynamic::Create(Material, this);
+		Cover->SetVectorParameterValue(TEXT("Color"), Settings.BookColor);
+		Book->SetMaterial(0, Cover);
+	}
+
+	// The book: open in front of his chest, tilted up to his eyes.
+	if (UStaticMesh* Mesh = Settings.BlockMesh.LoadSynchronous())
+	{
+		Book->SetStaticMesh(Mesh);
+		Book->SetRelativeScale3D(Settings.BookScale);
+		const float Thickness = Mesh->GetBoundingBox().GetExtent().X * Settings.BookScale.X;
+		Book->SetRelativeLocation(FVector(BlockHalfWidth + Thickness, 0.0f, BlockHalfHeight * 1.3f));
+		Book->SetRelativeRotation(FRotator(-35.0f, 0.0f, 0.0f));
+	}
+
+	// The dome: as wide as his radius, centred on his feet, so the half above the floor shows.
+	if (UStaticMesh* Mesh = Settings.ShieldMesh.LoadSynchronous())
+	{
+		Shield->SetStaticMesh(Mesh);
+		const UBDGridSubsystem* Grid = GetGrid();
+		const float Radius = Settings.RefugeRadiusCells * (Grid != nullptr ? Grid->GetCellSize() : 100.0f);
+		const float MeshRadius = FMath::Max(Mesh->GetBoundingBox().GetExtent().GetMax(), 1.0f);
+		Shield->SetRelativeScale3D(FVector(Radius / MeshRadius));
+	}
+	if (UMaterialInterface* Material = Settings.ShieldMaterial.LoadSynchronous())
+	{
+		UMaterialInstanceDynamic* Glow = UMaterialInstanceDynamic::Create(Material, this);
+		Glow->SetVectorParameterValue(TEXT("Color"), Settings.ShieldColor);
+		Shield->SetMaterial(0, Glow);
+	}
+	else
+	{
+		UE_LOG(LogBDMinister, Warning, TEXT("No shield material at %s: the dome shows in the mesh's own material."), *Settings.ShieldMaterial.ToString());
 	}
 
 	// Out of the door and onto the board.
@@ -108,7 +160,99 @@ float ABDMinister::GetBodyRadius() const
 
 bool ABDMinister::CanBeKicked() const
 {
-	return State == EBDMinisterState::Walking || State == EBDMinisterState::Idle || State == EBDMinisterState::Entering;
+	return State == EBDMinisterState::Walking || State == EBDMinisterState::Idle || State == EBDMinisterState::Entering
+		|| State == EBDMinisterState::Reading;
+}
+
+bool ABDMinister::IsShieldUp() const
+{
+	return State == EBDMinisterState::Reading && Sheltered.Num() > 0;
+}
+
+//~ The refuge -------------------------------------------------------------------
+
+void ABDMinister::UpdateRefuge(const float DeltaSeconds)
+{
+	const UWorld* World = GetWorld();
+	const UBDGridSubsystem* Grid = GetGrid();
+	const UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+	Sheltered.Reset();
+	if (World == nullptr || Grid == nullptr || Waves == nullptr)
+	{
+		return;
+	}
+
+	// Every militant inside the radius, the candidate never.
+	const UBDMinisterSettings& Settings = UBDMinisterSettings::Get();
+	const float RadiusSquared = FMath::Square(Settings.RefugeRadiusCells * Grid->GetCellSize());
+	const FVector Here = GetActorLocation();
+	for (ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
+	{
+		if (Enemy != nullptr && !Enemy->IsCandidate() && !Enemy->HasArrived() && Enemy->GetCurrentHealth() > 0.0f
+			&& FVector::DistSquared2D(Enemy->GetActorLocation(), Here) <= RadiusSquared)
+		{
+			Sheltered.Add(Enemy);
+		}
+	}
+
+	if (Sheltered.Num() > 0)
+	{
+		if (State != EBDMinisterState::Reading)
+		{
+			StartReading();
+		}
+		QuietSeconds = 0.0f;
+		const float Until = World->GetTimeSeconds() + FMath::Max(BDMinisterPrivate::CoverHold, DeltaSeconds * 3.0f);
+		for (const TWeakObjectPtr<ABDEnemyBase>& Enemy : Sheltered)
+		{
+			Enemy->ShelterUntil(Until);
+		}
+	}
+	else if (State == EBDMinisterState::Reading)
+	{
+		QuietSeconds += DeltaSeconds;
+		if (QuietSeconds >= Settings.ResumeAfterSeconds)
+		{
+			StopReading();
+		}
+	}
+	Shield->SetVisibility(IsShieldUp());
+}
+
+void ABDMinister::StartReading()
+{
+	Route.Reset();
+	State = EBDMinisterState::Reading;
+	StateSeconds = 0.0f;
+	QuietSeconds = 0.0f;
+	Book->SetVisibility(true);
+	UE_LOG(LogBDMinister, Log, TEXT("%s stops and reads: %d militant(s) covered."), *GetName(), Sheltered.Num());
+}
+
+void ABDMinister::StopReading()
+{
+	Book->SetVisibility(false);
+	Shield->SetVisibility(false);
+	UE_LOG(LogBDMinister, Log, TEXT("%s closes the book after %.1f s, nobody left to cover: back to his walk."), *GetName(), StateSeconds);
+	StartWalk();
+}
+
+void ABDMinister::DropCover()
+{
+	for (const TWeakObjectPtr<ABDEnemyBase>& Enemy : Sheltered)
+	{
+		if (ABDEnemyBase* Covered = Enemy.Get())
+		{
+			Covered->Unshelter();
+		}
+	}
+	if (Sheltered.Num() > 0)
+	{
+		UE_LOG(LogBDMinister, Log, TEXT("%s loses his cover: %d militant(s) in plain sight again."), *GetName(), Sheltered.Num());
+	}
+	Sheltered.Reset();
+	Book->SetVisibility(false);
+	Shield->SetVisibility(false);
 }
 
 //~ Walking ----------------------------------------------------------------------
@@ -245,6 +389,7 @@ void ABDMinister::ReceiveKick(const AActor& Kicker)
 		}
 	}
 
+	DropCover();
 	Route.Reset();
 	State = EBDMinisterState::Flying;
 	StateSeconds = 0.0f;
@@ -309,18 +454,24 @@ void ABDMinister::Tick(const float DeltaSeconds)
 		break;
 
 	case EBDMinisterState::Walking:
-		if (StepAlong(DeltaSeconds, 1.0f))
+		UpdateRefuge(DeltaSeconds);
+		if (State == EBDMinisterState::Walking && StepAlong(DeltaSeconds, 1.0f))
 		{
 			DecideNext();
 		}
 		break;
 
 	case EBDMinisterState::Idle:
+		UpdateRefuge(DeltaSeconds);
 		IdleRemaining -= DeltaSeconds;
-		if (IdleRemaining <= 0.0f)
+		if (State == EBDMinisterState::Idle && IdleRemaining <= 0.0f)
 		{
 			StartWalk();
 		}
+		break;
+
+	case EBDMinisterState::Reading:
+		UpdateRefuge(DeltaSeconds);
 		break;
 
 	case EBDMinisterState::Flying:
@@ -364,7 +515,7 @@ FString ABDMinister::Describe() const
 	FBDCellCoord Cell;
 	const UBDGridSubsystem* Grid = GetGrid();
 	const bool bOnBoard = Grid != nullptr && Grid->WorldToCell(GetActorLocation(), Cell);
-	return FString::Printf(TEXT("%s: %s at %s (%s), %d point(s) to go, %d kick(s) taken"), *GetName(),
+	return FString::Printf(TEXT("%s: %s at %s (%s), %d point(s) to go, %d kick(s) taken, %d covered%s"), *GetName(),
 		*StaticEnum<EBDMinisterState>()->GetNameStringByValue(static_cast<int64>(State)), *GetActorLocation().ToCompactString(),
-		bOnBoard ? *Cell.ToString() : TEXT("off the board"), Route.Num(), KicksTaken);
+		bOnBoard ? *Cell.ToString() : TEXT("off the board"), Route.Num(), KicksTaken, Sheltered.Num(), IsShieldUp() ? TEXT(", shield up") : TEXT(""));
 }

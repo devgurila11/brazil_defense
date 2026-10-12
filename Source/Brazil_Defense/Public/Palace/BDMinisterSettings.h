@@ -110,6 +110,55 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Kick", meta = (ClampMin = "1.0"))
 	float FleeSpeedScale = 2.5f;
 
+	//~ The refuge --------------------------------------------------------------
+
+	/**
+	 * How far his cover reaches, in cells, from his centre. A militant inside it while he
+	 * reads is out of every defender's reach and blinks; the candidate is never covered.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Refuge", meta = (ClampMin = "0.1"))
+	float RefugeRadiusCells = 2.0f;
+
+	/** Seconds he keeps reading once nobody is left in his radius, before he walks on. */
+	UPROPERTY(config, EditAnywhere, Category = "Refuge", meta = (ClampMin = "0.0", ForceUnits = "s"))
+	float ResumeAfterSeconds = 5.0f;
+
+	/** Blinks a second of a covered militant's body. */
+	UPROPERTY(config, EditAnywhere, Category = "Refuge", meta = (ClampMin = "0.5"))
+	float ShelterBlinkHz = 5.0f;
+
+	/** Share of each blink the body is drawn. */
+	UPROPERTY(config, EditAnywhere, Category = "Refuge", meta = (ClampMin = "0.05", ClampMax = "0.95"))
+	float ShelterBlinkShown = 0.55f;
+
+	/** The shield: a dome on the edge of his radius, up while somebody is inside it. A sphere of the engine until the Niagara one. */
+	UPROPERTY(config, EditAnywhere, Category = "Refuge")
+	TSoftObjectPtr<UStaticMesh> ShieldMesh;
+
+	/** Translucent and unlit, brighter at its rim; a Color vector parameter takes ShieldColor. */
+	UPROPERTY(config, EditAnywhere, Category = "Refuge")
+	TSoftObjectPtr<UMaterialInterface> ShieldMaterial;
+
+	UPROPERTY(config, EditAnywhere, Category = "Refuge")
+	FLinearColor ShieldColor = FLinearColor(0.55f, 0.8f, 1.0f, 1.0f);
+
+	/** The book he reads while he covers: a block in his hands until his animation, BlockMaterial in BookColor. */
+	UPROPERTY(config, EditAnywhere, Category = "Refuge")
+	FVector BookScale = FVector(0.5f, 1.4f, 1.0f);
+
+	UPROPERTY(config, EditAnywhere, Category = "Refuge")
+	FLinearColor BookColor = FLinearColor(0.45f, 0.05f, 0.04f, 1.0f);
+
+	//~ Out of the STF ---------------------------------------------------------
+
+	/** One minister out of the STF for every candidate killed, while fewer than MaxOnBoard are out. */
+	UPROPERTY(config, EditAnywhere, Category = "STF")
+	bool bReleaseOnCandidateKilled = true;
+
+	/** The STF has eleven. */
+	UPROPERTY(config, EditAnywhere, Category = "STF", meta = (ClampMin = "0"))
+	int32 MaxOnBoard = 11;
+
 	//~ Voice --------------------------------------------------------------------
 
 	/** His cry when kicked. Empty for now: the black exclamation still goes up, for ScreamMarkSeconds. */

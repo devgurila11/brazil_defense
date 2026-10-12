@@ -18,6 +18,7 @@
 #include "Materials/MaterialInterface.h"
 #include "Grid/BDGridSubsystem.h"
 #include "Palace/BDAgent.h"
+#include "Palace/BDMinisterSettings.h"
 #include "Tower/BDTowerBase.h"
 #include "Wave/BDWaveSettings.h"
 #include "Wave/BDWaveSubsystem.h"
@@ -567,9 +568,41 @@ void ABDEnemyBase::RebuildWaypoints()
 		LaneWanderCells, CornerRadiusScale, SpeedScale);
 }
 
+bool ABDEnemyBase::IsSheltered() const
+{
+	const UWorld* World = GetWorld();
+	return !IsCandidate() && World != nullptr && ShelteredUntil >= 0.0f && World->GetTimeSeconds() <= ShelteredUntil;
+}
+
+void ABDEnemyBase::UpdateShelterBlink()
+{
+	// On and off at the blink's rate, the body only: its bar and its speech mark stay.
+	bool bShow = true;
+	if (!bFinished && IsSheltered())
+	{
+		const UBDMinisterSettings& Settings = UBDMinisterSettings::Get();
+		const double Now = GetWorld()->GetTimeSeconds();
+		bShow = FMath::Frac(Now * Settings.ShelterBlinkHz) < Settings.ShelterBlinkShown;
+	}
+	if (bShow == bBlinkShown)
+	{
+		return;
+	}
+	bBlinkShown = bShow;
+	if (SkeletalBody != nullptr)
+	{
+		SkeletalBody->SetHiddenInGame(!bShow, /*bPropagateToChildren*/ true);
+	}
+	if (Mesh != nullptr)
+	{
+		Mesh->SetHiddenInGame(!bShow, /*bPropagateToChildren*/ true);
+	}
+}
+
 void ABDEnemyBase::Tick(const float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	UpdateShelterBlink();
 
 	if (bFinished || Data == nullptr || !Waypoints.IsValidIndex(CurrentWaypoint))
 	{
@@ -720,6 +753,17 @@ void ABDEnemyBase::ApplyDamage(const float Damage, AActor* Source)
 {
 	if (bFinished || Damage <= 0.0f)
 	{
+		return;
+	}
+
+	// Under a minister's cover nothing lands: a shot or a blast already on its way is lost.
+	if (IsSheltered())
+	{
+		if (UBDWaveSubsystem* Waves = GetWaves())
+		{
+			Waves->ReportWastedDamage(Damage, /*bLostShot*/ false);
+		}
+		UE_LOG(LogBDWave, Verbose, TEXT("%s covered by a minister: %.0f from %s lost."), *GetName(), Damage, *GetNameSafe(Source));
 		return;
 	}
 

@@ -263,6 +263,29 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-12 (Fatia 3b: o refúgio do ministro) — (id)** (desde a9c6ae7):
+  - Sem briefing.md: veio da conversa colada com as três respostas dele (volta a andar 5 s
+    depois de esvaziar; escudo é um domo no limite do raio; só saem de campo com o chute).
+  - **Refúgio** — `ABDMinister` ganhou o estado `Reading`. Militante (nunca candidato) a
+    `RefugeRadiusCells` (2) dele o faz parar e abrir o livro; enquanto lê, todo militante no
+    raio fica coberto (`ABDEnemyBase::IsSheltered`, renovado por frame, dura 0,3 s): torre e
+    Mito não miram (`IsValidTarget`), e `ApplyDamage` perde o golpe (conta como dano
+    desperdiçado). O coberto pisca (corpo some/aparece, `ShelterBlinkHz` 5, `ShelterBlinkShown`
+    0,55) — não é opacidade de verdade: os materiais dos personagens são opacos.
+  - **Domo** — esfera da engine no raio, centrada nos pés, com `M_MinisterShield` (novo:
+    translúcido, unlit, borda mais forte por fresnel, parâmetros Color/Glow/RimOpacity/
+    BaseOpacity, criado por script Python). Só aparece com alguém dentro. Placeholder do
+    Niagara. **Livro** — bloco vermelho diante do peito enquanto lê.
+  - Raio vazio: o domo cai, ele lê mais `ResumeAfterSeconds` (5) e volta a andar. O chute do
+    Mito vale durante a leitura e derruba a cobertura na hora (`DropCover`).
+  - **Saída do STF** — **decisão minha a confirmar:** cada candidato morto (inclusive os do
+    desfile) solta um ministro, até `MaxOnBoard` (11) em campo; chutado volta ao STF e pode
+    sair de novo (`bReleaseOnCandidateKilled`). O Mito só chuta ministro dentro do alcance
+    dele (3 células), não vai buscar longe.
+  - Checks REFUGIO (4): cobre e lê sob o domo sem levar dano; esvazia, lê 5 s e anda; chute
+    expõe o militante; candidato morto solta um ministro. Regressão 96/96; os dois alvos
+    compilados. Falta ver na tela.
+
 - **2026-10-12 (tecla H esconde só o painel) — 77c08d8** (desde c4b07ee):
   - Briefing 12:00. O **H** (e `BD.HUD.Clean`) esconde só o painel: o widget do HUD
     (placar, apuração, recursos, menu de peças, abates), as linhas de debug (alcances,

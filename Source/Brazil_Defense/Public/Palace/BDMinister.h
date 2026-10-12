@@ -7,6 +7,7 @@
 #include "Grid/BDGridTypes.h"
 #include "BDMinister.generated.h"
 
+class ABDEnemyBase;
 class UBDGridSubsystem;
 class UStaticMeshComponent;
 struct FBDFreeWalk;
@@ -21,6 +22,12 @@ enum class EBDMinisterState : uint8
 	/** Strolling the board, free of the grid like the Agent: only dividers and blocked cells stop him. */
 	Walking,
 	Idle,
+
+	/**
+	 * Stopped with his book open: militants inside his radius are covered (the refuge). He
+	 * reads on while they are there and for a while after the last one, then walks on.
+	 */
+	Reading,
 
 	/** Kicked: up in the air, turning. */
 	Flying,
@@ -40,8 +47,14 @@ enum class EBDMinisterState : uint8
  *
  * The Agent runs at him and kicks him (ABDAgent): he flies up turning, cries out - the
  * black exclamation over him - falls, lies there a moment, then runs back to the STF and
- * is gone through its door. The rules of 3b (eleven of them, one out per candidate down,
- * the refuge around the STF) are not here.
+ * is gone through its door: the kick is the only thing that sends him back.
+ *
+ * The refuge (slice 3b): a militant (never the candidate) within RefugeRadiusCells of him
+ * stops him, and he reads. While he reads, every militant inside the radius is covered
+ * (ABDEnemyBase::IsSheltered): no defender aims at it, no hit lands, it blinks; the shield
+ * dome stands on the edge of the radius while somebody is inside. With the radius empty he
+ * reads on ResumeAfterSeconds and walks again. The Agent's kick breaks it: the cover drops
+ * at once, the book and the dome go, and he flies.
  */
 UCLASS(NotBlueprintable, meta = (DisplayName = "BD Minister"))
 class BRAZIL_DEFENSE_API ABDMinister : public AActor
@@ -64,6 +77,12 @@ public:
 
 	/** Whether a kick would land: he is on his feet on the board, not flying, lying or running. */
 	bool CanBeKicked() const;
+
+	/** Militants he covers this frame. */
+	int32 GetShelteredCount() const { return Sheltered.Num(); }
+
+	/** Whether the shield dome is up: he reads with somebody inside his radius. */
+	bool IsShieldUp() const;
 
 	/** The Agent's foot landed: up he goes, crying out, away from the kicker. */
 	void ReceiveKick(const AActor& Kicker);
@@ -91,6 +110,14 @@ private:
 
 	void DecideNext();
 	void StartWalk();
+
+	/** Who is inside his radius, covered while he reads; starts and ends the reading. */
+	void UpdateRefuge(float DeltaSeconds);
+	void StartReading();
+	void StopReading();
+
+	/** Takes the cover off everyone at once and puts the book and the dome away. */
+	void DropCover();
 	void StartFlee();
 	void Cry();
 
@@ -102,6 +129,20 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Minister")
 	TObjectPtr<UStaticMeshComponent> Block;
+
+	/** The book in his hands while he reads. */
+	UPROPERTY(VisibleAnywhere, Category = "Minister")
+	TObjectPtr<UStaticMeshComponent> Book;
+
+	/** The dome on the edge of his radius. */
+	UPROPERTY(VisibleAnywhere, Category = "Minister")
+	TObjectPtr<UStaticMeshComponent> Shield;
+
+	/** The militants covered this frame. */
+	TArray<TWeakObjectPtr<ABDEnemyBase>> Sheltered;
+
+	/** Seconds read with nobody in the radius. */
+	float QuietSeconds = 0.0f;
 
 	EBDMinisterState State = EBDMinisterState::Entering;
 

@@ -10,7 +10,8 @@
 class ABDMinister;
 
 /**
- * The STF lets the ministers out (slice 3a). It is the building placed in the map, found by
+ * The STF lets the ministers out: one for every candidate killed, up to its eleven on the
+ * board at once (slice 3b); a kicked one goes back in and may come out again. It is the building placed in the map, found by
  * its mesh (UBDMinisterSettings::StfMesh), on the side of the board away from the buses.
  * Its door is the board cell nearest to it that a man may stand on; outside the door,
  * against the building, is where a minister appears and where a fleeing one is gone.
@@ -33,6 +34,15 @@ public:
 	/** Lets Count ministers out of the STF door, side by side. @return how many came out. */
 	int32 SpawnMinisters(int32 Count);
 
+	/**
+	 * A candidate is down: one more minister out of the STF, while fewer than MaxOnBoard
+	 * are out (UBDMinisterSettings::bReleaseOnCandidateKilled). @return whether one came out.
+	 */
+	bool NotifyCandidateKilled();
+
+	/** Ministers let out by candidates killed this match. */
+	int32 GetReleasedByKills() const { return ReleasedByKills; }
+
 	/** The STF door: its cell on the board, the point outside it, and the building. @return false without a board. */
 	bool FindDoor(FBDCellCoord& OutCell, FVector& OutOutside, const AActor*& OutStf);
 
@@ -48,4 +58,5 @@ private:
 
 	TWeakObjectPtr<const AActor> Stf;
 	bool bStfSearched = false;
+	int32 ReleasedByKills = 0;
 };

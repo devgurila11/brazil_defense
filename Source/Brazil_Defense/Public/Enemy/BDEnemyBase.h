@@ -89,6 +89,22 @@ public:
 	/** Called by that projectile when it hits, misses or vanishes. */
 	void RemoveIncomingDamage(float Damage) { IncomingDamage = FMath::Max(0.0f, IncomingDamage - FMath::Max(0.0f, Damage)); }
 
+	//~ The ministers' refuge -------------------------------------------------
+	// A minister reading with this militant inside his radius covers it (ABDMinister): no
+	// defender aims at it, no hit lands on it, and it blinks. The cover is renewed every
+	// frame he gives it and runs out a moment after, so a minister kicked or gone, or a
+	// militant walked out, needs no one to take it back.
+
+	/** Covered until this world time, at least. */
+	void ShelterUntil(float WorldSeconds) { ShelteredUntil = FMath::Max(ShelteredUntil, WorldSeconds); }
+
+	/** The cover gone at once: the minister who gave it was kicked. Another one still reading renews it next frame. */
+	void Unshelter() { ShelteredUntil = -1.0f; }
+
+	/** Whether a minister covers it now. Never the candidate. */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	bool IsSheltered() const;
+
 	/**
 	 * Replaces the route. The new path is expected to start at the cell the creep is
 	 * heading to, so the crossing already under way is finished and then the new route
@@ -321,4 +337,13 @@ private:
 
 	/** Guards against reporting twice: Arrive and Kill both end in Destroy, which is deferred. */
 	bool bFinished = false;
+
+	/** World time the ministers' cover lasts until. */
+	float ShelteredUntil = -1.0f;
+
+	/** Whether the body is drawn this frame of the cover's blink; false only mid-blink. */
+	bool bBlinkShown = true;
+
+	/** Blinks the body while covered and shows it again once not. */
+	void UpdateShelterBlink();
 };

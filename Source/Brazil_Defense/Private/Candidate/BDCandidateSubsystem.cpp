@@ -10,6 +10,7 @@
 #include "Engine/World.h"
 #include "Match/BDGameBalanceSettings.h"
 #include "Match/BDMatchManager.h"
+#include "Palace/BDMinisterSubsystem.h"
 #include "Stats/Stats.h"
 #include "Wave/BDWaveSettings.h"
 #include "Wave/BDBusSubsystem.h"
@@ -528,6 +529,12 @@ void UBDCandidateSubsystem::NotifyCandidateKilled(ABDCandidate* Killed)
 	if (!bTracked)
 	{
 		return;
+	}
+
+	// Every candidate down lets a minister out of the STF.
+	if (UBDMinisterSubsystem* Ministers = UBDMinisterSubsystem::Get(this))
+	{
+		Ministers->NotifyCandidateKilled();
 	}
 
 	// A first death joins the fallen: from now on he is one of those who come back.
