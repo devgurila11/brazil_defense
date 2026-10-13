@@ -52,6 +52,7 @@
 "HUD.Wave.NoMatch","No match"
 "HUD.Wave.Setup","Preparing the board"
 "HUD.Wave.Building","Wave {Wave} · building · next in {Seconds}s"
+"HUD.Wave.PlaceUrn","Wave {Wave} · building · place the urn to start the countdown"
 "HUD.Wave.Frozen","(frozen)"
 "HUD.Wave.Active","Wave {Wave} · in progress"
 "HUD.Wave.ToSend","· to send: {Count}"

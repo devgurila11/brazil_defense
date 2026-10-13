@@ -52,6 +52,7 @@
 "HUD.Wave.NoMatch","Sem partida"
 "HUD.Wave.Setup","Preparando o tabuleiro"
 "HUD.Wave.Building","Onda {Wave} · montagem · próxima em {Seconds}s"
+"HUD.Wave.PlaceUrn","Onda {Wave} · montagem · coloque a urna para a contagem começar"
 "HUD.Wave.Frozen","(congelado)"
 "HUD.Wave.Active","Onda {Wave} · em curso"
 "HUD.Wave.ToSend","· a sair: {Count}"

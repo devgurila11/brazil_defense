@@ -18,6 +18,7 @@
 #include "Match/BDMatchManager.h"
 #include "Objective/BDObjective.h"
 #include "Path/BDPathfinder.h"
+#include "Save/BDMatchSave.h"
 #include "Stats/Stats.h"
 #include "Wave/BDBusSubsystem.h"
 #include "Wave/BDWaveSettings.h"
@@ -771,6 +772,44 @@ const TArray<FBDSpawnPoint>& UBDWaveSubsystem::GetSpawnPoints()
 	}
 
 	return SpawnPoints;
+}
+
+void UBDWaveSubsystem::CaptureMouths(TArray<FBDSavedMouth>& OutMouths)
+{
+	OutMouths.Reset();
+	for (const FBDSpawnPoint& Point : GetSpawnPoints())
+	{
+		OutMouths.AddDefaulted_GetRef().Cells = Point.Cells;
+	}
+}
+
+bool UBDWaveSubsystem::RestoreMouths(const TArray<FBDSavedMouth>& Mouths)
+{
+	UBDGridSubsystem* Grid = GetGrid();
+	if (Grid == nullptr || Mouths.Num() == 0)
+	{
+		return false;
+	}
+
+	// The anchors are read on the first look at the board; taken before the cells move, so
+	// a load in a fresh world still binds every mouth to its authored bus.
+	GetSpawnPoints();
+	for (const FBDSpawnPoint& Point : SpawnPoints)
+	{
+		for (const FBDCellCoord& Cell : Point.Cells) { Grid->SetCellState(Cell, EBDCellState::Free); }
+	}
+	for (const FBDSavedMouth& Mouth : Mouths)
+	{
+		for (const FBDCellCoord& Cell : Mouth.Cells) { Grid->SetCellState(Cell, EBDCellState::Spawn); }
+	}
+	bRoutesDirty = true;
+
+	if (UBDBusSubsystem* Buses = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDBusSubsystem>() : nullptr)
+	{
+		Buses->FollowMouths(GetSpawnPoints());
+	}
+	UE_LOG(LogBDWave, Log, TEXT("Mouths put back where the save had them: %d of %d."), GetSpawnPoints().Num(), Mouths.Num());
+	return true;
 }
 
 int32 UBDWaveSubsystem::GetSpawnPointCount()

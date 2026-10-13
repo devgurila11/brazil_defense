@@ -4,8 +4,17 @@
 
 #include "BDLog.h"
 #include "Kismet/GameplayStatics.h"
+#include "Save/BDMatchSave.h"
 
-const TCHAR* UBDProgressSave::SlotName = TEXT("BDProgress");
+const TCHAR* UBDProgressSave::PlayerSlotName = TEXT("BDProgress");
+const TCHAR* UBDProgressSave::TestSlotName = TEXT("BDProgress_Test");
+
+const TCHAR* UBDProgressSave::GetSlotName()
+{
+	// A test winning a match must not hand the player a chain bonus he never earned: that
+	// is how Easy and Hard once read as won without ever being played.
+	return UBDMatchSave::IsTestSlot() ? TestSlotName : PlayerSlotName;
+}
 
 namespace BDProgressPrivate
 {
@@ -44,22 +53,22 @@ void UBDProgressSave::RecordWin(const EBDDifficulty Difficulty)
 
 void UBDProgressSave::ResetProgress()
 {
-	if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))
+	if (UGameplayStatics::DoesSaveGameExist(GetSlotName(), UserIndex))
 	{
-		UGameplayStatics::DeleteGameInSlot(SlotName, UserIndex);
+		UGameplayStatics::DeleteGameInSlot(GetSlotName(), UserIndex);
 	}
 	UE_LOG(LogBDMatch, Warning, TEXT("Progress: every win forgotten."));
 }
 
 UBDProgressSave* UBDProgressSave::LoadOrCreate()
 {
-	if (UGameplayStatics::DoesSaveGameExist(SlotName, UserIndex))
+	if (UGameplayStatics::DoesSaveGameExist(GetSlotName(), UserIndex))
 	{
-		if (UBDProgressSave* Loaded = Cast<UBDProgressSave>(UGameplayStatics::LoadGameFromSlot(SlotName, UserIndex)))
+		if (UBDProgressSave* Loaded = Cast<UBDProgressSave>(UGameplayStatics::LoadGameFromSlot(GetSlotName(), UserIndex)))
 		{
 			return Loaded;
 		}
-		UE_LOG(LogBDMatch, Error, TEXT("Progress slot '%s' could not be read; starting over."), SlotName);
+		UE_LOG(LogBDMatch, Error, TEXT("Progress slot '%s' could not be read; starting over."), GetSlotName());
 	}
 
 	return Cast<UBDProgressSave>(UGameplayStatics::CreateSaveGameObject(StaticClass()));
@@ -80,5 +89,5 @@ void UBDProgressSave::MarkWon(const EBDDifficulty Difficulty)
 
 bool UBDProgressSave::WriteToSlot() const
 {
-	return UGameplayStatics::SaveGameToSlot(const_cast<UBDProgressSave*>(this), SlotName, UserIndex);
+	return UGameplayStatics::SaveGameToSlot(const_cast<UBDProgressSave*>(this), GetSlotName(), UserIndex);
 }

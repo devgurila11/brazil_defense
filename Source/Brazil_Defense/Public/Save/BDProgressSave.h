@@ -18,8 +18,16 @@ class BRAZIL_DEFENSE_API UBDProgressSave : public USaveGame
 	GENERATED_BODY()
 
 public:
-	static const TCHAR* SlotName;
+	/** The player's slot. Never written by a test. */
+	static const TCHAR* PlayerSlotName;
+
+	/** What tests write instead, under the same rule as the match save (UBDMatchSave::IsTestSlot). */
+	static const TCHAR* TestSlotName;
+
 	static constexpr int32 UserIndex = 0;
+
+	/** The slot this process reads and writes. */
+	static const TCHAR* GetSlotName();
 
 	/** Whether a difficulty has been won, from the slot. False when there is no slot. */
 	static bool HasWonDifficulty(EBDDifficulty Difficulty);

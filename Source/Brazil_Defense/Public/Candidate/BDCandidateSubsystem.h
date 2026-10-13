@@ -30,6 +30,25 @@ struct FBDCandidateRecord
 	float MaxHealth = 0.0f;
 };
 
+/** What a save keeps of the candidates: who went out, who fell, and the one owed. */
+USTRUCT()
+struct FBDCandidateSaveState
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TArray<FBDCandidateRecord> Sent;
+
+	UPROPERTY()
+	TArray<FBDCandidateRecord> Fallen;
+
+	UPROPERTY()
+	bool bSchedulePending = false;
+
+	UPROPERTY()
+	int32 EarlyScheduleWave = 0;
+};
+
 /**
  * The candidates are the bosses: one walks out every CandidateInterval waves, as tough
  * as the creeps of that wave times CandidateHealthMultiplier, so the twentieth is far
@@ -108,6 +127,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
 	bool IsScoreboardInverted() const;
 
+	/** A due candidate is owed to the next wave that finds the board clear of them. */
+	bool IsSchedulePending() const { return bSchedulePending; }
+
+	/** The records a save keeps. Only meaningful with no candidate walking and no parade. */
+	FBDCandidateSaveState CaptureState() const;
+
+	/** Puts the saved records back, after the rewind of a load has wiped them. */
+	void RestoreState(const FBDCandidateSaveState& State);
+
+	/** Forgets every candidate: the match was rewound or rebuilt. */
+	void ResetForNewMatch();
+
 	/** Kept for the callers of the old pause: nothing freezes any more. */
 	bool IsCountFrozen() const { return false; }
 	float GetPauseRemaining() const { return 0.0f; }
@@ -147,9 +178,6 @@ private:
 
 	/** Spawns a candidate actor for a record, at that record's health. Null when it cannot. */
 	ABDCandidate* SpawnFromRecord(const FBDCandidateRecord& Record, bool bReturning, const TCHAR* Why, TArray<int32>* MouthUses = nullptr);
-
-	/** Everything from the last match dropped: on a rewind to wave 0. */
-	void ResetForNewMatch();
 
 	/** The one who came out first among those still walking. */
 	TArray<TWeakObjectPtr<ABDCandidate>> Living;

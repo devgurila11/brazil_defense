@@ -220,6 +220,24 @@ void UBDMinisterSubsystem::ReturnSeat(const int32 Seat)
 	}
 }
 
+void UBDMinisterSubsystem::ResetForNewMatch()
+{
+	const TArray<ABDMinister*> Out = GetMinisters();
+	for (ABDMinister* Minister : Out)
+	{
+		Minister->Destroy();
+	}
+	// Rebuilt rather than trusted: the seats the destroyed ones handed back went to the end.
+	Line.Reset();
+	bLineReady = false;
+	GetLine();
+	ReleasedByKills = 0;
+	if (Out.Num() > 0)
+	{
+		UE_LOG(LogBDMinister, Log, TEXT("Board undone: %d minister(s) gone, the STF full again (%d seats)."), Out.Num(), Line.Num());
+	}
+}
+
 TArray<ABDMinister*> UBDMinisterSubsystem::GetMinisters() const
 {
 	TArray<ABDMinister*> Out;

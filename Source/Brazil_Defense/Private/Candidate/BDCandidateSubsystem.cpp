@@ -193,6 +193,13 @@ void UBDCandidateSubsystem::HandleVotesChanged(const int32 Blue, const int32 Red
 	{
 		return;
 	}
+	// A load telling the restored count is not the count turning: the match picks up where
+	// it was saved, and only the next vote can send anybody out.
+	const ABDMatchManager* Restoring = GetMatch();
+	if (Restoring != nullptr && Restoring->IsRestoring())
+	{
+		return;
+	}
 	if (Fallen.Num() > 0)
 	{
 		BeginReturn(TEXT("red passed blue"));
@@ -290,9 +297,31 @@ void UBDCandidateSubsystem::ResetForNewMatch()
 	bReturnActive = false;
 	bSchedulePending = false;
 	EarlyScheduleWave = 0;
+	AwaitingBusRemaining = 0.0f;
 	ReturnAlive = 0;
 	ReturnsStarted = 0;
 	ArrivedOrdinal = 0;
+}
+
+FBDCandidateSaveState UBDCandidateSubsystem::CaptureState() const
+{
+	FBDCandidateSaveState State;
+	State.Sent = Sent;
+	State.Fallen = Fallen;
+	State.bSchedulePending = bSchedulePending;
+	State.EarlyScheduleWave = EarlyScheduleWave;
+	return State;
+}
+
+void UBDCandidateSubsystem::RestoreState(const FBDCandidateSaveState& State)
+{
+	ResetForNewMatch();
+	Sent = State.Sent;
+	Fallen = State.Fallen;
+	bSchedulePending = State.bSchedulePending;
+	EarlyScheduleWave = State.EarlyScheduleWave;
+	UE_LOG(LogBDCandidate, Log, TEXT("Candidates restored: %d sent, %d fallen%s."), Sent.Num(), Fallen.Num(),
+		bSchedulePending ? TEXT(", one owed") : TEXT(""));
 }
 
 //~ Sending them out ---------------------------------------------------------------

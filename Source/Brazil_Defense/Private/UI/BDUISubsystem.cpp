@@ -13,6 +13,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Match/BDMatchManager.h"
+#include "Save/BDMatchSave.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "TimerManager.h"
@@ -322,6 +323,9 @@ void UBDUISubsystem::PlayGame(const EBDDifficulty Difficulty)
 {
 	ChosenDifficulty = Difficulty;
 	bLoadPending = false;
+	// A new match: the restore point of the last one goes, so Continue never brings back
+	// a match the player walked away from.
+	UBDMatchSave::Delete();
 	UE_LOG(LogBDUI, Log, TEXT("Play on %s."), *StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Difficulty)));
 	OpenGameLevel();
 }
@@ -545,7 +549,7 @@ void UBDUISubsystem::ShowHUD()
 		bLoadPending = false;
 		if (ABDMatchManager* Match = ABDMatchManager::Get(GetLocalController()))
 		{
-			Match->LoadMatch();
+			Match->LoadMatch(/*bFromMenu*/ true);
 		}
 	}
 

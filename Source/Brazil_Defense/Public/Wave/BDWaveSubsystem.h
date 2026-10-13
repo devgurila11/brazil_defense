@@ -15,6 +15,7 @@ class ABDObjective;
 class UBDEnemyData;
 class UBDGridSubsystem;
 class UBDPathfinder;
+struct FBDSavedMouth;
 
 /** Kills of one kind of creep, as the kill board shows them. */
 struct FBDKillTally
@@ -124,6 +125,16 @@ public:
 
 	/** The entry points of the board, refreshed from the grid if it changed since the last call. */
 	const TArray<FBDSpawnPoint>& GetSpawnPoints();
+
+	/** Where every mouth stands now, for a save: its Spawn cells. */
+	void CaptureMouths(TArray<FBDSavedMouth>& OutMouths);
+
+	/**
+	 * Puts the mouths back where a save had them: the Spawn cells of now become Free and
+	 * the saved ones Spawn, the routes are read again and the buses follow. Their anchors
+	 * stay the authored ones. @return false when the save holds no mouths (an older save).
+	 */
+	bool RestoreMouths(const TArray<FBDSavedMouth>& Mouths);
 
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Wave")
 	int32 GetSpawnPointCount();

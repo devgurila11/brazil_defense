@@ -1359,7 +1359,7 @@ void UBDHUDWidget::UpdateWaveLine()
 		break;
 	case EBDMatchPhase::Building:
 	{
-		Text = BDLoc::Format(TEXT("HUD.Wave.Building"), Args);
+		Text = BDLoc::Format(Match->IsAwaitingUrn() ? TEXT("HUD.Wave.PlaceUrn") : TEXT("HUD.Wave.Building"), Args);
 		static const IConsoleVariable* FreezeTimer = IConsoleManager::Get().FindConsoleVariable(TEXT("BD.Match.FreezeTimer"));
 		if (FreezeTimer != nullptr && FreezeTimer->GetInt() != 0)
 		{
@@ -1812,7 +1812,7 @@ void UBDHUDWidget::UpdateEndPanel()
 	EndLine->SetText(BDLoc::Format(bWon ? TEXT("HUD.End.Prisoners") : TEXT("HUD.End.Score"), Args));
 	EndlessButton->SetVisibility(bWon ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	// A loss offers the saved match, when there is one; a win has nothing to go back for.
-	LoadButton->SetVisibility(!bWon && ABDMatchManager::HasSavedMatch() ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+	LoadButton->SetVisibility(!bWon && Match->HasLoadableSave() ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	EndBox->SetVisibility(ESlateVisibility::Visible);
 }
 

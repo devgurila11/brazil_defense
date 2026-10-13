@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
+#include "Candidate/BDCandidateSubsystem.h"
 #include "Grid/BDGridTypes.h"
 #include "Match/BDMatchTypes.h"
 #include "BDMatchSave.generated.h"
@@ -50,6 +51,16 @@ struct FBDSavedPiece
 	bool IsOnEdge() const { return Edges.Num() > 0; }
 };
 
+/** One mouth of the horde as it stood: its Spawn cells, which say where it had slid to. */
+USTRUCT()
+struct FBDSavedMouth
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TArray<FBDCellCoord> Cells;
+};
+
 /**
  * The whole of a match at the start of a wave: where the score stands, what the player
  * has left, what is on the board. One slot per game, overwritten by each save: the
@@ -62,11 +73,31 @@ class BRAZIL_DEFENSE_API UBDMatchSave : public USaveGame
 	GENERATED_BODY()
 
 public:
-	static const TCHAR* SlotName;
+	/** The player's slot. Never written by a test. */
+	static const TCHAR* PlayerSlotName;
+
+	/** The slot tests write instead: headless runs (-unattended), the regression, the simulation. */
+	static const TCHAR* TestSlotName;
+
 	static constexpr int32 UserIndex = 0;
+
+	/**
+	 * The slot this process reads and writes: the test slot when unattended, with
+	 * -BDTestSlot, or while a test asked for it (SetTestSlot); the player's otherwise.
+	 */
+	static const TCHAR* GetSlotName();
+
+	/** Sends this process's saves to the test slot from now on, or back. */
+	static void SetTestSlot(bool bTest);
+
+	/** Whether this process writes the test slot. */
+	static bool IsTestSlot();
 
 	/** Whether a saved match exists on disk. */
 	static bool Exists();
+
+	/** Removes the saved match, when there is one. @return whether the slot is gone. */
+	static bool Delete();
 
 	/** The saved match, or null when there is none or it cannot be read. */
 	static UBDMatchSave* LoadFromSlot();
@@ -132,4 +163,23 @@ public:
 
 	UPROPERTY()
 	FDateTime SavedAt;
+
+	/** When the match this save belongs to was started: a save loads only into its own match. */
+	UPROPERTY()
+	FDateTime MatchStart;
+
+	/** Seconds the building phase had left: the load reopens it with that much to go. -1 in an older save. */
+	UPROPERTY()
+	float TimeUntilNextWave = -1.0f;
+
+	UPROPERTY()
+	int32 LevelDownCount = 0;
+
+	/** Where every mouth had slid to. Empty in an older save. */
+	UPROPERTY()
+	TArray<FBDSavedMouth> Mouths;
+
+	/** The candidates sent and fallen, and the one owed. */
+	UPROPERTY()
+	FBDCandidateSaveState Candidates;
 };

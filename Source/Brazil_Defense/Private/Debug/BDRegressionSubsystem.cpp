@@ -3,6 +3,9 @@
 #include "Debug/BDRegressionSubsystem.h"
 
 #include "BDBuildInfo.h"
+#include "HAL/FileManager.h"
+#include "Save/BDMatchSave.h"
+#include "Save/BDProgressSave.h"
 #include "Cast/BDCast.h"
 #include "BDLog.h"
 #include "Bribe/BDBribeSubsystem.h"
@@ -188,6 +191,25 @@ void UBDRegressionSubsystem::Start(const bool bQuitWhenDone)
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.PostMatch.Enabled"), 0);
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.WaveLog.Enabled"), 0);
 
+	// Saves go to the test slot, and the player's is stamped to prove it stayed untouched.
+	bWasTestSlot = UBDMatchSave::IsTestSlot();
+	UBDMatchSave::SetTestSlot(true);
+	UBDMatchSave::Delete();
+	UBDProgressSave::ResetProgress();
+	PlayerFiles.Reset();
+	PlayerFileExisted.Reset();
+	PlayerFileTime.Reset();
+	PlayerFileSize.Reset();
+	for (const TCHAR* Slot : { UBDMatchSave::PlayerSlotName, UBDProgressSave::PlayerSlotName })
+	{
+		const FString File = FPaths::ProjectSavedDir() / TEXT("SaveGames") / FString(Slot) + TEXT(".sav");
+		const bool bExists = IFileManager::Get().FileExists(*File);
+		PlayerFiles.Add(File);
+		PlayerFileExisted.Add(bExists);
+		PlayerFileTime.Add(bExists ? IFileManager::Get().GetTimeStamp(*File) : FDateTime());
+		PlayerFileSize.Add(bExists ? IFileManager::Get().FileSize(*File) : -1);
+	}
+
 	WatchedMatch = Match;
 	LastBlue = Match->GetVotesBlue();
 	LevelDownsSeen = Match->GetLevelDownCount();
@@ -195,6 +217,23 @@ void UBDRegressionSubsystem::Start(const bool bQuitWhenDone)
 	VotesHandle = Match->OnVotesChanged.AddUObject(this, &UBDRegressionSubsystem::HandleVotesChanged);
 
 	UE_LOG(LogBDDebug, Log, TEXT("REGRESSION start on %s, seed %d."), *BDBuildInfo::GetLabel(), Match->ObstacleSeed);
+}
+
+bool UBDRegressionSubsystem::IsPlayerSlotUntouched(FString& Measured) const
+{
+	bool bAllSame = true;
+	Measured = FString::Printf(TEXT("writing '%s' and '%s'"), UBDMatchSave::GetSlotName(), UBDProgressSave::GetSlotName());
+	for (int32 Index = 0; Index < PlayerFiles.Num(); ++Index)
+	{
+		const FString& File = PlayerFiles[Index];
+		const bool bExists = IFileManager::Get().FileExists(*File);
+		const bool bSame = bExists == PlayerFileExisted[Index]
+			&& (!bExists || (IFileManager::Get().GetTimeStamp(*File) == PlayerFileTime[Index] && IFileManager::Get().FileSize(*File) == PlayerFileSize[Index]));
+		bAllSame &= bSame;
+		Measured += FString::Printf(TEXT("; the player's %s %s"), *FPaths::GetCleanFilename(File),
+			!PlayerFileExisted[Index] && !bExists ? TEXT("absent before and after") : bSame ? TEXT("unchanged") : TEXT("CHANGED"));
+	}
+	return bAllSame;
 }
 
 void UBDRegressionSubsystem::HandleVotesChanged(const int32 Blue, const int32 Red)
@@ -249,6 +288,9 @@ void UBDRegressionSubsystem::Finish(const FString& Why)
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.Match.FreezeTimer"), SavedFreezeTimer);
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.PostMatch.Enabled"), SavedPostMatch);
 	BDRegressionPrivate::SetCVarInt(TEXT("BD.WaveLog.Enabled"), SavedWaveLog);
+	UBDMatchSave::Delete();
+	UBDProgressSave::ResetProgress();
+	UBDMatchSave::SetTestSlot(bWasTestSlot);
 
 	const FString Total = FString::Printf(TEXT("REGRESSION %s: %d PASS, %d FAIL%s"),
 		Failed == 0 ? TEXT("ALL GREEN") : TEXT("BROKEN"), Passed, Failed, Why.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" (%s)"), *Why));
@@ -632,6 +674,25 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 	{
 		CheckCast();
 
+		// No urn down yet: the first countdown holds full whatever time goes by, and the wave
+		// cannot be called onto a board with nowhere to walk to.
+		{
+			const float Full = Match->GetDifficultyData() != nullptr ? Match->GetDifficultyData()->FirstWaveDelay : -1.0f;
+			BDRegressionPrivate::SetCVarInt(TEXT("BD.Match.FreezeTimer"), 0);
+			for (int32 Second = 0; Second < 200; ++Second)
+			{
+				Match->Tick(1.0f);
+			}
+			const bool bHeld = Match->GetCurrentWave() == 0 && Match->GetPhase() == EBDMatchPhase::Building && Match->IsAwaitingUrn()
+				&& FMath::IsNearlyEqual(Match->GetTimeUntilNextWave(), Full);
+			Match->CallWaveEarly();
+			const bool bRefused = Match->GetCurrentWave() == 0 && Match->GetPhase() == EBDMatchPhase::Building;
+			BDRegressionPrivate::SetCVarInt(TEXT("BD.Match.FreezeTimer"), 1);
+			Check(TEXT("URNA"), TEXT("with no urn down 200 s go by without a wave: the countdown holds full and calling the wave is refused"),
+				bHeld && bRefused, FString::Printf(TEXT("wave %d, %.1fs on the clock of %.1f, awaiting urn %s, call %s"), Match->GetCurrentWave(),
+					Match->GetTimeUntilNextWave(), Full, Match->IsAwaitingUrn() ? TEXT("yes") : TEXT("no"), bRefused ? TEXT("refused") : TEXT("SENT THE WAVE")));
+		}
+
 		// The night is a short stretch of the day's waves: the share asked, not the third
 		// of the sky the clock gives it. The light curves are not touched.
 		{
@@ -823,6 +884,19 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		if (!bPlaced)
 		{
 			return false;
+		}
+
+		// The urn down starts the first countdown from the difficulty's whole delay.
+		{
+			const float Full = Match->GetDifficultyData() != nullptr ? Match->GetDifficultyData()->FirstWaveDelay : -1.0f;
+			const float AtPlace = Match->GetTimeUntilNextWave();
+			BDRegressionPrivate::SetCVarInt(TEXT("BD.Match.FreezeTimer"), 0);
+			Match->Tick(1.0f);
+			const float AfterSecond = Match->GetTimeUntilNextWave();
+			BDRegressionPrivate::SetCVarInt(TEXT("BD.Match.FreezeTimer"), 1);
+			Check(TEXT("URNA"), TEXT("the urn down starts the countdown from FirstWaveDelay"),
+				!Match->IsAwaitingUrn() && FMath::IsNearlyEqual(AtPlace, Full) && FMath::IsNearlyEqual(AfterSecond, Full - 1.0f, 0.01f),
+				FString::Printf(TEXT("%.1fs when it went down, %.1fs a second later, delay %.1f"), AtPlace, AfterSecond, Full));
 		}
 		WaitTicks = 2;
 		break;
@@ -2054,6 +2128,14 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			FString::Printf(TEXT("buses had %.1fs to go at the deal, %.1fs left when he stepped out, %d tick(s) waited"), BusWaitAtDeal, BusLeft, StepTicks));
 		StepTicks = 0;
 		const int32 SpawnedBefore = SpawnedBeforeCandidate;
+		{
+			const int32 SavesBefore = Match->GetSavesRemaining();
+			const bool bSaved = Match->SaveMatch();
+			Check(TEXT("SAVE"), TEXT("a save is refused while a wave is out, and nothing is spent"),
+				Match->GetPhase() == EBDMatchPhase::WaveActive && !bSaved && Match->GetSavesRemaining() == SavesBefore && !UBDMatchSave::Exists(),
+				FString::Printf(TEXT("phase %s, %s, %d save(s) left of %d"), *StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())),
+					bSaved ? TEXT("WRITTEN") : *Match->GetSaveRefusal(), Match->GetSavesRemaining(), SavesBefore));
+		}
 		Check(TEXT("CANDIDATO"), TEXT("the candidate walks out first on his wave"),
 			Candidates->HasCandidateOnBoard() && Waves->GetMatchTotals().CreepsSpawned == SpawnedBefore && Waves->GetSpawnHoldRemaining() > 0.0f,
 			FString::Printf(TEXT("wave %d, candidate %s, creeps out %d, creeps held %.1fs"), Match->GetCurrentWave(),
@@ -2448,6 +2530,195 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		Check(TEXT("RELATORIO"), TEXT("the wave log writes the wave the match ended on, and its money closes"),
 			WaveMark.Wave == Match->GetCurrentWave() && WaveMark.LastFundsGap == 0,
 			FString::Printf(TEXT("last row on wave %d of %d, gap %lld"), WaveMark.Wave, Match->GetCurrentWave(), WaveMark.LastFundsGap));
+		break;
+	}
+
+	case 9:
+	{
+		// After the defeat: undo the board, which takes the ministers with it.
+		UBDMinisterSubsystem* Ministers = GetWorld()->GetSubsystem<UBDMinisterSubsystem>();
+		if (Ministers == nullptr)
+		{
+			Check(TEXT("MINISTRO"), TEXT("undoing the board takes every minister off and fills the STF again"), false, TEXT("no minister subsystem"));
+			return false;
+		}
+		Ministers->SpawnMinisters(2);
+		const int32 OutBefore = Ministers->GetMinisters().Num();
+		Match->DebugForcePhase(EBDMatchPhase::Building);
+		TArray<int32> FullLine;
+		for (int32 Seat = 1; Seat <= UBDMinisterSettings::Get().MaxOnBoard; ++Seat) { FullLine.Add(Seat); }
+		Check(TEXT("MINISTRO"), TEXT("undoing the board takes every minister off and fills the STF again, seats 1 to 11 in order"),
+			OutBefore > 0 && Ministers->GetMinisters().Num() == 0 && Ministers->GetLine() == FullLine && Candidates->GetFallenCount() == 0,
+			FString::Printf(TEXT("%d out before, %d after, %d in the STF, %d fallen left"), OutBefore, Ministers->GetMinisters().Num(),
+				Ministers->GetLine().Num(), Candidates->GetFallenCount()));
+
+		// A restore point with something in it: wave 12 held, one candidate fallen, the count
+		// levelled once and blue ahead, the clock part run, the mouths wherever they are.
+		Match->DebugSetWave(12);
+		if (ABDCandidate* Felled = Candidates->SpawnCandidate(TEXT("BD.Test.Regression")))
+		{
+			Felled->ApplyDamage(Felled->GetMaxHealth() * 10.0f, nullptr);
+		}
+		Bribes->FlushNow(TEXT("BD.Test.Regression"));
+		// Blue first, so the red added never passes it: with a fallen on record that would be a parade.
+		Match->AddVotesBlue(FMath::Max(0, Match->GetVotesRed() - Match->GetVotesBlue()) + 20);
+		Match->AddVotesRed(3);
+		Match->EqualizeVotesDown(TEXT("BD.Test.Regression"));
+		Match->AddVotesBlue(7);
+		Match->DebugSetTimeUntilNextWave(37.5f);
+
+		const auto MouthsOf = [Waves]()
+		{
+			FString Out;
+			for (const FBDSpawnPoint& Point : Waves->GetSpawnPoints())
+			{
+				Out += Point.ExitCell.ToString() + TEXT(" ");
+			}
+			return Out;
+		};
+		const auto FallenOf = [Candidates]()
+		{
+			FString Out;
+			for (const FBDCandidateRecord& Record : Candidates->CaptureState().Fallen)
+			{
+				Out += FString::Printf(TEXT("#%d@w%d/%.0f "), Record.Ordinal, Record.Wave, Record.MaxHealth);
+			}
+			return Out;
+		};
+
+		const int32 SavesBefore = Match->GetSavesRemaining();
+		const bool bSaved = Match->SaveMatch();
+		Check(TEXT("SAVE"), TEXT("a save between waves spends one and writes the test slot, never the player's"),
+			bSaved && Match->GetSavesRemaining() == SavesBefore - 1 && UBDMatchSave::Exists() && UBDMatchSave::IsTestSlot(),
+			FString::Printf(TEXT("%s, %d -> %d save(s), slot '%s'"), bSaved ? TEXT("written") : *Match->GetSaveRefusal(), SavesBefore,
+				Match->GetSavesRemaining(), UBDMatchSave::GetSlotName()));
+		SavedWave = Match->GetCurrentWave();
+		SavedSaves = Match->GetSavesRemaining();
+		SavedLevelDowns = Match->GetLevelDownCount();
+		SavedBlue = Match->GetVotesBlue();
+		SavedRed = Match->GetVotesRed();
+		SavedClock = Match->GetTimeUntilNextWave();
+		SavedMouths = MouthsOf();
+		SavedFallen = FallenOf();
+
+		// The match goes on - the mouths wander with the next wave - and is lost.
+		Match->DebugForcePhase(EBDMatchPhase::WaveActive);
+		const FString MouthsAfterWave = MouthsOf();
+		if (ABDCandidate* Walker = Candidates->SpawnCandidate(TEXT("BD.Test.Regression")))
+		{
+			Walker->DebugArrive();
+		}
+		Check(TEXT("SAVE"), TEXT("a defeat keeps the save, and the panel offers it"),
+			Match->GetPhase() == EBDMatchPhase::Defeat && UBDMatchSave::Exists() && Match->HasLoadableSave(),
+			FString::Printf(TEXT("phase %s, slot %s, loadable %s"), *StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())),
+				UBDMatchSave::Exists() ? TEXT("kept") : TEXT("GONE"), Match->HasLoadableSave() ? TEXT("yes") : TEXT("no")));
+
+		// Another difficulty's save, or another match's, is not this match's to load.
+		UBDMatchSave* Own = UBDMatchSave::LoadFromSlot();
+		bool bForeignRefused = false;
+		if (Own != nullptr)
+		{
+			UBDMatchSave* OtherDifficulty = DuplicateObject<UBDMatchSave>(Own, GetTransientPackage());
+			OtherDifficulty->Difficulty = Own->Difficulty == EBDDifficulty::Hard ? EBDDifficulty::Easy : EBDDifficulty::Hard;
+			UBDMatchSave* OtherMatch = DuplicateObject<UBDMatchSave>(Own, GetTransientPackage());
+			OtherMatch->MatchStart = Own->MatchStart + FTimespan::FromHours(1.0);
+			bForeignRefused = !Match->CanLoadSave(*OtherDifficulty, false) && !Match->CanLoadSave(*OtherMatch, false) && Match->CanLoadSave(*Own, false);
+		}
+		Check(TEXT("SAVE"), TEXT("a save of another difficulty or of another match is refused; the match's own is not"), bForeignRefused,
+			Own != nullptr ? (bForeignRefused ? TEXT("other difficulty refused, other match refused, own accepted") : TEXT("WRONG")) : TEXT("no save to read"));
+
+		// The defeat panel's load: the building phase of the saved wave, as it stood.
+		const bool bLoaded = Match->LoadMatch();
+		const bool bSame = bLoaded && Match->GetPhase() == EBDMatchPhase::Building && Match->GetCurrentWave() == SavedWave
+			&& MouthsOf() == SavedMouths && FallenOf() == SavedFallen && Match->GetLevelDownCount() == SavedLevelDowns
+			&& FMath::IsNearlyEqual(Match->GetTimeUntilNextWave(), SavedClock, 0.01f) && Match->GetSavesRemaining() == SavedSaves
+			&& Match->GetVotesBlue() == SavedBlue && Match->GetVotesRed() == SavedRed;
+		Check(TEXT("SAVE"), TEXT("the load reopens the saved wave as it stood: mouths, fallen, levelling, clock, count and saves, spending none"), bSame,
+			FString::Printf(TEXT("wave %d/%d, mouths %s (%s; after the wave %s), fallen %s/%s, levellings %d/%d, clock %.1f/%.1f, saves %d/%d, count %d-%d/%d-%d"),
+				Match->GetCurrentWave(), SavedWave, MouthsOf() == SavedMouths ? TEXT("same") : TEXT("DIFFERENT"), *SavedMouths,
+				MouthsAfterWave == SavedMouths ? TEXT("unmoved") : TEXT("had moved"), *FallenOf(), *SavedFallen, Match->GetLevelDownCount(), SavedLevelDowns,
+				Match->GetTimeUntilNextWave(), SavedClock, Match->GetSavesRemaining(), SavedSaves, Match->GetVotesBlue(), Match->GetVotesRed(), SavedBlue, SavedRed));
+		Check(TEXT("SAVE"), TEXT("a load takes the ministers off and fills the STF again"),
+			Ministers->GetMinisters().Num() == 0 && Ministers->GetLine() == FullLine,
+			FString::Printf(TEXT("%d out, %d in the STF"), Ministers->GetMinisters().Num(), Ministers->GetLine().Num()));
+
+		// A save with red ahead and the fallen on record sends nobody out on load.
+		if (Own != nullptr)
+		{
+			UBDMatchSave* RedAhead = DuplicateObject<UBDMatchSave>(Own, GetTransientPackage());
+			RedAhead->VotesRed = RedAhead->VotesBlue + 25;
+			Match->RestoreMatch(*RedAhead);
+		}
+		Check(TEXT("SAVE"), TEXT("loading red ahead with the fallen on record sends no candidate out in the building phase"),
+			Own != nullptr && Match->GetVotesRed() > Match->GetVotesBlue() && Candidates->GetFallenCount() > 0
+				&& !Candidates->HasCandidateOnBoard() && !Candidates->IsAwaitingBus() && !Candidates->IsReturnActive(),
+			FString::Printf(TEXT("count %d-%d, %d fallen, candidate %s, parade %s"), Match->GetVotesBlue(), Match->GetVotesRed(), Candidates->GetFallenCount(),
+				Candidates->HasCandidateOnBoard() || Candidates->IsAwaitingBus() ? TEXT("OUT") : TEXT("none"), Candidates->IsReturnActive() ? TEXT("ON") : TEXT("none")));
+		WaitTicks = 10;
+		break;
+	}
+
+	case 10:
+	{
+		// Some ticks later still nobody: nothing but a vote turns the count.
+		Check(TEXT("SAVE"), TEXT("ticks after that load still nobody walks out"),
+			!Candidates->HasCandidateOnBoard() && !Candidates->IsAwaitingBus() && !Candidates->IsReturnActive(),
+			Candidates->HasCandidateOnBoard() || Candidates->IsReturnActive() ? TEXT("SOMEONE CAME OUT") : TEXT("nobody"));
+		Match->EqualizeVotesDown(TEXT("BD.Test.Regression"));
+		Match->AddVotesBlue(5);
+
+		// The count at the last wave waits on a candidate owed to a later wave.
+		Match->DebugSetWave(Match->GetWavesToWin());
+		FBDCandidateSaveState Owed = Candidates->CaptureState();
+		Owed.bSchedulePending = true;
+		Candidates->RestoreState(Owed);
+		const bool bHeldOnOwed = !Match->IsEndDue();
+		Owed.bSchedulePending = false;
+		Candidates->RestoreState(Owed);
+		const bool bDueWithout = Match->IsEndDue();
+		Check(TEXT("APURACAO"), TEXT("at the last wave the count waits on a candidate still owed, and settles once none is"),
+			bHeldOnOwed && bDueWithout, FString::Printf(TEXT("wave %d: owed -> %s, none owed -> %s"), Match->GetCurrentWave(),
+				bHeldOnOwed ? TEXT("waits") : TEXT("SETTLES"), bDueWithout ? TEXT("settles") : TEXT("STILL WAITS")));
+
+		// Three ministers standing see the win and the endless through untouched.
+		UBDMinisterSubsystem* Ministers = GetWorld()->GetSubsystem<UBDMinisterSubsystem>();
+		Ministers->SpawnMinisters(3);
+		const TArray<ABDMinister*> Standing = Ministers->GetMinisters();
+		TArray<FVector> Where;
+		TArray<int32> Seats;
+		for (const ABDMinister* Minister : Standing) { Where.Add(Minister->GetActorLocation()); Seats.Add(Minister->GetSeat()); }
+		const TArray<int32> LineBefore = Ministers->GetLine();
+		Match->DeclareVictory();
+		const bool bSlotGone = !UBDMatchSave::Exists();
+		Check(TEXT("SAVE"), TEXT("a victory deletes the save"), Match->GetPhase() == EBDMatchPhase::Victory && bSlotGone,
+			FString::Printf(TEXT("phase %s, slot %s"), *StaticEnum<EBDMatchPhase>()->GetNameStringByValue(static_cast<int64>(Match->GetPhase())),
+				bSlotGone ? TEXT("deleted") : TEXT("STILL THERE")));
+		Match->ContinueEndless();
+		const TArray<ABDMinister*> After = Ministers->GetMinisters();
+		bool bKept = Standing.Num() == 3 && After.Num() == 3 && Ministers->GetLine() == LineBefore;
+		for (int32 Index = 0; Index < Standing.Num() && bKept; ++Index)
+		{
+			bKept = After.Contains(Standing[Index]) && FVector::Dist(Standing[Index]->GetActorLocation(), Where[Index]) < 1.0f
+				&& Standing[Index]->GetSeat() == Seats[Index];
+		}
+		const int32 NextSeat = LineBefore.Num() > 0 ? LineBefore[0] : 0;
+		int32 ReleasedSeat = 0;
+		if (ABDCandidate* Felled = Candidates->SpawnCandidate(TEXT("BD.Test.Regression")))
+		{
+			Felled->ApplyDamage(Felled->GetMaxHealth() * 10.0f, nullptr);
+		}
+		for (const ABDMinister* Minister : Ministers->GetMinisters())
+		{
+			if (!Standing.Contains(Minister)) { ReleasedSeat = Minister->GetSeat(); }
+		}
+		Check(TEXT("MINISTRO"), TEXT("the ministers standing at the win are still there in the endless, same place, same seat, and the next kill frees the next seat"),
+			Match->IsEndless() && bKept && ReleasedSeat == NextSeat && NextSeat > 0,
+			FString::Printf(TEXT("%d of %d kept, seats %s, next seat out %d (expected %d)"), After.Num(), Standing.Num(), bKept ? TEXT("same") : TEXT("CHANGED"),
+				ReleasedSeat, NextSeat));
+
+		FString SlotMeasured;
+		Check(TEXT("SAVE"), TEXT("the whole run wrote only the test slots: the player's match save and progress are untouched"), UBDMatchSave::IsTestSlot() && IsPlayerSlotUntouched(SlotMeasured),
+			SlotMeasured);
 
 		Finish(FString());
 		return true;

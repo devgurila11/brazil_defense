@@ -121,6 +121,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	float GetTimeUntilNextWave() const { return TimeUntilNextWave; }
 
+	/**
+	 * Building for the first wave with no urn on the board yet: the countdown does not run
+	 * and the wave cannot be called. The urn going down starts it from FirstWaveDelay.
+	 */
+	bool IsAwaitingUrn() const;
+
+	/** When this match was started; a load carries the saved match's over. */
+	FDateTime GetMatchStart() const { return MatchStart; }
+
+	/** True while a load rebuilds the match: what it re-announces is no event of the game. */
+	bool IsRestoring() const { return bRestoring; }
+
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetDividersRemaining() const { return DividersRemaining; }
 
@@ -182,6 +194,9 @@ public:
 
 	/** Debug: jumps the wave counter, so the scaling of any wave can be tested without playing up to it. */
 	void DebugSetWave(int32 Wave);
+
+	/** Sets what the building phase has left. Tests only. */
+	void DebugSetTimeUntilNextWave(float Seconds) { TimeUntilNextWave = Seconds; }
 
 	/** Debug: puts every budget back to what the difficulty hands out, as if nothing had been placed. */
 	void DebugResetBudgets();
@@ -275,9 +290,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	int32 GetSavesRemaining() const { return SavesRemaining; }
 
-	/** Between waves, match still running, saves left. */
+	/** Between waves, match still running, saves left, the urn down, no candidate walking and no parade. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	bool CanSaveMatch() const;
+
+	/** Why a save would be refused now; empty when it would not. */
+	FString GetSaveRefusal() const;
 
 	/** Spends a save and writes the match. @return false when it cannot, with nothing spent. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
@@ -287,9 +305,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Match")
 	static bool HasSavedMatch();
 
-	/** Reads the slot and rebuilds this match from it. @return false when there is nothing to load. */
+	/**
+	 * Reads the slot and rebuilds this match from it. In a match, only after a defeat and
+	 * only its own save (same difficulty, same start); from the menu's Continue, into the
+	 * match just opened for it, whatever the save's difficulty. Loading spends no save.
+	 * @return false when there is nothing to load or it is refused.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Match")
-	bool LoadMatch();
+	bool LoadMatch(bool bFromMenu = false);
+
+	/** Whether a save could be loaded into this match: why not, in OutWhy. */
+	bool CanLoadSave(const UBDMatchSave& Save, bool bFromMenu, FString* OutWhy = nullptr) const;
+
+	/** Whether the slot holds a save this match can load now: what the defeat panel offers. */
+	bool HasLoadableSave() const;
 
 	/** Rebuilds this match from a snapshot, whatever it was doing. */
 	void RestoreMatch(const UBDMatchSave& Save);
@@ -593,4 +622,9 @@ private:
 	int32 SavesRemaining = 0;
 	bool bChainBonusApplied = false;
 	int32 LevelDownCount = 0;
+	FDateTime MatchStart;
+	bool bRestoring = false;
+
+	/** The candidates and the ministers forgotten: the board was undone (a rewind, a load). */
+	void ResetBoardSystems();
 };

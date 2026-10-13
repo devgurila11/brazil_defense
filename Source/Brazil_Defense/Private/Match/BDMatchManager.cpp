@@ -16,6 +16,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Match/BDDifficultyData.h"
 #include "Objective/BDObjectiveSubsystem.h"
+#include "Palace/BDMinisterSubsystem.h"
 #include "Placement/BDPlacementComponent.h"
 #include "Save/BDMatchSave.h"
 #include "Save/BDProgressSave.h"
@@ -101,6 +102,7 @@ void ABDMatchManager::BeginPlay()
 
 	ResolveDifficulty();
 	ApplyStartingBudgets();
+	MatchStart = FDateTime::Now();
 
 	UE_LOG(LogBDMatch, Log, TEXT("Match on %s%s (%s): %d waves to win, %d dividers, %d platforms, %d saves. Defenders are limited by public money alone."),
 		*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Difficulty)),
@@ -305,6 +307,15 @@ void ABDMatchManager::Tick(const float DeltaSeconds)
 		return;
 	}
 
+	// The first countdown waits for the urn: a wave sent onto a board with nowhere to go
+	// would have nothing to walk to and nothing to end it. Held full, so the urn going
+	// down starts it from the difficulty's whole delay.
+	if (IsAwaitingUrn())
+	{
+		TimeUntilNextWave = DifficultyData != nullptr ? DifficultyData->FirstWaveDelay : TimeUntilNextWave;
+		return;
+	}
+
 	// An end held back by a candidate is settled the moment he is gone between waves.
 	if (IsEndDue())
 	{
@@ -349,11 +360,26 @@ void ABDMatchManager::StartWave()
 		GetMoveTaxRate() * 100.0f);
 }
 
+bool ABDMatchManager::IsAwaitingUrn() const
+{
+	if (Phase != EBDMatchPhase::Building || CurrentWave != 0)
+	{
+		return false;
+	}
+	const UBDObjectiveSubsystem* Objectives = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDObjectiveSubsystem>() : nullptr;
+	return Objectives != nullptr && !Objectives->IsPlaced();
+}
+
 void ABDMatchManager::CallWaveEarly()
 {
 	if (Phase != EBDMatchPhase::Building)
 	{
 		UE_LOG(LogBDMatch, Warning, TEXT("CallWaveEarly outside the building phase does nothing."));
+		return;
+	}
+	if (IsAwaitingUrn())
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("CallWaveEarly refused: the urn is not on the board yet."));
 		return;
 	}
 
@@ -428,6 +454,7 @@ void ABDMatchManager::DebugForcePhase(const EBDMatchPhase NewPhase)
 		CurrentWave = 0;
 		bWon = false;
 		bEndless = false;
+		ResetBoardSystems();
 		StartBuildingPhase();
 		if (DayCycle != nullptr)
 		{
@@ -494,8 +521,11 @@ bool ABDMatchManager::IsEndDue() const
 		return false;
 	}
 
+	// Every candidate the match still owes is settled first: one walking, one waiting for
+	// the buses to park, one owed to a later wave, and the fallen on parade.
 	const UBDCandidateSubsystem* Candidates = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
-	return Candidates == nullptr || (!Candidates->HasCandidateOnBoard() && !Candidates->IsReturnActive());
+	return Candidates == nullptr || (!Candidates->HasCandidateOnBoard() && !Candidates->IsAwaitingBus()
+		&& !Candidates->IsSchedulePending() && !Candidates->IsReturnActive());
 }
 
 void ABDMatchManager::ResolveEnd()
@@ -549,6 +579,9 @@ void ABDMatchManager::DeclareVictory()
 		CurrentWave, GetPrisonersFreed(), VotesBlue, VotesRed);
 	UBDProgressSave::RecordWin(Difficulty);
 
+	// The restore point belongs to a match that can still be lost; a won one has none.
+	UBDMatchSave::Delete();
+
 	// Read before the money goes: the report wants what was left unspent.
 	Ledger.EndReason = FString::Printf(TEXT("the count after wave %d, %d blue to %d red"), CurrentWave, VotesBlue, VotesRed);
 	Ledger.PublicMoneyAtEnd = PublicMoney;
@@ -565,15 +598,43 @@ void ABDMatchManager::DeclareVictory()
 
 bool ABDMatchManager::CanSaveMatch() const
 {
-	return Phase == EBDMatchPhase::Building && SavesRemaining > 0;
+	return GetSaveRefusal().IsEmpty();
+}
+
+FString ABDMatchManager::GetSaveRefusal() const
+{
+	if (Phase != EBDMatchPhase::Building)
+	{
+		return TEXT("only between waves");
+	}
+	if (SavesRemaining <= 0)
+	{
+		return TEXT("no saves left");
+	}
+	if (IsAwaitingUrn())
+	{
+		return TEXT("the urn is not down yet");
+	}
+	// A restore point is a board at rest: a candidate halfway down his road, or the fallen
+	// on parade, is nothing a load could put back where it was.
+	const UBDCandidateSubsystem* Candidates = GetWorld() != nullptr ? GetWorld()->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
+	if (Candidates != nullptr && (Candidates->HasCandidateOnBoard() || Candidates->IsAwaitingBus()))
+	{
+		return TEXT("a candidate is on his way");
+	}
+	if (Candidates != nullptr && Candidates->IsReturnActive())
+	{
+		return TEXT("the fallen are on parade");
+	}
+	return FString();
 }
 
 bool ABDMatchManager::SaveMatch()
 {
-	if (!CanSaveMatch())
+	const FString Refusal = GetSaveRefusal();
+	if (!Refusal.IsEmpty())
 	{
-		UE_LOG(LogBDMatch, Warning, TEXT("Save refused: %s."),
-			Phase != EBDMatchPhase::Building ? TEXT("only between waves") : TEXT("no saves left"));
+		UE_LOG(LogBDMatch, Warning, TEXT("Save refused: %s."), *Refusal);
 		return false;
 	}
 
@@ -602,6 +663,17 @@ bool ABDMatchManager::SaveMatch()
 	Save->DividersRemaining = DividersRemaining;
 	Save->PlatformsRemaining = PlatformsRemaining;
 	Save->SavedAt = FDateTime::Now();
+	Save->MatchStart = MatchStart;
+	Save->TimeUntilNextWave = TimeUntilNextWave;
+	Save->LevelDownCount = LevelDownCount;
+	if (UBDWaveSubsystem* Waves = GetWorld()->GetSubsystem<UBDWaveSubsystem>())
+	{
+		Waves->CaptureMouths(Save->Mouths);
+	}
+	if (const UBDCandidateSubsystem* Candidates = GetWorld()->GetSubsystem<UBDCandidateSubsystem>())
+	{
+		Save->Candidates = Candidates->CaptureState();
+	}
 	Placement->CaptureBoard(Save->Pieces);
 
 	if (!Save->WriteToSlot())
@@ -611,8 +683,9 @@ bool ABDMatchManager::SaveMatch()
 	}
 
 	SavesRemaining = Save->SavesRemaining;
-	UE_LOG(LogBDMatch, Log, TEXT("Match saved after wave %d: %d piece(s), votes %d blue / %d red, %d public money, seed %d. %d save(s) left."),
-		CurrentWave, Save->Pieces.Num(), VotesBlue, VotesRed, PublicMoney, ObstacleSeed, SavesRemaining);
+	UE_LOG(LogBDMatch, Log, TEXT("Match saved after wave %d to slot '%s': %d piece(s), %d mouth(s), %d candidate(s) fallen, votes %d blue / %d red, %d public money, seed %d, %.1fs on the clock. %d save(s) left."),
+		CurrentWave, UBDMatchSave::GetSlotName(), Save->Pieces.Num(), Save->Mouths.Num(), Save->Candidates.Fallen.Num(), VotesBlue, VotesRed, PublicMoney,
+		ObstacleSeed, TimeUntilNextWave, SavesRemaining);
 	return true;
 }
 
@@ -621,17 +694,76 @@ bool ABDMatchManager::HasSavedMatch()
 	return UBDMatchSave::Exists();
 }
 
-bool ABDMatchManager::LoadMatch()
+bool ABDMatchManager::CanLoadSave(const UBDMatchSave& Save, const bool bFromMenu, FString* OutWhy) const
+{
+	FString Why;
+	if (bFromMenu)
+	{
+		// Continue opens a match only to rebuild it: it takes the save's difficulty.
+		if (Phase != EBDMatchPhase::Building || CurrentWave != 0)
+		{
+			Why = TEXT("Continue loads into a match just opened");
+		}
+	}
+	else if (Phase != EBDMatchPhase::Defeat)
+	{
+		Why = TEXT("a match loads its save only after a defeat");
+	}
+	else if (Save.Difficulty != Difficulty)
+	{
+		Why = FString::Printf(TEXT("the save is of %s, this match of %s"),
+			*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Save.Difficulty)),
+			*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Difficulty)));
+	}
+	else if (Save.MatchStart != MatchStart)
+	{
+		Why = FString::Printf(TEXT("the save belongs to the match started %s, not this one (%s)"), *Save.MatchStart.ToString(), *MatchStart.ToString());
+	}
+
+	if (OutWhy != nullptr)
+	{
+		*OutWhy = Why;
+	}
+	return Why.IsEmpty();
+}
+
+bool ABDMatchManager::HasLoadableSave() const
+{
+	const UBDMatchSave* Save = UBDMatchSave::LoadFromSlot();
+	return Save != nullptr && CanLoadSave(*Save, /*bFromMenu*/ false);
+}
+
+bool ABDMatchManager::LoadMatch(const bool bFromMenu)
 {
 	const UBDMatchSave* Save = UBDMatchSave::LoadFromSlot();
 	if (Save == nullptr)
 	{
-		UE_LOG(LogBDMatch, Warning, TEXT("Load: no saved match."));
+		UE_LOG(LogBDMatch, Warning, TEXT("Load: no saved match in slot '%s'."), UBDMatchSave::GetSlotName());
+		return false;
+	}
+
+	FString Why;
+	if (!CanLoadSave(*Save, bFromMenu, &Why))
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("Load refused: %s."), *Why);
 		return false;
 	}
 
 	RestoreMatch(*Save);
 	return true;
+}
+
+void ABDMatchManager::ResetBoardSystems()
+{
+	UWorld* World = GetWorld();
+	if (UBDCandidateSubsystem* Candidates = World != nullptr ? World->GetSubsystem<UBDCandidateSubsystem>() : nullptr)
+	{
+		Candidates->ResetForNewMatch();
+	}
+	if (UBDMinisterSubsystem* Ministers = World != nullptr ? World->GetSubsystem<UBDMinisterSubsystem>() : nullptr)
+	{
+		Ministers->ResetForNewMatch();
+	}
 }
 
 void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
@@ -647,6 +779,9 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 
 	UE_LOG(LogBDMatch, Log, TEXT("Loading the match saved %s: wave %d, seed %d, %d piece(s)."),
 		*Save.SavedAt.ToString(), Save.Wave, Save.ObstacleSeed, Save.Pieces.Num());
+
+	// Everything re-announced from here on is the saved match being told, not played.
+	TGuardValue<bool> RestoringGuard(bRestoring, true);
 
 	// The match running now is thrown away for the saved one: it ends here, unfinished.
 	ReportAbandoned(TEXT("a save was loaded over it"));
@@ -669,6 +804,7 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	{
 		Objectives->ClearObjective();
 	}
+	ResetBoardSystems();
 	CurrentWave = 0;
 	bWon = false;
 	bEndless = false;
@@ -682,6 +818,13 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	bRandomizeSeed = false;
 	ObstacleSeed = Save.ObstacleSeed;
 	DebugRegenerateObstacles(ObstacleSeed);
+
+	// The mouths before the pieces: a piece was valid against the mouths as they stood,
+	// not as they stand in the match being thrown away.
+	if (!Waves->RestoreMouths(Save.Mouths))
+	{
+		UE_LOG(LogBDMatch, Warning, TEXT("The save holds no mouths (an older save): they stay where they are."));
+	}
 
 	// Restoring is not building, so it must not touch the money. The balance is read on
 	// both sides of the restore rather than trusted: a board bought over ninety waves
@@ -705,6 +848,15 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	PlatformsRemaining = Save.PlatformsRemaining;
 
 	CurrentWave = Save.Wave;
+	if (Save.MatchStart.GetTicks() != 0)
+	{
+		MatchStart = Save.MatchStart;
+	}
+	LevelDownCount = Save.LevelDownCount;
+	if (UBDCandidateSubsystem* Candidates = World->GetSubsystem<UBDCandidateSubsystem>())
+	{
+		Candidates->RestoreState(Save.Candidates);
+	}
 	EarlyCallBonus = Save.EarlyCallBonus;
 	SavesRemaining = Save.SavesRemaining;
 	bWon = Save.bWon;
@@ -723,10 +875,15 @@ void ABDMatchManager::RestoreMatch(const UBDMatchSave& Save)
 	// The report counts from here: what happened before the save is in no board now.
 	OpenLedger(Save.Wave);
 
-	// Told last, with the board whole: an inverted score sends the candidate out again.
+	// Told last, with the board whole. Restoring, so the candidates do not take an inverted
+	// count for the count turning: nobody walks out until the next vote.
 	OnVotesChanged.Broadcast(VotesBlue, VotesRed);
 	OnMoneyChanged.Broadcast(BribeHeld, PublicMoney);
 	StartBuildingPhase();
+	if (Save.TimeUntilNextWave >= 0.0f)
+	{
+		TimeUntilNextWave = Save.TimeUntilNextWave;
+	}
 
 	UE_LOG(LogBDMatch, Log, TEXT("Match loaded: building for wave %d, votes %d blue / %d red, %d public money, %d save(s) left."),
 		CurrentWave + 1, VotesBlue, VotesRed, PublicMoney, SavesRemaining);
@@ -1398,11 +1555,18 @@ namespace BDMatchCommands
 	{
 		const ABDMatchManager* Match = FindMatch(World);
 		const UBDMatchSave* Save = UBDMatchSave::LoadFromSlot();
-		UE_LOG(LogBDMatch, Log, TEXT("Saves left: %d. Slot: %s"),
+		FString Why;
+		const bool bLoadable = Save != nullptr && Match != nullptr && Match->CanLoadSave(*Save, false, &Why);
+		UE_LOG(LogBDMatch, Log, TEXT("Saves left: %d (%s). Slot '%s': %s"),
 			Match != nullptr ? Match->GetSavesRemaining() : 0,
+			Match != nullptr && !Match->CanSaveMatch() ? *FString::Printf(TEXT("saving refused: %s"), *Match->GetSaveRefusal()) : TEXT("can save"),
+			UBDMatchSave::GetSlotName(),
 			Save != nullptr
-				? *FString::Printf(TEXT("wave %d, seed %d, %d piece(s), votes %d/%d, %d save(s) left, written %s."),
-					Save->Wave, Save->ObstacleSeed, Save->Pieces.Num(), Save->VotesBlue, Save->VotesRed, Save->SavesRemaining, *Save->SavedAt.ToString())
+				? *FString::Printf(TEXT("%s, match started %s, wave %d, seed %d, %d piece(s), %d mouth(s), %d fallen, votes %d/%d, %d save(s) left, written %s. %s"),
+					*StaticEnum<EBDDifficulty>()->GetNameStringByValue(static_cast<int64>(Save->Difficulty)), *Save->MatchStart.ToString(),
+					Save->Wave, Save->ObstacleSeed, Save->Pieces.Num(), Save->Mouths.Num(), Save->Candidates.Fallen.Num(),
+					Save->VotesBlue, Save->VotesRed, Save->SavesRemaining, *Save->SavedAt.ToString(),
+					bLoadable ? TEXT("Loadable now.") : *FString::Printf(TEXT("Not loadable now: %s."), *Why))
 				: TEXT("empty."));
 	}
 
@@ -1413,7 +1577,7 @@ namespace BDMatchCommands
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdSaveLoad(
 		TEXT("BD.Save.Load"),
-		TEXT("BD.Save.Load: rebuilds the match from the slot, in place."),
+		TEXT("BD.Save.Load: rebuilds the match from its save, in place - after a defeat only, like the panel's button."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSaveLoad));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdSaveStatus(

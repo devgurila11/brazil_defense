@@ -125,4 +125,24 @@ private:
 	int32 LastBlue = 0;
 	int32 LevelDownsSeen = 0;
 	int32 UnexplainedDrops = 0;
+
+	/** The player's save files (match and progress) as they stood when the run began: the run must leave them exactly so. */
+	TArray<FString> PlayerFiles;
+	TArray<bool> PlayerFileExisted;
+	TArray<FDateTime> PlayerFileTime;
+	TArray<int64> PlayerFileSize;
+	bool bWasTestSlot = false;
+
+	/** The restore point the script wrote, to hold the load against. */
+	int32 SavedWave = 0;
+	int32 SavedSaves = 0;
+	int32 SavedLevelDowns = 0;
+	int32 SavedBlue = 0;
+	int32 SavedRed = 0;
+	float SavedClock = 0.0f;
+	FString SavedMouths;
+	FString SavedFallen;
+
+	/** Whether the player's slot is as it was when the run began. Fills Measured. */
+	bool IsPlayerSlotUntouched(FString& Measured) const;
 };

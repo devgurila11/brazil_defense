@@ -44,6 +44,13 @@ public:
 	/** A minister is back inside (or gone): his seat to the end of the line. */
 	void ReturnSeat(int32 Seat);
 
+	/**
+	 * Every minister off the board and the STF full again, seats 1 to 11 in order: for when
+	 * the board is undone (a rewind to wave 0, a load). The endless run never calls it -
+	 * ministers only ever leave the board by the Mito's kick.
+	 */
+	void ResetForNewMatch();
+
 	/** The seats inside the STF, the next one out first. */
 	const TArray<int32>& GetLine();
 
