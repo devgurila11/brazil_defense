@@ -5,6 +5,7 @@
 #include "Audio/BDSpeechMarks.h"
 #include "BDLog.h"
 #include "Candidate/BDCandidateSubsystem.h"
+#include "Cast/BDCast.h"
 #include "Components/AudioComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Enemy/BDCandidate.h"
@@ -36,6 +37,51 @@ const TCHAR* UBDRallyComponent::StateName(const EBDRallyState InState)
 	case EBDRallyState::Spawning: return TEXT("Spawning");
 	default: return TEXT("Walking");
 	}
+}
+
+void UBDRallyComponent::ResolveCrowdKinds(const FBDRallyParams& InParams, const int32 Unlocked, const UBDEnemyData* Donkey,
+	TArray<const UBDEnemyData*>& OutKinds, TArray<float>& OutWeights)
+{
+	OutKinds.Reset();
+	OutWeights.Reset();
+	for (const FBDRallyCrowdEntry& Entry : InParams.RallyComposition)
+	{
+		if (Entry.Weight <= 0.0f)
+		{
+			continue;
+		}
+		// Locked is a horde number past the unlocked ones; a DA outside the hordes is not gated.
+		EBDCastKind CastKind;
+		int32 Number = 0;
+		const bool bLocked = BDCast::ParseAssetName(Entry.Enemy.GetAssetName(), CastKind, Number)
+			&& CastKind == EBDCastKind::Horde && Number > Unlocked;
+		const UBDEnemyData* Kind = bLocked ? nullptr : Entry.Enemy.LoadSynchronous();
+		// A kind with no body yet is not raised, as it is not sent by the buses.
+		Kind = Kind != nullptr && Kind->HasBody() ? Kind : Donkey;
+		if (Kind != nullptr)
+		{
+			OutKinds.Add(Kind);
+			OutWeights.Add(Entry.Weight);
+		}
+	}
+	if (OutKinds.Num() == 0 && Donkey != nullptr)
+	{
+		OutKinds.Add(Donkey);
+		OutWeights.Add(1.0f);
+	}
+}
+
+int32 UBDRallyComponent::PickByWeight(FRandomStream& InStream, const TArray<float>& Weights)
+{
+	float Total = 0.0f;
+	for (const float Weight : Weights) { Total += Weight; }
+	float Roll = InStream.FRandRange(0.0f, Total);
+	int32 Pick = 0;
+	for (; Pick < Weights.Num() - 1 && Roll > Weights[Pick]; ++Pick)
+	{
+		Roll -= Weights[Pick];
+	}
+	return Pick;
 }
 
 ABDCandidate* UBDRallyComponent::GetCandidate() const
@@ -233,30 +279,13 @@ void UBDRallyComponent::RaiseCrowd()
 		return;
 	}
 
-	// Who rises, by weight; the creep of the wave when the list gives nobody.
+	// Who rises, by weight: the kinds of his list the buses could send now, donkeys for the rest.
 	TArray<const UBDEnemyData*> Kinds;
 	TArray<float> Weights;
-	float TotalWeight = 0.0f;
-	for (const FBDRallyCrowdEntry& Entry : Params.RallyComposition)
+	ResolveCrowdKinds(Params, Waves->GetUnlockedKinds(), UBDWaveSettings::Get().ResolveWaveEnemy(), Kinds, Weights);
+	for (const UBDEnemyData* Kind : Kinds)
 	{
-		// A kind with no body yet is not raised, as it is not sent by the buses.
-		const UBDEnemyData* Kind = Entry.Weight > 0.0f ? Entry.Enemy.LoadSynchronous() : nullptr;
-		if (Kind != nullptr && Kind->HasBody())
-		{
-			Kind->PreloadSkins();
-			Kinds.Add(Kind);
-			Weights.Add(Entry.Weight);
-			TotalWeight += Entry.Weight;
-		}
-	}
-	if (Kinds.Num() == 0)
-	{
-		if (const UBDEnemyData* WaveCreep = UBDWaveSettings::Get().ResolveWaveEnemy())
-		{
-			Kinds.Add(WaveCreep);
-			Weights.Add(1.0f);
-			TotalWeight = 1.0f;
-		}
+		Kind->PreloadSkins();
 	}
 	if (Kinds.Num() == 0)
 	{
@@ -296,12 +325,7 @@ void UBDRallyComponent::RaiseCrowd()
 		if (Step > 0 && bGround)
 		{
 			// The kind drawn by weight off his own stream: the same match raises the same crowd.
-			float Roll = Stream.FRandRange(0.0f, TotalWeight);
-			int32 Pick = 0;
-			for (; Pick < Kinds.Num() - 1 && Roll > Weights[Pick]; ++Pick)
-			{
-				Roll -= Weights[Pick];
-			}
+			const int32 Pick = PickByWeight(Stream, Weights);
 			if (ABDEnemyBase* Raised = Waves->SpawnEnemyAtCell(Kinds[Pick], Cell, TEXT("a rally")))
 			{
 				Raised->BeginRise(UBDGameBalanceSettings::Get().RallyRiseSeconds);

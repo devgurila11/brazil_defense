@@ -2773,25 +2773,55 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 	case 11:
 	{
 		// The rally, on the endless board the win left: nothing else on it, the count far in
-		// the blue so no arrival turns it, the Mito awake on a long bar.
+		// the blue so no arrival turns it, the Mito awake on a long bar. The ministers the
+		// endless kept go back to the STF: one in his reach takes him off the patrol in a
+		// chase of its own, which the speech check would read as a chase of the candidate.
 		Waves->DespawnAll();
+		if (UBDMinisterSubsystem* Ministers = UBDMinisterSubsystem::Get(World))
+		{
+			Ministers->ResetForNewMatch();
+		}
 		Match->AddVotesBlue(5000);
 
 		// The numbers of the cast: the first and the twentieth, as the scaffold wrote them.
 		const UBDCandidateData* First = UBDCandidateData::LoadForOrdinal(1);
 		const UBDCandidateData* Last = UBDCandidateData::LoadForOrdinal(FBDRallyParams::MaxOrdinal);
-		const auto Reads = [](const UBDCandidateData* Data, const float Every, const int32 Count)
+		// The crowd of candidate N: hordes 1..N weight 1, as far as the cast has hordes.
+		const int32 Hordes = FMath::Max(1, UBDCastSettings::Get().GetCount(EBDCastKind::Horde));
+		const auto CrowdOf = [](const UBDCandidateData* Data)
 		{
-			return Data != nullptr && Data->Rally.bRallies && FMath::IsNearlyEqual(Data->Rally.RallyEvery, Every)
-				&& Data->Rally.RallyCount == Count && FMath::IsNearlyEqual(Data->Rally.RallyFirstDelay, 6.0f)
-				&& FMath::IsNearlyEqual(Data->Rally.RallyTellSeconds, 1.5f) && FMath::IsNearlyEqual(Data->Rally.RallyDuration, 4.0f)
-				&& Data->Rally.RallyComposition.Num() == 1 && Data->Rally.RallyComposition[0].Enemy.GetAssetName() == TEXT("DA_Horda_01");
+			FString Names;
+			for (const FBDRallyCrowdEntry& Entry : Data != nullptr ? Data->Rally.RallyComposition : TArray<FBDRallyCrowdEntry>())
+			{
+				Names += FString::Printf(TEXT("%s%s x%.1f"), Names.IsEmpty() ? TEXT("") : TEXT(", "), *Entry.Enemy.GetAssetName(), Entry.Weight);
+			}
+			return Names;
 		};
-		Check(TEXT("COMICIO"), TEXT("every candidate's DA carries his rallies: the first every 20 s raising 2, the twentieth every 10 s raising 40, 6 s off the bus, tell 1.5 s, speech 4 s, DA_Horda_01"),
-			Reads(First, 20.0f, 2) && Reads(Last, 10.0f, 40),
-			FString::Printf(TEXT("01: %s every %.1fs x%d; 20: %s every %.1fs x%d"),
-				First != nullptr ? TEXT("candidate data") : TEXT("NOT candidate data"), First != nullptr ? First->Rally.RallyEvery : 0.0f, First != nullptr ? First->Rally.RallyCount : 0,
-				Last != nullptr ? TEXT("candidate data") : TEXT("NOT candidate data"), Last != nullptr ? Last->Rally.RallyEvery : 0.0f, Last != nullptr ? Last->Rally.RallyCount : 0));
+		const auto Reads = [Hordes](const UBDCandidateData* Data, const int32 Ordinal, const float Every, const int32 Count)
+		{
+			if (Data == nullptr || Data->Rally.RallyComposition.Num() != FMath::Min(Ordinal, Hordes))
+			{
+				return false;
+			}
+			for (int32 Index = 0; Index < Data->Rally.RallyComposition.Num(); ++Index)
+			{
+				const FBDRallyCrowdEntry& Entry = Data->Rally.RallyComposition[Index];
+				if (Entry.Enemy.ToSoftObjectPath().ToString() != BDCast::GetObjectPath(EBDCastKind::Horde, Index + 1) || !FMath::IsNearlyEqual(Entry.Weight, 1.0f))
+				{
+					return false;
+				}
+			}
+			return Data->Rally.bRallies && FMath::IsNearlyEqual(Data->Rally.RallyEvery, Every)
+				&& Data->Rally.RallyCount == Count && FMath::IsNearlyEqual(Data->Rally.RallyFirstDelay, 6.0f)
+				&& FMath::IsNearlyEqual(Data->Rally.RallyTellSeconds, 1.5f) && FMath::IsNearlyEqual(Data->Rally.RallyDuration, 4.0f);
+		};
+		const UBDCandidateData* Second = UBDCandidateData::LoadForOrdinal(2);
+		Check(TEXT("COMICIO"), TEXT("every candidate's DA carries his rallies: the first every 20 s raising 2, the twentieth every 10 s raising 40, 6 s off the bus, tell 1.5 s, speech 4 s, a crowd of hordes 1..N at weight 1"),
+			Reads(First, 1, 20.0f, 2) && Reads(Second, 2, FMath::Lerp(20.0f, 10.0f, 1.0f / (FBDRallyParams::MaxOrdinal - 1)), 4) && Reads(Last, FBDRallyParams::MaxOrdinal, 10.0f, 40),
+			FString::Printf(TEXT("01: %s every %.1fs x%d [%s]; 02: [%s]; 20: %s every %.1fs x%d [%s]"),
+				First != nullptr ? TEXT("candidate data") : TEXT("NOT candidate data"), First != nullptr ? First->Rally.RallyEvery : 0.0f, First != nullptr ? First->Rally.RallyCount : 0, *CrowdOf(First),
+				*CrowdOf(Second),
+				Last != nullptr ? TEXT("candidate data") : TEXT("NOT candidate data"), Last != nullptr ? Last->Rally.RallyEvery : 0.0f, Last != nullptr ? Last->Rally.RallyCount : 0, *CrowdOf(Last)));
 
 		ABDCandidate* Candidate = Candidates->SpawnCandidate(TEXT("BD.Test.Regression"));
 		UBDRallyComponent* Rally = Candidate != nullptr ? Candidate->GetRally() : nullptr;
@@ -3234,6 +3264,19 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				Match->GetCurrentWave(), WaveFive.Num(), CountSpecials(WaveFive), FiveSpecialsAfter, AfterKill,
 				Candidates->GetFallen().Num() > 0 ? Candidates->GetFallen()[0].DeathWave : -1));
 
+		// Wave 6 is dealt after a load: the candidates' records wiped, as a fresh session has
+		// them, and put back from what was captured - the unlocking worked out again from the
+		// fallen, nothing of it in the save. Case 21 counts the Black Blocs of the whole wave.
+		{
+			const FBDCandidateSaveState Captured = Candidates->CaptureState();
+			Candidates->ResetForNewMatch();
+			const int32 Wiped = Waves->GetUnlockedKinds();
+			Candidates->RestoreState(Captured);
+			Check(TEXT("HORDA"), TEXT("the candidates' records wiped and loaded back with candidate 1 fallen: the Black Bloc is unlocked again before wave 6 is dealt"),
+				Wiped == 1 && Waves->GetUnlockedKinds() == 2 && Candidates->GetFallen().Num() == 1,
+				FString::Printf(TEXT("%d kind(s) wiped, %d loaded, %d fallen"), Wiped, Waves->GetUnlockedKinds(), Candidates->GetFallen().Num()));
+		}
+
 		// Wave 6: every tenth of its round robin a Black Bloc, the rest donkeys.
 		const int32 NoticesBefore = Waves->GetNewHordeNotices();
 		Waves->DespawnAll();
@@ -3288,6 +3331,76 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 					Bodiless.FilterByPredicate([BlackBloc](const UBDEnemyData* Kind) { return Kind == BlackBloc; }).Num()));
 		}
 
+		// The rally crowds, by the same rule: candidate N draws among hordes 1..N, as themselves
+		// when unlocked and with a body, as donkeys otherwise. 2000 militants a draw, the
+		// rally's own pick.
+		{
+			UBDEnemyData* Third = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, 3));
+			UBDEnemyData* Bloc = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, 2));
+			const auto Crowd = [Donkey](const int32 Ordinal, const int32 Unlocked, TMap<const UBDEnemyData*, int32>& OutCounts)
+			{
+				TArray<const UBDEnemyData*> Kinds;
+				TArray<float> Weights;
+				UBDRallyComponent::ResolveCrowdKinds(UBDCandidateData::RallyForOrdinal(Ordinal), Unlocked, Donkey, Kinds, Weights);
+				OutCounts.Reset();
+				FRandomStream Stream(Ordinal * 100 + Unlocked);
+				for (int32 Militant = 0; Militant < 2000 && Kinds.Num() > 0; ++Militant)
+				{
+					OutCounts.FindOrAdd(Kinds[UBDRallyComponent::PickByWeight(Stream, Weights)])++;
+				}
+			};
+			const auto Describe = [](const TMap<const UBDEnemyData*, int32>& Counts)
+			{
+				FString Text;
+				for (const TPair<const UBDEnemyData*, int32>& Pair : Counts)
+				{
+					Text += FString::Printf(TEXT("%s%s %d"), Text.IsEmpty() ? TEXT("") : TEXT(", "), *GetNameSafe(Pair.Key), Pair.Value);
+				}
+				return Text.IsEmpty() ? FString(TEXT("nobody")) : Text;
+			};
+
+			TMap<const UBDEnemyData*, int32> One, TwoOpen, TwoLocked, TwoBodiless, TwoAllOpen, ThreeTwoOpen;
+			const TSoftObjectPtr<USkeletalMesh> ThirdBody = Third != nullptr ? Third->SkeletalMesh : TSoftObjectPtr<USkeletalMesh>();
+			if (Third != nullptr && Bloc != nullptr)
+			{
+				// For the length of the check only, the third kind borrows a body.
+				Third->SkeletalMesh = Bloc->SkeletalMesh;
+			}
+			Crowd(1, 4, One);
+			Crowd(2, 2, TwoOpen);
+			Crowd(2, 1, TwoLocked);
+			Crowd(2, 4, TwoAllOpen);
+			Crowd(3, 2, ThreeTwoOpen);
+			if (Third != nullptr)
+			{
+				Third->SkeletalMesh = ThirdBody;
+			}
+			if (Bloc != nullptr)
+			{
+				// And the Black Bloc loses his for a moment.
+				const TSoftObjectPtr<USkeletalMesh> BlocBody = Bloc->SkeletalMesh;
+				const TSoftObjectPtr<UStaticMesh> BlocMesh = Bloc->Mesh;
+				Bloc->SkeletalMesh.Reset();
+				Bloc->Mesh.Reset();
+				Crowd(2, 2, TwoBodiless);
+				Bloc->SkeletalMesh = BlocBody;
+				Bloc->Mesh = BlocMesh;
+			}
+
+			Check(TEXT("COMICIO"), TEXT("candidate 1's rally is all donkeys, whatever is unlocked"),
+				One.Num() == 1 && One.FindRef(Donkey) == 2000, Describe(One));
+			const int32 Blocs = TwoOpen.FindRef(BlackBloc);
+			Check(TEXT("COMICIO"), TEXT("candidate 2 with the Black Bloc unlocked and with a body raises donkeys and Black Blocs by their weights, half and half"),
+				TwoOpen.Num() == 2 && Blocs >= 850 && Blocs <= 1150 && Blocs + TwoOpen.FindRef(Donkey) == 2000, Describe(TwoOpen));
+			Check(TEXT("COMICIO"), TEXT("candidate 2 raises only donkeys while the Black Bloc is locked, or has no body"),
+				TwoLocked.Num() == 1 && TwoLocked.FindRef(Donkey) == 2000 && TwoBodiless.Num() == 1 && TwoBodiless.FindRef(Donkey) == 2000,
+				FString::Printf(TEXT("locked: %s; bodiless: %s"), *Describe(TwoLocked), *Describe(TwoBodiless)));
+			Check(TEXT("COMICIO"), TEXT("a kind unlocked past N never rises at the rally of N, with a body or not; one of his list still locked rises as a donkey"),
+				Third != nullptr && !TwoAllOpen.Contains(Third) && TwoAllOpen.Num() == 2
+					&& !ThreeTwoOpen.Contains(Third) && ThreeTwoOpen.FindRef(Donkey) > ThreeTwoOpen.FindRef(BlackBloc) && ThreeTwoOpen.FindRef(BlackBloc) > 0,
+				FString::Printf(TEXT("candidate 2, 4 unlocked (03 with a body): %s; candidate 3, 2 unlocked: %s"), *Describe(TwoAllOpen), *Describe(ThreeTwoOpen)));
+		}
+
 		// A load with two scheduled candidates fallen: three kinds, from the records alone.
 		{
 			const FBDCandidateSaveState Before = Candidates->CaptureState();
@@ -3327,6 +3440,9 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		Check(TEXT("HORDA"), TEXT("the buses send wave 6 exactly as planned: a Black Bloc at every tenth place of the round robin"),
 			Waves->GetWaveSent().Num() == Planned && Mismatch == 0 && BlackBlocsOut == WaveSixSpecials,
 			FString::Printf(TEXT("%d of %d sent, %d off the plan, %d Black Bloc(s) out"), Waves->GetWaveSent().Num(), Planned, Mismatch, BlackBlocsOut));
+		Check(TEXT("HORDA"), TEXT("the whole first wave after that load still brings Black Blocs, one in ten"),
+			Planned > 0 && BlackBlocsOut == Planned / UBDWaveSettings::Get().SpecialEvery && BlackBlocsOut > 0,
+			FString::Printf(TEXT("%d Black Bloc(s) out of %d sent (expected %d)"), BlackBlocsOut, Waves->GetWaveSent().Num(), Planned / UBDWaveSettings::Get().SpecialEvery));
 		Match->SetGameSpeed(1.0f);
 		break;
 	}

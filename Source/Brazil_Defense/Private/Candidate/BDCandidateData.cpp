@@ -14,11 +14,16 @@ FBDRallyParams FBDRallyParams::DefaultsFor(const int32 Ordinal)
 	Params.RallyEvery = FMath::Lerp(20.0f, 10.0f, Along);
 	Params.RallyCount = 2 * N;
 
-	// Kinds 1..N with the same weight, once they exist. Only the first has art today, so
-	// every candidate raises the first kind; the list is there for the other nineteen.
-	FBDRallyCrowdEntry& Entry = Params.RallyComposition.AddDefaulted_GetRef();
-	Entry.Enemy = TSoftObjectPtr<UBDEnemyData>(FSoftObjectPath(BDCast::GetObjectPath(EBDCastKind::Horde, 1)));
-	Entry.Weight = 1.0f;
+	// Kinds 1..N with the same weight, as far as the cast has hordes: no entry points at a DA
+	// that does not exist yet. Which of them rise is the rally's to say (locked or bodiless
+	// ones come up as donkeys).
+	const int32 Kinds = FMath::Clamp(N, 1, FMath::Max(1, UBDCastSettings::Get().GetCount(EBDCastKind::Horde)));
+	for (int32 Number = 1; Number <= Kinds; ++Number)
+	{
+		FBDRallyCrowdEntry& Entry = Params.RallyComposition.AddDefaulted_GetRef();
+		Entry.Enemy = TSoftObjectPtr<UBDEnemyData>(FSoftObjectPath(BDCast::GetObjectPath(EBDCastKind::Horde, Number)));
+		Entry.Weight = 1.0f;
+	}
 	return Params;
 }
 

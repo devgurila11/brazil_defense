@@ -40,7 +40,8 @@ enum class EBDRallyState : uint8
  * the game's, so it runs faster at 2x and 4x and stops on the pause. Reaching the urn
  * during the warning is the defeat, as at any other time.
  *
- * The crowd: ordinary militants of RallyComposition, as tough as the creeps of the wave,
+ * The crowd: ordinary militants of RallyComposition (kinds 1..N for candidate N; a kind not
+ * yet unlocked or without a body rises as a donkey, ResolveCrowdKinds), as tough as the creeps of the wave,
  * on the walkable cells nearest him - the free ones that lead to the urn, one each, ring by
  * ring outwards along the route both ways (UBDWaveSubsystem::SpawnEnemyAtCell). They join the
  * wave's creeps on the board and vote like them, but are not part of its count.
@@ -99,6 +100,18 @@ public:
 
 	/** "Walking", "Tell", "Speaking", "Spawning". */
 	static const TCHAR* StateName(EBDRallyState InState);
+
+	/**
+	 * What a crowd is drawn among, by the same rule as the buses: each entry of the
+	 * composition with its weight, as itself when its horde number is unlocked (<= Unlocked)
+	 * and its DA has a body, as the Donkey otherwise. Empty only when nothing loads and there
+	 * is no donkey either.
+	 */
+	static void ResolveCrowdKinds(const FBDRallyParams& InParams, int32 Unlocked, const UBDEnemyData* Donkey,
+		TArray<const UBDEnemyData*>& OutKinds, TArray<float>& OutWeights);
+
+	/** One index of Weights, drawn by weight off Stream. */
+	static int32 PickByWeight(FRandomStream& InStream, const TArray<float>& Weights);
 
 private:
 	ABDCandidate* GetCandidate() const;

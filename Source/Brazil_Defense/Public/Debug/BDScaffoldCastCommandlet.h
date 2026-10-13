@@ -19,7 +19,9 @@
  * 2. Every DA_<Kind>_NN up to the count asked for is created when missing: the numbers of
  *    the first of its kind (health, speed, cost, levels), every art slot empty. A candidate
  *    is UBDCandidateData, with the rallies of his number (FBDRallyParams::DefaultsFor); one
- *    made before the rallies existed is turned into it in place, the only rewrite it does.
+ *    made before the rallies existed is turned into it in place; one whose crowd is still a
+ *    shorter run of hordes 1..k (weight 1) gets 1..N, as far as the cast has hordes. Those
+ *    two are the only rewrites it does.
  * 3. Each character gets its folders Mesh, Textures, Materials, Anim and Audio, each with a
  *    .gitkeep so git holds them while they are empty.
  * 4. The string tables BD_pt and BD_en get Candidate.NN, Minister.NN, Shooter.NN and

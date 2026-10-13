@@ -529,6 +529,39 @@ int32 UBDScaffoldCastCommandlet::Main(const FString& Params)
 		}
 	}
 
+	// 1c. A candidate whose crowd is still a shorter run of the default - hordes 1..k, weight 1
+	// each, as the first scaffold wrote them all with Horda_01 alone - gets the run of his number.
+	// A list anyone touched by hand (other kinds, other weights, another order) is left alone.
+	for (int32 Number = 1; Number <= Wanted[static_cast<int32>(EBDCastKind::Candidate)]; ++Number)
+	{
+		UBDCandidateData* Candidate = Cast<UBDCandidateData>(BDCast::LoadData(EBDCastKind::Candidate, Number));
+		if (Candidate == nullptr)
+		{
+			continue;
+		}
+		const TArray<FBDRallyCrowdEntry> Default = FBDRallyParams::DefaultsFor(Number).RallyComposition;
+		TArray<FBDRallyCrowdEntry>& Crowd = Candidate->Rally.RallyComposition;
+		bool bShorterRun = Crowd.Num() < Default.Num();
+		for (int32 Index = 0; bShorterRun && Index < Crowd.Num(); ++Index)
+		{
+			bShorterRun = Crowd[Index].Enemy == Default[Index].Enemy && FMath::IsNearlyEqual(Crowd[Index].Weight, Default[Index].Weight);
+		}
+		if (!bShorterRun)
+		{
+			continue;
+		}
+		UE_LOG(LogBDDebug, Display, TEXT("BDScaffoldCast: %s give %s the crowd of hordes 1..%d (had %d)."), Verb, *Candidate->GetName(), Default.Num(), Crowd.Num());
+		if (bDryRun)
+		{
+			continue;
+		}
+		Crowd = Default;
+		if (!SavePackageOf(Candidate))
+		{
+			return 1;
+		}
+	}
+
 	// 2. Every data asset up to the count, created when missing, with the numbers of the first of its kind.
 	int32 Created = 0;
 	for (int32 KindIndex = 0; KindIndex < static_cast<int32>(EBDCastKind::Count); ++KindIndex)
