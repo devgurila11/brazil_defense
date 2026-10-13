@@ -1,6 +1,6 @@
 # Raio-X da mecânica — Brazil Defense
 
-**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00 e pelas hordas especiais do briefing 2026-10-14 09:00.
+**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00, pelas hordas especiais do briefing 2026-10-14 09:00 e pelo comício com os tipos 1..N (briefing 15:00).
 
 > O que o jogo FAZ hoje, lido no código. O PLANO.md diz o que o jogo deve
 > ser; este arquivo diz o que ele é, e marca onde os dois discordam.
@@ -149,7 +149,7 @@
 | Comício: quando | `RallyFirstDelay` (6 s) depois de sair do ônibus, depois a cada `RallyEvery` de caminhada (20 s no 1º → 10 s no 20º, linear), sorteado ±20% por comício com semente (seed, onda, ordinal). Tempo de jogo: acelera em 2x/4x, para na pausa | DA: RallyFirstDelay 6; RallyEvery 20→10; RallyEveryJitter 0,2 | UBDRallyComponent (Candidate/BDRallyComponent.cpp) | Não (seção Comício) |
 | Comício: sequência | Walking → **Tell** (1,5 s andando, exclamação vermelha + buzina do ônibus como som curto; chegar à urna aqui é derrota) → **Speaking** (parado, `RallyDuration` 4 s ou a duração da cue `RallySpeech`, mínimo 2,5 s) → **Spawning** (parado e já vulnerável, 0,6 s enquanto a multidão brota) → Walking | RallyTellSeconds 1,5; RallyDuration 4; RallyMinDuration 2,5; RallyRiseSeconds 0,6; RallyTellSound SCue_Bus_Horn | TickComponent / Enter* | Não (seção Comício) |
 | Comício: discurso | Intocável: torres, personagens e Mito não o miram; dano que chega (inclusive projétil em voo) vira nulo como o do abrigo do ministro. O Mito perde o alvo e segue a patrulha; acaba o discurso, volta a persegui-lo. Só a fala dele: as outras falas que soavam são cortadas e nenhuma começa (horda, Mito, Nicole, grito do ministro); efeitos seguem. Sem `RallySpeech`, toca a `SpeechSound` dele (hoje vazia: só o megafone) | — | IsUntouchable; ABDAgent::FindCandidate; UBDCreepSoundSubsystem::TakeFloor | Não (seção Comício) |
-| Comício: multidão | `RallyCount` = 2×N militantes (N = ordinal até 20), sorteados por peso em `RallyComposition` (hoje só DA_Horda_01; vazio = creep da onda), vida da horda da onda. Busca em anel a partir da célula dele sobre células andáveis (respeita divisórias), até 20 passos: uma por célula, só Free/Tower/Spawn (nunca plataforma, palácio, Blocked, urna) e com rota até a urna; o que não acha lugar não brota. Brotam do chão (escala Z 0→1 em 0,6 s, parados, já alvejáveis), votam como qualquer militante, a onda espera por eles, mas **não** entram no total W × bocas (contam em `CreepsRaised`) | RallyCount 2N; RallyMaxSteps 20 | RaiseCrowd; UBDWaveSubsystem::SpawnEnemyAtCell | Não (seção Comício) |
+| Comício: multidão | `RallyCount` = 2×N militantes (N = ordinal até 20), sorteados por peso em `RallyComposition` (hordas 1..N com peso 1, até o número de hordas do elenco — hoje 4); cada entrada vale ela mesma se o tipo está **liberado** (≤ 1 + caídos) e tem corpo, jumento se não — a regra dos ônibus (`ResolveCrowdKinds`); sorteio na semente do comício do candidato. Candidato 1 = só jumento; candidato 2 com Black Bloc liberado ≈ metade de cada; tipo liberado > N nunca brota no comício de N, vida da horda da onda. Busca em anel a partir da célula dele sobre células andáveis (respeita divisórias), até 20 passos: uma por célula, só Free/Tower/Spawn (nunca plataforma, palácio, Blocked, urna) e com rota até a urna; o que não acha lugar não brota. Brotam do chão (escala Z 0→1 em 0,6 s, parados, já alvejáveis), votam como qualquer militante, a onda espera por eles, mas **não** entram no total W × bocas (contam em `CreepsRaised`) | RallyCount 2N; RallyMaxSteps 20 | RaiseCrowd; UBDWaveSubsystem::SpawnEnemyAtCell | Não (seção Comício) |
 | Comício: um por vez | Um comício no board: o segundo candidato devido espera o primeiro voltar a andar para começar o tell | — | UBDCandidateSubsystem::TryClaimRally | Não (seção Comício) |
 | Comício: retorno | Quem volta no desfile não discursa (nem forçado) | bRallyOnReturn false | SpawnFromRecord | Não (seção Comício) |
 | Comício: visual | Disco vermelho translúcido no chão (1,5 célula de raio, pulso 1 Hz, `M_RallyAura` sobre o cilindro da engine) e megafone vermelho sobre a cabeça no discurso; aviso "COMÍCIO" 2 s na linha do "O CANDIDATO SAIU" ao começar o tell | RallyAuraRadiusCells 1,5; RallyAuraPulseHz 1; RallyNoticeSeconds 2 | ShowAura; ABDMatchHUD::DrawRallyMegaphones; UBDHUDWidget::UpdateCandidate | Não (seção Comício) |
@@ -291,7 +291,7 @@
 | Regra | Como funciona hoje | Parâmetro(s) e valor atual | Onde está | Diverge do PLANO? |
 |---|---|---|---|---|
 | DAs | 20 candidatos, 11 ministros, 4 personagens, 4 hordas (39) em `Content/Elenco` | CastSettings 20/11/4/4 | — | Não (§14) |
-| Em jogo | Horda_01 (onda e multidão dos comícios), Horda_02 Black Bloc (ônibus, quando liberada; corpo provisório = jumento preto), Candidato_01 (corpo de todos os candidatos), Candidato_01..20 (comício de cada número), Personagem_01 (único em `Shooters`); nenhum ministro | — | ini; settings; BDCast::LoadData | Não (§14) |
+| Em jogo | Horda_01 (onda e multidão dos comícios), Horda_02 Black Bloc (ônibus e comícios do 2 em diante, quando liberada; corpo provisório = jumento preto), Candidato_01 (corpo de todos os candidatos), Candidato_01..20 (comício de cada número), Personagem_01 (único em `Shooters`); nenhum ministro | — | ini; settings; BDCast::LoadData | Não (§14) |
 | Enemy, lidos | MaxHealth, HealthScale, MoveSpeed, SpeedScale, Acceleration, EnemyClass, Mesh, SkeletalMesh, MeshScale, MeshYaw, MeshMaterial, SkinMaterials, MoveAnimation, DeathAnimations, paradas (bStops, StopFirstDelay, StopInterval, StopDuration, StopAnimation), sons (Speech, Call, Footstep, Death, BodyFall, pitch, intervalo), KillType, KillIcon, DisplayName | — | BDEnemyBase; BDCreepSoundSubsystem | Não está no PLANO |
 | Enemy, não lidos | VotesOnArrival (nunca), VotesOnDeath (só no modo desligado), Skeleton, IdleAnimation, **CandidateFace** (só o audit) | — | — | Sim — §14 ícone do candidato = `CandidateFace` |
 | Candidate (`UBDCandidateData`) | Os 20 candidatos são `UBDCandidateData` (subclasse de `UBDEnemyData`, convertidos no lugar pelo `BDScaffoldCast`); `Rally` (FBDRallyParams) com os defaults do número. Slot novo no audit: `Sound.Rally` (RallySpeech) — audit 431 vazios (candidatos 219) | — | BDCandidateData.h; BDScaffoldCastCommandlet.cpp (1b) | Não (§14) |
@@ -405,7 +405,7 @@ DA_Character_Test não é apontado por nenhuma peça.
 | RallyTellSeconds | 1,5 | 1,5 | 1,5 | Aviso |
 | RallyDuration / RallyMinDuration | 4 / 2,5 | 4 / 2,5 | 4 / 2,5 | Discurso sem cue / piso |
 | RallyCount | 2 | 40 | 0 (= nunca preenchido: usa o default do número) | Multidão |
-| RallyComposition | DA_Horda_01 ×1 | DA_Horda_01 ×1 | vazio (= creep da onda) | Tipos e pesos |
+| RallyComposition | DA_Horda_01 ×1 | DA_Horda_01..04 ×1 | vazio (= creep da onda) | Tipos e pesos (N-ésimo: hordas 1..min(N, Hordas)) |
 | RallySpeech | vazio | vazio | vazio | Fala do comício (sem ela, SpeechSound) |
 
 ### UBDPalaceData (DA_PalaceData)
@@ -525,6 +525,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | 39 | Nome do candidato no HUD fixo ("Candidate N") |
 | 40 | Comício: a multidão não entra no total W × bocas (conta em `CreepsRaised`); procura lugar até 20 passos e o que não acha não brota; o tell usa a buzina do ônibus; o candidato fica parado e vulnerável os 0,6 s do brotar; o comício vem do DA do número e o corpo ainda do 01 |
 | 41 | Hordas: a liberação vale na distribuição da onda (o plano inteiro é feito ali); a 1ª parada do Black Bloc é sorteada no intervalo 4–8 s com piso de 3 s; o aviso "NOVA HORDA" reaparece depois de um load; o corpo do Black Bloc é provisório (jumento preto, sem sons próprios) |
+| 42 | Comício com tipos: a lista do candidato N para no número de hordas do elenco (hoje 4), para não apontar para DA que não existe — o `BDScaffoldCast` estende a lista de quem ainda tem a sequência padrão quando o elenco crescer; tipo travado ou sem corpo sai jumento (não é redistribuído entre os outros); o sorteio usa a semente do comício do candidato, não a da onda |
 
 ## Divergências PLANO × código
 

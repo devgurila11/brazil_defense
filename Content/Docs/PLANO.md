@@ -263,6 +263,30 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-14 (comício brota os tipos 1..N, briefing 15:00) — bee04d7** (desde 8968a36):
+  - **Comício**: o candidato N sorteia entre as hordas 1..N com peso 1; cada entrada sai ela
+    mesma se o tipo está liberado (≤ 1 + caídos) e tem corpo, jumento se não
+    (`UBDRallyComponent::ResolveCrowdKinds`, a regra dos ônibus). Candidato 1 = só jumento;
+    candidato 2 com Black Bloc liberado ≈ metade de cada; tipo liberado > N nunca brota no de N.
+    `RallyCount`, tempos e invencibilidade intocados.
+  - **DAs**: a lista para no número de hordas do elenco (hoje 4: do Candidato_04 ao _20 é
+    01..04), para não apontar para DA inexistente. `BDScaffoldCast` ganhou o passo que estende a
+    lista de quem ainda tem a sequência padrão; rodado, regravou DA_Candidato_02..20.
+  - **Regressão**: 6 checks novos (COMICIO ×4 com 2000 sorteios cada: candidato 1, candidato 2
+    liberado / travado / sem corpo, tipo > N; HORDA ×2: registros dos candidatos apagados e
+    recarregados com o 1 caído antes da onda 6, e a onda 6 inteira com 3 Black Blocs de 36).
+    Check intermitente do Mito no discurso (falhou 1 de 2 antes da leva e 2 de 4 depois):
+    ministros que o endless manteve atraíam o Mito numa perseguição própria, lida como
+    perseguição do candidato; o caso 11 agora devolve os ministros ao STF antes. Antes: 149/149
+    (uma rodada 148 pelo Mito); depois: 155/155 quatro vezes. Dois alvos compilados.
+  - RAIOX (multidão do comício, tabela do DA, "em jogo", regra 42) e uma frase no "Comício".
+  - **Onde paramos**: (1) ele ver na tela um comício do 2º candidato com Black Bloc liberado
+    (matar o 1º, que libera o Black Bloc; `BD.Candidate.Spawn` manda o 2º; `BD.Candidate.Rally`
+    força o comício na hora — a liberação vale para o comício já, sem esperar onda); se pesar demais,
+    anotar no §13, sem calibrar; (2) confirmar minhas decisões (lista até o nº de hordas do
+    elenco; tipo travado vira jumento em vez de redistribuir o peso; sorteio na semente do
+    comício, não na da onda).
+
 - **2026-10-14 (hordas especiais nos ônibus + Black Bloc, briefing 09:00) — ab5c990** (desde 745e0de):
   - **Liberação**: liberados = 1 + candidatos caídos (a 1ª morte é sempre a do agendado;
     retornante morto não soma), teto 20, nunca gravado — o load reconstrói dos caídos. A onda
@@ -2854,7 +2878,8 @@ cada 20 s no 1º caindo linearmente até 10 s no 20º, sorteado ±20% a
 cada vez; aviso 1,5 s; discurso de 4 s ou a duração da fala, se
 houver, nunca menos de 2,5 s; multidão de 2 × N (2 no 1º, 40 no 20º),
 dos tipos 1 a N de horda com o mesmo peso, com a vida da horda da onda
-em que brota. Tempo de comício é tempo de jogo: acelera em 2x/4x e
+em que brota; só brota tipo já liberado e com corpo, pela regra dos
+ônibus (seção 16), e o resto sai jumento. Tempo de comício é tempo de jogo: acelera em 2x/4x e
 para na pausa.
 
 **Um por vez.** Dois candidatos no board (endless): o segundo espera o
