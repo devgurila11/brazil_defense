@@ -263,6 +263,12 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-13 (andamento da produção no PLANO) — COMMIT** (desde b544ac1):
+  - Seção 14 ganhou "Andamento da produção": tabela por tipo (DAs, slots vazios, o que
+    está pronto), o passo 1 (elenco criado, 411 slots vazios) e os próximos passos. A
+    tabela é atualizada, com data, sempre que o `BD.Cast.Audit` mudar.
+  - Só documento; código e conteúdo iguais a 4090335.
+
 - **2026-10-13 (elenco pronto na UE: 39 DAs, pastas, textos e audit) — 4090335** (desde 222ee6b):
   - **Fase nova** (briefing 09:30): todo o elenco criado vazio para a produção. Convenção e
     tabela na seção 14 "Elenco" (nova). Mecânica nenhuma mudou.
@@ -2669,3 +2675,31 @@ onda, candidato ou ministro: o jogo roda com os `_01`. Quem sai em
 qual onda é fase posterior. O ministro já recebe o seu DA no spawn
 (`UBDMinisterSettings::Ministers`, por assento, vazio por enquanto) e
 lê dele só o `FleeSound`.
+
+### Andamento da produção
+
+Onde a produção está, tipo por tipo. Atualizar esta tabela sempre que
+o `BD.Cast.Audit` mudar (arte nova apontada num DA, contagem nova no
+commandlet), com a data. O detalhe slot a slot sai do próprio audit.
+
+**Passo 1 — elenco criado na UE (2026-10-13, 4090335).** Todos os DAs,
+pastas e chaves de texto existem; nenhum DA novo está em jogo ainda.
+
+| Tipo | DAs | Slots vazios | Pronto hoje |
+|---|---|---|---|
+| Candidatos | 20 | 199 de 200 | `_01`: só o material vermelho do bloco provisório |
+| Ministros | 11 | 132 de 132 | nada (o jogo usa o bloco preto das settings) |
+| Personagens | 4 | 35 de 40 | `_01` Nicole: corpo, Idle, Shooting, arma 1 (pistola), festejo; faltam armas 2–6 |
+| Hordas | 4 | 45 de 60 | `_01` jumento: completo (malha, 4 skins, Run, 4 mortes, 5 sons, ícone) |
+| **Total** | **39** | **411** | |
+
+**Próximos passos.**
+1. Produção da arte pela lista do audit (ele): textura, MI, animação e
+   som na pasta do personagem, depois apontar o slot no DA.
+2. Definir quantos personagens de plataforma e tipos de horda há; rodar
+   o `BDScaffoldCast` de novo com os números.
+3. Nomes oficiais: só `DisplayName` e as chaves `Candidate/Minister/
+   Shooter/Enemy.NN` nas tabelas.
+4. Fase seguinte (não começada): pôr os DAs em jogo — quem sai em qual
+   onda, ministros por assento em `UBDMinisterSettings::Ministers`, o
+   corpo e as animações do ministro no lugar do bloco.
