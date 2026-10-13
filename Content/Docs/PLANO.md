@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-13 (andamento da produção no PLANO) — COMMIT** (desde b544ac1):
+- **2026-10-13 (andamento da produção no PLANO) — 3618712** (desde b544ac1):
   - Seção 14 ganhou "Andamento da produção": tabela por tipo (DAs, slots vazios, o que
     está pronto), o passo 1 (elenco criado, 411 slots vazios) e os próximos passos. A
     tabela é atualizada, com data, sempre que o `BD.Cast.Audit` mudar.
