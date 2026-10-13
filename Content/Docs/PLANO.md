@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-13 (elenco pronto na UE: 39 DAs, pastas, textos e audit) — COMMIT** (desde 222ee6b):
+- **2026-10-13 (elenco pronto na UE: 39 DAs, pastas, textos e audit) — 4090335** (desde 222ee6b):
   - **Fase nova** (briefing 09:30): todo o elenco criado vazio para a produção. Convenção e
     tabela na seção 14 "Elenco" (nova). Mecânica nenhuma mudou.
   - **`BDScaffoldCast`** (commandlet novo, idempotente): `-Candidatos=20 -Ministros=11
