@@ -293,6 +293,14 @@ public:
 	float AimTolerance = 12.0f;
 
 	/**
+	 * What every weapon of his deals to a militant, of any horde, as a multiple of its
+	 * Damage. A candidate takes the weapon's Damage as it is. Weapons with no numbers of
+	 * their own yet (the placeholders) carry it the same way.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Agent|Combat", meta = (ClampMin = "0.0"))
+	float HordeDamageMultiplier = 2.0f;
+
+	/**
 	 * One weapon per palace level, 0 to MaxLevel: the level picks the entry. Only the
 	 * pistol (entry 0) is designed; the others hold its numbers, marked placeholder, and
 	 * only their kill bonus already steps down 0.15 s a level.

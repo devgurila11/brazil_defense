@@ -171,6 +171,9 @@ public:
 	/** One line on his state, for the console and the regression. */
 	FString Describe() const;
 
+	/** What a shot of Weapon does to Target: the weapon's Damage, times HordeDamageMultiplier on a militant. */
+	float GetShotDamage(const ABDEnemyBase& Target, const FBDAgentWeapon& Weapon) const;
+
 	/**
 	 * Where his feet are against the floor under him, in centimetres: the lowest bone of the
 	 * pose playing now minus the ground traced at his location. Near zero when he stands on
@@ -178,9 +181,11 @@ public:
 	 */
 	bool MeasureFeet(float& OutLowestBoneOverGround, float& OutRootOverGround) const;
 
+	/** The palace data he runs on. Null when his palace has none. */
+	const UBDPalaceData* GetData() const;
+
 private:
 	UBDGridSubsystem* GetGrid() const;
-	const UBDPalaceData* GetData() const;
 
 	/** Whether he may stand on a cell: on the grid and not permanent scenery. */
 	/** A minister in reach on his feet: run at him, and kick him once close. @return whether he went for one. */

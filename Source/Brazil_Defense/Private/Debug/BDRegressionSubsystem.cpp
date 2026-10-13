@@ -1860,6 +1860,34 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Agent != nullptr && bBeside && FMath::IsNearlyEqual(Agent->GetPatrolFraction(), 1.0f, 0.01f) && !Agent->IsAsleep(),
 			Agent != nullptr ? Agent->Describe() : FString(TEXT("no agent")));
 
+		// His shot hits a militant twice as hard as a candidate: 20 and 10 with the pistol of
+		// level 0, and the same double on every level's weapon, the placeholders included.
+		if (Agent != nullptr && Agent->GetData() != nullptr)
+		{
+			const UBDPalaceData* AgentData = Agent->GetData();
+			ABDEnemyBase* Militant = Waves->SpawnEnemy(UBDWaveSettings::Get().ResolveWaveEnemy(), 0);
+			const ABDCandidate* Candidate = GetDefault<ABDCandidate>();
+			const FBDAgentWeapon* Pistol = AgentData->GetWeapon(0);
+			const float OnMilitant = Militant != nullptr && Pistol != nullptr ? Agent->GetShotDamage(*Militant, *Pistol) : -1.0f;
+			const float OnCandidate = Pistol != nullptr ? Agent->GetShotDamage(*Candidate, *Pistol) : -1.0f;
+			int32 Doubled = 0;
+			for (int32 Level = 0; Level < AgentData->Weapons.Num(); ++Level)
+			{
+				const FBDAgentWeapon& Weapon = AgentData->Weapons[Level];
+				Doubled += Militant != nullptr && FMath::IsNearlyEqual(Agent->GetShotDamage(*Militant, Weapon), 2.0f * Weapon.Damage)
+					&& FMath::IsNearlyEqual(Agent->GetShotDamage(*Candidate, Weapon), Weapon.Damage) ? 1 : 0;
+			}
+			if (Militant != nullptr)
+			{
+				Militant->Destroy();
+			}
+			Check(TEXT("AGENTE"), TEXT("the Mito's shot deals 2x to a militant and 1x to a candidate: 20 and 10 on level 0, on all six weapons"),
+				FMath::IsNearlyEqual(AgentData->HordeDamageMultiplier, 2.0f) && FMath::IsNearlyEqual(OnMilitant, 20.0f) && FMath::IsNearlyEqual(OnCandidate, 10.0f)
+					&& AgentData->Weapons.Num() == 6 && Doubled == 6,
+				FString::Printf(TEXT("x%.1f; level 0: %.0f on a militant, %.0f on a candidate; %d of %d weapons doubled on militants only"),
+					AgentData->HordeDamageMultiplier, OnMilitant, OnCandidate, Doubled, AgentData->Weapons.Num()));
+		}
+
 		// On the floor, not on the board plane under it: the street stands above the plane.
 		{
 			float FeetOver = 0.0f, RootOver = 0.0f;

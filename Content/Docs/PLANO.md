@@ -263,7 +263,18 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-14 (leva do briefing 18:00, item 2: falas −25 % e sem repetição)** (desde 7ff8c38):
+- **2026-10-14 (leva do briefing 18:00, item 3: Mito ×2 contra horda)** (desde deef593):
+  - `HordeDamageMultiplier` 2,0 no `UBDPalaceData` (o DA_PalaceData herda o default): o tiro do
+    Mito em militante de qualquer horda vale o dano da arma × 2; em candidato, o dano da arma.
+    Vale para as 6 armas (os placeholders herdam o mesmo dano). Bônus de patrulha por abate
+    intocado. `ABDAgent::GetShotDamage` decide; `GetData` do Agente ficou público para a regressão.
+  - **Regressão**: 1 check novo (AGENTE: 20 no militante e 10 no candidato no nível 0, e o dobro só
+    no militante nas 6 armas). Antes: 163/163; depois: 164/164. Dois alvos compilados.
+  - RAIOX (§6 tiro, tabela do DA_PalaceData).
+  - **Onde paramos**: com 20 de dano o tiro mata o militante até a onda ≈32 (vida 10 × 1,022^(W−1)
+    passa de 20 aí); acima disso, 2 tiros. O efeito no equilíbrio aparece na suíte do item 4.
+
+- **2026-10-14 (leva do briefing 18:00, item 2: falas −25 % e sem repetição) — deef593** (desde 7ff8c38):
   - **Números** (−25 %): horda mira 0,15 fala/s (era 0,2); vocalização por creep 11–27 s
     (era 8–20; default da classe, que os DAs herdam — conferido no DA_Horda_01); Mito e
     Nicole comemoram 7 % dos abates (era 9 %) e esperam 20 s entre falas (era 15). Teto de 2

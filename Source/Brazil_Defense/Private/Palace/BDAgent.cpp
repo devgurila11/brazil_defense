@@ -12,6 +12,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Sound/SoundBase.h"
+#include "Enemy/BDCandidate.h"
 #include "Enemy/BDCreepSoundSubsystem.h"
 #include "Enemy/BDEnemyBase.h"
 #include "Grid/BDFreeWalk.h"
@@ -741,7 +742,8 @@ void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 		const UBDPalaceData* Data = GetData();
 		Shots->PlayShot(Data != nullptr ? Data->ResolveFireSound(HeldWeaponLevel).LoadSynchronous() : Weapon.FireSound.LoadSynchronous(), GetMuzzleLocation());
 	}
-	UE_LOG(LogBDTower, Verbose, TEXT("%s fires %s at %s: %.0f damage."), *GetName(), *Weapon.Name.ToString(), *Target->GetName(), Weapon.Damage);
+	const float Damage = GetShotDamage(*Target, Weapon);
+	UE_LOG(LogBDTower, Verbose, TEXT("%s fires %s at %s: %.0f damage."), *GetName(), *Weapon.Name.ToString(), *Target->GetName(), Damage);
 
 	// How far the barrel points off the line to the target, for fitting a weapon's Grip.
 	// Only on screen: off it the pose ticks without moving the bones, and the socket reads the reference pose.
@@ -753,7 +755,14 @@ void ABDAgent::Fire(ABDEnemyBase* Target, const FBDAgentWeapon& Weapon)
 		UE_LOG(LogBDTower, Verbose, TEXT("%s: barrel off the line of fire by %.1f deg of yaw (+ right), %.1f of pitch."), *GetName(),
 			FMath::FindDeltaAngleDegrees(Line.Yaw, Barrel.Yaw), FMath::FindDeltaAngleDegrees(Line.Pitch, Barrel.Pitch));
 	}
-	Target->ApplyDamage(Weapon.Damage, this);
+	Target->ApplyDamage(Damage, this);
+}
+
+float ABDAgent::GetShotDamage(const ABDEnemyBase& Target, const FBDAgentWeapon& Weapon) const
+{
+	// The candidate is his chase, not his trade: the militants are where the palace pays.
+	const UBDPalaceData* Data = GetData();
+	return Target.IsA<ABDCandidate>() || Data == nullptr ? Weapon.Damage : Weapon.Damage * Data->HordeDamageMultiplier;
 }
 
 void ABDAgent::NotifyKill()

@@ -1,6 +1,6 @@
 # Raio-X da mecânica — Brazil Defense
 
-**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00, pelas hordas especiais do briefing 2026-10-14 09:00, pelo comício com os tipos 1..N (briefing 15:00) e pela leva do briefing 18:00 (porta da urna, falas −25 % sem repetição).
+**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00, pelas hordas especiais do briefing 2026-10-14 09:00, pelo comício com os tipos 1..N (briefing 15:00) e pela leva do briefing 18:00 (porta da urna, falas −25 % sem repetição, Mito ×2 contra horda).
 
 > O que o jogo FAZ hoje, lido no código. O PLANO.md diz o que o jogo deve
 > ser; este arquivo diz o que ele é, e marca onde os dois discordam.
@@ -191,7 +191,7 @@
 | Alvo válido | Vivo, não chegou, não condenado, não intocável (abrigado por ministro ou candidato discursando), dentro do raio | — | :508-513 | Não está no PLANO |
 | Quem primeiro | Candidato no alcance > mais próximo | bTargetFurthestAlong False | AcquireTarget (:515-551) | Parcial (§4) |
 | Troca de alvo | Antes de cada tiro: só por um 15% mais perto (Dynamic); por candidato sempre | AimSwitchMargin 0,15 | :553-584 | Não está no PLANO |
-| Tiro | Hitscan direto (sem projétil, sem reservar dano) | dano 10 | Fire (:726-755) | Não está no PLANO |
+| Tiro | Hitscan direto (sem projétil, sem reservar dano); contra militante de qualquer horda o dano da arma × `HordeDamageMultiplier`, contra candidato o dano da arma | dano 10 → 20 no militante, 10 no candidato; HordeDamageMultiplier 2 | Fire (:726-755) | Não está no PLANO |
 | Cadência | Notify `BD Shot` na anim (dispara mesmo desalinhado); sem notify, timer 1/1,5 s com tolerância de 12° | FireRate 1,5; AimTolerance 12° | :644-648, 898-908 | Não está no PLANO |
 | Barra de 120 s | Corre sempre que acordado (com ou sem onda); para na volta para casa; ao zerar, volta | PatrolTime 120 | Tick (:958-970) | Não está no PLANO |
 | Bônus por abate | +s de patrulha por abate, sem teto; não soma voltando nem dormindo | 1,0/0,85/0,70/0,55/0,40/0,25 s por nível | NotifyKill (:757-776) | Não está no PLANO |
@@ -422,6 +422,7 @@ DA_Character_Test não é apontado por nenhuma peça.
 | DetectionRadiusCells | 3 | Alcance |
 | bTargetFurthestAlong | False | Mais próximo |
 | AimSwitchMargin / AimTolerance | 0,15 / 12 | Troca e tolerância |
+| HordeDamageMultiplier | 2,0 | Dano da arma contra militante (candidato ×1), em todas as armas |
 | Weapons Damage/FireRate | 10 / 1,5 nas 6 | Arma por nível |
 | Weapons KillBonusSeconds | 1,0 / 0,85 / 0,70 / 0,55 / 0,40 / 0,25 | Bônus por abate |
 | Weapons AimMode | Dynamic | Re-escolhe a cada tiro |
