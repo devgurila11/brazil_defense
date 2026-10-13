@@ -83,6 +83,8 @@
 #include "Objective/BDObjectiveSettings.h"
 #include "Objective/BDObjectiveSubsystem.h"
 #include "Path/BDPathfinder.h"
+#include "Audio/BDSpeechDeck.h"
+#include "Sound/SoundCue.h"
 #include "Placement/BDPlaceableData.h"
 #include "SkeletalMeshComponentBudgeted.h"
 #include "Grid/BDGridDebug.h"
@@ -725,6 +727,70 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 	case 0:
 	{
 		CheckCast();
+
+		// A bank of five, a thousand draws: every round of five says each line once, and no
+		// line is said twice in a row, across a refill either. A bank of one says that one.
+		{
+			FBDShuffleBag Bag;
+			FRandomStream Stream(1234);
+			TArray<int32> Drawn;
+			for (int32 Draw = 0; Draw < 1000; ++Draw)
+			{
+				Drawn.Add(Bag.Draw(5, &Stream));
+			}
+			int32 BadRounds = 0;
+			int32 Repeats = 0;
+			for (int32 Round = 0; Round + 5 <= Drawn.Num(); Round += 5)
+			{
+				TSet<int32> Seen;
+				for (int32 Each = Round; Each < Round + 5; ++Each) { Seen.Add(Drawn[Each]); }
+				BadRounds += Seen.Num() == 5 ? 0 : 1;
+			}
+			for (int32 Each = 1; Each < Drawn.Num(); ++Each)
+			{
+				Repeats += Drawn[Each] == Drawn[Each - 1] ? 1 : 0;
+			}
+			FBDShuffleBag One;
+			int32 OneOff = 0;
+			for (int32 Draw = 0; Draw < 10; ++Draw) { OneOff += One.Draw(1, &Stream) == 0 ? 0 : 1; }
+			Check(TEXT("FALAS"), TEXT("1000 draws from a bank of 5: each line once per round of 5, never twice in a row; a bank of 1 always says its line"),
+				BadRounds == 0 && Repeats == 0 && OneOff == 0,
+				FString::Printf(TEXT("%d of 200 rounds with a line twice, %d back-to-back repeat(s), bank of 1 off %d time(s)"), BadRounds, Repeats, OneOff));
+		}
+
+		// The real bank of the militants, through the deck the game plays from: as many
+		// draws as lines give every line once, each a cue of its own with one line in it.
+		{
+			const UBDEnemyData* Militant = UBDWaveSettings::Get().ResolveWaveEnemy();
+			USoundBase* Bank = Militant != nullptr ? Militant->SpeechSound.LoadSynchronous() : nullptr;
+			UBDSpeechDeck* Deck = UBDSpeechDeck::Get(World);
+			const int32 Lines = Deck != nullptr && Bank != nullptr ? Deck->GetLineCount(Bank) : 0;
+			TSet<int32> Said;
+			int32 Plain = 0;
+			for (int32 Draw = 0; Deck != nullptr && Draw < Lines; ++Draw)
+			{
+				USoundBase* Line = Deck->DrawLine(Bank);
+				Said.Add(Deck->GetLineIndex(Bank, Line));
+				const USoundCue* LineCue = Cast<USoundCue>(Line);
+				Plain += LineCue != nullptr && UBDSpeechDeck::FindRandomNode(*LineCue) == nullptr && Line->GetDuration() > 0.0f ? 1 : 0;
+			}
+			Check(TEXT("FALAS"), TEXT("the militants' bank plays every line once before any again, each line a cue with no choice left in it"),
+				Lines > 1 && Said.Num() == Lines && !Said.Contains(INDEX_NONE) && Plain == Lines,
+				FString::Printf(TEXT("%s: %d line(s), %d different in %d draws, %d single-line cue(s)"), *GetNameSafe(Bank), Lines, Said.Num(), Lines, Plain));
+		}
+
+		// The rates come from the settings and the militant's data, cut by a quarter.
+		{
+			const UBDCreepSoundSettings& Voice = UBDCreepSoundSettings::Get();
+			const UBDEnemyData* Militant = UBDWaveSettings::Get().ResolveWaveEnemy();
+			Check(TEXT("FALAS"), TEXT("the horde aims at 0.15 lines/s, a militant vocalizes every 11-27 s, the Mito and Nicole celebrate 7% of kills and wait 20 s"),
+				FMath::IsNearlyEqual(Voice.SpeechTargetPerSecond, 0.15f) && Militant != nullptr && FMath::IsNearlyEqual(Militant->VocalIntervalMin, 11.0f)
+					&& FMath::IsNearlyEqual(Militant->VocalIntervalMax, 27.0f) && FMath::IsNearlyEqual(Voice.CelebrationChance, 0.07f)
+					&& FMath::IsNearlyEqual(Voice.CelebrationMinInterval, 20.0f) && Voice.SpeechMaxConcurrent == 2,
+				FString::Printf(TEXT("%.2f lines/s, %s %.0f-%.0f s, celebration %.0f%% every %.0f s, %d at once"), Voice.SpeechTargetPerSecond,
+					*GetNameSafe(Militant), Militant != nullptr ? Militant->VocalIntervalMin : -1.0f, Militant != nullptr ? Militant->VocalIntervalMax : -1.0f,
+					Voice.CelebrationChance * 100.0f, Voice.CelebrationMinInterval, Voice.SpeechMaxConcurrent));
+		}
 
 		// No urn down yet: the first countdown holds full whatever time goes by, and the wave
 		// cannot be called onto a board with nowhere to walk to.

@@ -1,6 +1,6 @@
 # Raio-X da mecânica — Brazil Defense
 
-**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00, pelas hordas especiais do briefing 2026-10-14 09:00, pelo comício com os tipos 1..N (briefing 15:00) e pela leva do briefing 18:00 (porta da urna).
+**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00, pelas hordas especiais do briefing 2026-10-14 09:00, pelo comício com os tipos 1..N (briefing 15:00) e pela leva do briefing 18:00 (porta da urna, falas −25 % sem repetição).
 
 > O que o jogo FAZ hoje, lido no código. O PLANO.md diz o que o jogo deve
 > ser; este arquivo diz o que ele é, e marca onde os dois discordam.
@@ -119,7 +119,7 @@
 | Morte | Avisa o atirador → +1 azul e placar de abates → grito → corpo → sangue → destroy | — | BDEnemyBase.cpp:786-838 | Não está no PLANO |
 | Corpo | Só com malha esquelética e anim de morte: 1 de 4 quedas a 1,5x, afunda em 0,4 s; máx. 40 deitados | MaxCorpses 40 | BDCreepCorpse.cpp:34-133 | Não está no PLANO |
 | Sangue | Sem `BloodTexture` no ini: **nenhuma mancha aparece no jogo** (só a regressão injeta) | BloodTexture vazio | BDBloodDecals.cpp:53-107 | Não está no PLANO |
-| Sons do creep | Grito (máx. 5), queda (5), passos (12), chamado (5), falas (2, ver §10); vocaliza a cada 8–20 s | ver CreepSoundSettings | BDCreepSoundSubsystem.cpp | Não está no PLANO |
+| Sons do creep | Grito (máx. 5), queda (5), passos (12), chamado (5), falas (2, ver §10); vocaliza a cada 11–27 s (`VocalIntervalMin/Max` do DA, default da classe) | ver CreepSoundSettings | BDCreepSoundSubsystem.cpp | Não está no PLANO |
 | Abrigo de ministro | Militante protegido: ninguém mira, dano vira nulo, corpo pisca | ShelterBlinkHz 5 | BDEnemyBase.cpp:571-600, 759-768 | Não está no PLANO |
 
 ## 4. Candidato
@@ -200,7 +200,7 @@
 | Descanso | max(10; 45 − 0,5 × abates); dormindo não defende nem chuta; acorda sozinho com 120 s | 45 / 0,5 / 10 | GetRestTime; :400-436 | Não está no PLANO |
 | Perseguição | Qualquer candidato vivo **que não esteja discursando**, a qualquer distância: corre a 0,75 cél/s, para a 75% do raio, ignora militantes e ministros; não persegue voltando para casa. No discurso o candidato some para ele (patrulha); no fim, persegue de novo | ChaseSpeedScale 1,5; ChaseCloseIn 0,75 | FindCandidate (:586-642) | Parcial (seção Comício) |
 | Chute | Sem candidato no board, ministro no alcance tem prioridade sobre militante, mesmo com a barra vazia; chuta a ≤1 célula + corpo, alinhado em 12°, pé acerta em 0,45 s | KickReachCells 1; KickImpactSeconds 0,45 | :786-859 | Não está no PLANO |
-| Falas | Abate: 9%, 15 s por falante, 4 s globais. Chute: sempre | CelebrationChance 0,09 | :761-767, 854-857 | Não está no PLANO |
+| Falas | Abate: 7%, 20 s por falante, 4 s globais. Chute: sempre | CelebrationChance 0,07; CelebrationMinInterval 20 | :761-767, 854-857 | Não está no PLANO |
 
 ## 7. Ministro
 
@@ -249,7 +249,7 @@
 | Projétil | Teleguiado, 12 cél/s, acerta a 30 cm, some em 10 s; dano reservado no alvo; Area implementado, Pierce = Single | — | BDProjectileBase.cpp:46-174 | Parcial (§6 Pierce) |
 | Arco de tiro | Não existe: mira 360° | — | — | **Sim** (§6) |
 | Coice | Recua 12% em 0,14 s, só em plataforma; no corpo da Nicole talvez não apareça | — | :121-140 | Não está no PLANO |
-| Nicole | Gesto por tiro acelerado para a cadência; 6 armas por nível, só a Pistola é real (2–6 usam a escada e a malha/som da Pistola); comemora 9% | — | BDShooter.cpp | Parcial — §7 "skin por estrela" |
+| Nicole | Gesto por tiro acelerado para a cadência; 6 armas por nível, só a Pistola é real (2–6 usam a escada e a malha/som da Pistola); comemora 7%, 20 s entre falas dela | — | BDShooter.cpp | Parcial — §7 "skin por estrela" |
 | Estrelas | Cheias = nível − 1, em 6 posições; a plataforma mostra a fileira do bloco | — | BDMatchHUD.cpp:323-359 | Parcial (§7) |
 
 ## 9. Dificuldade, vitória, saves
@@ -283,8 +283,9 @@
 | Sem efeito no combate | Nada de dano, alcance ou spawn depende da hora | — | — | Não |
 | Postes | Acendem pela elevação do sol (apagados acima de −3°, cheios abaixo de −12°). **Cada poste bloqueia a própria célula** | — | BDStreetLightComponent.cpp:44-66, 176-205 | Parcial — célula bloqueada não está no PLANO |
 | Música | Só em WaveActive, tempo real (continua na pausa); ambiência cai para 0,5 sob a música | — | BDSoundscapeSubsystem.cpp:118-170 | Não está no PLANO |
-| Teto de falas | 2 simultâneas, lados opostos da câmera, ≥30°; horda mira 0,2 fala/s; fala do jogador toma a vaga de militante. **No discurso de um comício o teto é 1, do candidato**: as outras falas são cortadas e recusadas (inclusive as "sempre ditas", chute e grito do ministro), e volta a 2 no fim | SpeechMaxConcurrent 2 | CanSpeak; TakeFloor / GiveBackFloor / SayOnFloor | Parcial (seção Comício) |
+| Teto de falas | 2 simultâneas, lados opostos da câmera, ≥30°; horda mira 0,15 fala/s; fala do jogador toma a vaga de militante. **No discurso de um comício o teto é 1, do candidato**: as outras falas são cortadas e recusadas (inclusive as "sempre ditas", chute e grito do ministro), e volta a 2 no fim | SpeechMaxConcurrent 2; SpeechTargetPerSecond 0,15 | CanSpeak; TakeFloor / GiveBackFloor / SayOnFloor | Parcial (seção Comício) |
 | Ducking | Fala baixa efeitos e ambiência a 0,5 (fade 0,4 s) | — | :327-359 | Não está no PLANO |
+| Sorteio das falas | Todo banco de falas (horda, Mito, Nicole, chute, grito do ministro, candidato andando e no comício) passa pelo `UBDSpeechDeck`: a fala sai de um baralho por banco (sem reposição; ao esvaziar reembaralha sem pôr a última na frente; banco de 1 toca sempre ela) e toca uma cópia da cue com só aquele ramo do nó Random (mantém pitch, volume, classe, atenuação). Sorteia só quando a fala vai tocar; o comício sorteia ao começar o discurso e dura o tamanho daquela fala. Pesos do nó Random são ignorados (todos iguais hoje). Os chamados (zurros) não passam pelo baralho | — | Audio/BDSpeechDeck.cpp; UBDCreepSoundSubsystem (PlayVocal, TryCelebrate, SayAlways); UBDRallyComponent::EnterSpeaking | Não está no PLANO |
 | Bipe da urna | 1 por voto vermelho, intervalo mín. 0,4 s, "pesado" a partir de 200, máx. 4 | — | BDObjectiveSubsystem.cpp:219-260 | Não (§9) |
 
 ## 11. Elenco (seção 14)
@@ -529,6 +530,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | 41 | Hordas: a liberação vale na distribuição da onda (o plano inteiro é feito ali); a 1ª parada do Black Bloc é sorteada no intervalo 4–8 s com piso de 3 s; o aviso "NOVA HORDA" reaparece depois de um load; o corpo do Black Bloc é provisório (jumento preto, sem sons próprios) |
 | 42 | Comício com tipos: a lista do candidato N para no número de hordas do elenco (hoje 4), para não apontar para DA que não existe — o `BDScaffoldCast` estende a lista de quem ainda tem a sequência padrão quando o elenco crescer; tipo travado ou sem corpo sai jumento (não é redistribuído entre os outros); o sorteio usa a semente do comício do candidato, não a da onda |
 | 43 | Urna com porta: só se entra na célula dela pela face do teclado (`EntryFaceYaw` nas settings da urna, não no BP — a urna não tem BP); as outras três arestas são paredes invisíveis que não são divisórias; o AutoSetup tenta os 4 giros por célula |
+| 44 | Falas sem repetição: o baralho é por banco e por mundo (partida nova = baralhos novos); a fala é escolhida pelo jogo, não pelo nó Random da cue; o comício sorteia a fala ao começar o discurso, mesmo que a câmera esteja longe e ela não toque |
 
 ## Divergências PLANO × código
 

@@ -2,6 +2,7 @@
 
 #include "Enemy/BDCreepSoundSubsystem.h"
 
+#include "Audio/BDSpeechDeck.h"
 #include "Audio/BDSpeechMarks.h"
 #include "AudioDevice.h"
 #include "BDLog.h"
@@ -249,6 +250,14 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 	// CanSpeak is their budget, and they stay out of the calls' one.
 	const float Pitch = bSpeak ? Data->VoicePitch : 1.0f;
 	const float Volume = bSpeak ? Settings.SpeechVolume : Settings.CallVolume;
+	// The line is drawn only now that it plays: one held back above is not used up.
+	if (bSpeak)
+	{
+		if (UBDSpeechDeck* Deck = UBDSpeechDeck::Get(&Creep))
+		{
+			Sound = Deck->DrawLine(Sound);
+		}
+	}
 	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAttached(Sound, Creep.GetRootComponent(), NAME_None,
 		FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, /*bStopWhenAttachedToDestroyed*/ false,
 		Volume, Pitch, 0.0f, bSpeak ? SpeechAttenuation.Get() : VoiceAttenuation.Get(), bSpeak ? nullptr : VoiceConcurrency.Get(), /*bAutoDestroy*/ true);
@@ -431,6 +440,10 @@ UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::TryCelebrateCounted
 		Old->Stop();
 	}
 
+	if (UBDSpeechDeck* Deck = UBDSpeechDeck::Get(&Speaker))
+	{
+		Words = Deck->DrawLine(Words);
+	}
 	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAttached(Words, Speaker.GetRootComponent(), NAME_None,
 		FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, /*bStopWhenAttachedToDestroyed*/ false,
 		Settings.CelebrationVolume, 1.0f, 0.0f, SpeechAttenuation.Get(), nullptr, /*bAutoDestroy*/ true);
@@ -484,6 +497,10 @@ bool UBDCreepSoundSubsystem::SayAlways(AActor& Speaker, const TSoftObjectPtr<USo
 		Sentences.RemoveAt(0);
 	}
 
+	if (UBDSpeechDeck* Deck = UBDSpeechDeck::Get(&Speaker))
+	{
+		Words = Deck->DrawLine(Words);
+	}
 	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAttached(Words, Speaker.GetRootComponent(), NAME_None,
 		FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, /*bStopWhenAttachedToDestroyed*/ false,
 		Settings.CelebrationVolume, 1.0f, 0.0f, SpeechAttenuation.Get(), nullptr, /*bAutoDestroy*/ true);

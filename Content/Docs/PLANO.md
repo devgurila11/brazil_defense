@@ -263,7 +263,29 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-14 (leva do briefing 18:00, item 1: chegada só pela frente da urna)** (desde a9ee655):
+- **2026-10-14 (leva do briefing 18:00, item 2: falas −25 % e sem repetição)** (desde 7ff8c38):
+  - **Números** (−25 %): horda mira 0,15 fala/s (era 0,2); vocalização por creep 11–27 s
+    (era 8–20; default da classe, que os DAs herdam — conferido no DA_Horda_01); Mito e
+    Nicole comemoram 7 % dos abates (era 9 %) e esperam 20 s entre falas (era 15). Teto de 2
+    simultâneas mantido. Tudo em settings/DA, nada no código.
+  - **Sem repetição**: `UBDSpeechDeck` (subsistema do mundo) guarda um baralho por banco. A
+    fala é sorteada sem reposição; ao esvaziar, reembaralha sem pôr a última na frente; banco
+    de 1 toca sempre ela. O que toca é uma cópia da cue com só aquele ramo do nó Random, então
+    pitch, volume, classe e atenuação da cue continuam valendo. O nó Random da engine fazia
+    algo parecido, mas dentro do áudio, fora do alcance da regressão headless. O sorteio
+    acontece só quando a fala vai tocar (a barrada pelo teto não gasta a vez). Vale para
+    horda, Mito (festejo e chute), Nicole, grito do ministro e candidato (andando e no
+    comício; o discurso dura o tamanho da fala sorteada). Os zurros ficam de fora.
+  - **Regressão**: 3 checks novos (FALAS: 1000 sorteios num banco de 5, sem repetir dentro da
+    rodada nem duas seguidas; o banco real dos militantes — 25 falas — dá as 25 antes de
+    repetir, cada uma numa cue sem escolha; taxas lidas das settings e do DA). Antes: 160/160;
+    depois: 163/163. Partida curta com áudio ligado (onda 13 a 4x): baralho montado na 1ª fala,
+    82 chegadas, nenhuma fora da porta. Dois alvos compilados.
+  - RAIOX (§3 sons, §6 falas do Mito, §8 Nicole, §10 teto e sorteio, regra 44).
+  - **Onde paramos**: ele ouvir uma partida e dizer se o ritmo novo está bom; os pesos do nó
+    Random das cues são ignorados pelo baralho (hoje todos iguais).
+
+- **2026-10-14 (leva do briefing 18:00, item 1: chegada só pela frente da urna) — 7ff8c38** (desde a9ee655):
   - **Porta da urna**: a célula da urna só se entra pela aresta da face do teclado (giro do
     ator + `EntryFaceYaw` nas settings da urna, 0 = frente +X; a urna não tem BP, por isso o
     campo ficou nas settings). As outras três arestas viram paredes para tudo que pergunta

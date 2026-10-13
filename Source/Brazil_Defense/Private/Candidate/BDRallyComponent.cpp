@@ -2,6 +2,7 @@
 
 #include "Candidate/BDRallyComponent.h"
 
+#include "Audio/BDSpeechDeck.h"
 #include "Audio/BDSpeechMarks.h"
 #include "BDLog.h"
 #include "Candidate/BDCandidateSubsystem.h"
@@ -210,6 +211,13 @@ void UBDRallyComponent::EnterSpeaking()
 	if (Words == nullptr && Candidate->GetData() != nullptr)
 	{
 		Words = Candidate->GetData()->SpeechSound.LoadSynchronous();
+	}
+	// One line of the bank, the next of its round, and the speech lasts as long as that
+	// line, not as long as the longest of the bank.
+	if (UBDSpeechDeck* Deck = UBDSpeechDeck::Get(this))
+	{
+		Words = Deck->DrawLine(Words);
+		Cue = Cue != nullptr ? Words : nullptr;
 	}
 	const float CueSeconds = Cue != nullptr ? Cue->GetDuration() : 0.0f;
 	SpeechSeconds = FMath::Max(Params.RallyMinDuration,

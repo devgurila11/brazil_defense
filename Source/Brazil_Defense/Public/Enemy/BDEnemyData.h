@@ -217,10 +217,10 @@ public:
 
 	/** Seconds between two vocalizations of one creep, drawn anew each time inside this range. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0.5", UIMin = "0.5", ForceUnits = "s"))
-	float VocalIntervalMin = 8.0f;
+	float VocalIntervalMin = 11.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (ClampMin = "0.5", UIMin = "0.5", ForceUnits = "s"))
-	float VocalIntervalMax = 20.0f;
+	float VocalIntervalMax = 27.0f;
 
 	/**
 	 * A step, played by the BD Footstep notifies placed on MoveAnimation at the frames a
