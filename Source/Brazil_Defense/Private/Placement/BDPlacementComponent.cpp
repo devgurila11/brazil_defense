@@ -1092,7 +1092,7 @@ EBDPlacementRefusal UBDPlacementComponent::EvaluateObjectivePlacement() const
 		return EBDPlacementRefusal::NotHoveringGrid;
 	}
 
-	switch (Objectives->EvaluateCell(HoveredCell))
+	switch (Objectives->EvaluateCell(HoveredCell, GetPlacementYaw()))
 	{
 	case EBDObjectiveRefusal::None:
 		return EBDPlacementRefusal::None;

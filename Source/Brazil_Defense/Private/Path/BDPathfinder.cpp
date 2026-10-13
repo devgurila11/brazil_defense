@@ -333,7 +333,7 @@ bool UBDPathfinder::WouldCutOffCells(const UBDGridSubsystem* Grid, const TArray<
 	return false;
 }
 
-bool UBDPathfinder::CanEverySpawnReach(const UBDGridSubsystem* Grid, const FBDCellCoord Target) const
+bool UBDPathfinder::CanEverySpawnReach(const UBDGridSubsystem* Grid, const FBDCellCoord Target, const FBDCellCoord Door) const
 {
 	if (Grid == nullptr || !Grid->IsValidCoord(Target) || !Grid->IsWalkable(Target))
 	{
@@ -343,7 +343,8 @@ bool UBDPathfinder::CanEverySpawnReach(const UBDGridSubsystem* Grid, const FBDCe
 	if (bHasCachedReachResult
 		&& CachedReachGrid.Get() == Grid
 		&& CachedReachGridVersion == Grid->GetVersion()
-		&& CachedReachTarget == Target)
+		&& CachedReachTarget == Target
+		&& CachedReachDoor == Door)
 	{
 		bLastBlockCheckWasCached = true;
 		return bCachedReachResult;
@@ -351,22 +352,29 @@ bool UBDPathfinder::CanEverySpawnReach(const UBDGridSubsystem* Grid, const FBDCe
 
 	bLastBlockCheckWasCached = false;
 
+	// The door has to be a cell one can stand on, beside the urn, with no divider between.
+	bool bAdjacent = false;
+	const FBDEdgeCoord DoorEdge = FBDEdgeCoord::Between(Target, Door, bAdjacent);
+	bool bReachable = bAdjacent && Grid->IsValidCoord(Door) && Grid->IsWalkable(Door) && !Grid->IsEdgeBlockedAt(DoorEdge);
+
 	TArray<FBDCellCoord> Spawns;
 	GatherCellsWithState(*Grid, EBDCellState::Spawn, Spawns);
+	bReachable = bReachable && Spawns.Num() > 0;
 
-	bool bReachable = Spawns.Num() > 0;
-	for (const FBDCellCoord& Spawn : Spawns)
+	// The urn's own cell is out of every route to the door: it will be walled.
+	TBitArray<> BlockedOverride;
+	BlockedOverride.Init(false, Grid->GetCellCount());
+	BlockedOverride[Target.Y * Grid->GetSizeX() + Target.X] = true;
+
+	for (int32 Index = 0; bReachable && Index < Spawns.Num(); ++Index)
 	{
-		if (!RunSearch(*Grid, Spawn, Target, nullptr, nullptr, nullptr))
-		{
-			bReachable = false;
-			break;
-		}
+		bReachable = RunSearch(*Grid, Spawns[Index], Door, &BlockedOverride, nullptr, nullptr);
 	}
 
 	CachedReachGrid = Grid;
 	CachedReachGridVersion = Grid->GetVersion();
 	CachedReachTarget = Target;
+	CachedReachDoor = Door;
 	bCachedReachResult = bReachable;
 	bHasCachedReachResult = true;
 

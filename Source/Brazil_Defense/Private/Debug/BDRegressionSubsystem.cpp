@@ -82,6 +82,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Objective/BDObjectiveSettings.h"
 #include "Objective/BDObjectiveSubsystem.h"
+#include "Path/BDPathfinder.h"
 #include "Placement/BDPlaceableData.h"
 #include "SkeletalMeshComponentBudgeted.h"
 #include "Grid/BDGridDebug.h"
@@ -965,16 +966,53 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		Check(TEXT("PATHFINDING"), TEXT("every mouth has a route to the urn"), Points.Num() > 0 && Routed == Points.Num(),
 			FString::Printf(TEXT("%d of %d routed"), Routed, Points.Num()));
 
-		// Three sides of the urn fenced; the fourth would seal it and must be refused. The
-		// first fence also shows the divider hand is its own: the money does not move.
-		const FBDEdgeCoord Sides[] = {
+		// The urn is voted at from its door only, the face the keyboard looks at, turned with
+		// it: every route ends by stepping through that face, never round the back.
+		const UBDObjectiveSubsystem* UrnSystem = World->GetSubsystem<UBDObjectiveSubsystem>();
+		const FBDCellCoord Door = UrnSystem != nullptr ? UrnSystem->GetDoorCell() : FBDCellCoord(INDEX_NONE, INDEX_NONE);
+		{
+			const FBDCellCoord Expected = UBDObjectiveSubsystem::GetDoorFor(UrnCell, 90.0f);
+			int32 ThroughDoor = 0;
+			FString Wrong;
+			for (const FBDSpawnPoint& Point : Points)
+			{
+				const int32 Last = Point.Route.Num() - 1;
+				if (Last >= 1 && Point.Route[Last] == UrnCell && Point.Route[Last - 1] == Door)
+				{
+					++ThroughDoor;
+				}
+				else if (Last >= 1)
+				{
+					Wrong += FString::Printf(TEXT(" %s from %s;"), *Point.ExitCell.ToString(), *Point.Route[Last - 1].ToString());
+				}
+			}
+			Check(TEXT("URNA"), TEXT("every route reaches the urn through its door, the face it was turned to"),
+				Door == Expected && Grid->HasGoalDoor() && ThroughDoor == Points.Num() && Points.Num() > 0,
+				FString::Printf(TEXT("door %s (%s for a quarter turn), %d of %d routes through it%s"), *Door.ToString(), *Expected.ToString(),
+					ThroughDoor, Points.Num(), *Wrong));
+		}
+
+		// The three sides that are not the door fenced; the door would seal it and must be
+		// refused. The first fence also shows the divider hand is its own: the money does
+		// not move.
+		bool bAdjacentDoor = false;
+		const FBDEdgeCoord DoorEdge = FBDEdgeCoord::Between(UrnCell, Door, bAdjacentDoor);
+		TArray<FBDEdgeCoord> Sides;
+		for (const FBDEdgeCoord& Edge : {
 			FBDEdgeCoord(UrnCell, FBDEdgeCoord::DirectionX),
 			FBDEdgeCoord(FBDCellCoord(UrnCell.X - 1, UrnCell.Y), FBDEdgeCoord::DirectionX),
 			FBDEdgeCoord(UrnCell, FBDEdgeCoord::DirectionY),
-			FBDEdgeCoord(FBDCellCoord(UrnCell.X, UrnCell.Y - 1), FBDEdgeCoord::DirectionY) };
+			FBDEdgeCoord(FBDCellCoord(UrnCell.X, UrnCell.Y - 1), FBDEdgeCoord::DirectionY) })
+		{
+			if (Edge != DoorEdge)
+			{
+				Sides.Add(Edge);
+			}
+		}
+		Sides.Add(DoorEdge);
 		const int32 MoneyBefore = Match->GetPublicMoney();
 		const int32 HandBefore = Match->GetDividersRemaining();
-		if (!Placement->TakeIntoHand(Divider))
+		if (!bAdjacentDoor || Sides.Num() != 4 || !Placement->TakeIntoHand(Divider))
 		{
 			Check(TEXT("SEPARADOR"), TEXT("a divider can be taken"), false, RefusalName(Placement->GetHandRefusal(Divider)));
 			return false;
@@ -993,8 +1031,45 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 		Placement->SetRotationSteps(Sides[3].Direction == FBDEdgeCoord::DirectionX ? 1 : 0);
 		Placement->SetHoveredEdgeDirect(Sides[3]);
 		const EBDPlacementRefusal Sealing = Placement->GetCurrentRefusal();
-		Check(TEXT("PATHFINDING"), TEXT("fencing the urn in completely is refused"), Fenced == 3 && Sealing == EBDPlacementRefusal::WouldBlockPath,
-			FString::Printf(TEXT("%d of 3 sides fenced, the fourth: %s"), Fenced, *RefusalName(Sealing)));
+		Check(TEXT("PATHFINDING"), TEXT("the three sides off the door fence, a divider on the door is refused"), Fenced == 3 && Sealing == EBDPlacementRefusal::WouldBlockPath,
+			FString::Printf(TEXT("%d of 3 sides fenced, the door: %s"), Fenced, *RefusalName(Sealing)));
+
+		// The blocking checks see the door as the only way in: a platform on the cell in
+		// front of it is refused, the same platform behind the urn goes down - its back
+		// was never a way in. Asked of the validation, nothing built.
+		{
+			const UBDPathfinder* Pathfinder = World->GetSubsystem<UBDPathfinder>();
+			const FBDCellCoord Back(2 * UrnCell.X - Door.X, 2 * UrnCell.Y - Door.Y);
+			const bool bDoorBlocks = Pathfinder != nullptr && Pathfinder->WouldBlockPath(Grid, Door, FIntPoint(1, 1));
+			const bool bBackBlocks = Pathfinder == nullptr || Pathfinder->WouldBlockPath(Grid, Back, FIntPoint(1, 1));
+			Check(TEXT("PATHFINDING"), TEXT("WouldBlockPath: a platform on the door's cell blocks, one behind the urn does not"),
+				bDoorBlocks && !bBackBlocks,
+				FString::Printf(TEXT("door %s %s, back %s %s"), *Door.ToString(), bDoorBlocks ? TEXT("blocks") : TEXT("DOES NOT BLOCK"),
+					*Back.ToString(), bBackBlocks ? TEXT("BLOCKS") : TEXT("free")));
+		}
+
+		// Turned the other way on a fenced side, the urn has nowhere to be voted at: an urn
+		// whose door looks at a divider is refused like one that seals the path.
+		{
+			const UBDObjectiveSubsystem* Objectives = World->GetSubsystem<UBDObjectiveSubsystem>();
+			bool bFoundFenced = false;
+			EBDObjectiveRefusal Facing = EBDObjectiveRefusal::None;
+			FString Turned;
+			for (float Yaw = 0.0f; Yaw < 360.0f && !bFoundFenced; Yaw += 90.0f)
+			{
+				bool bAdjacent = false;
+				const FBDEdgeCoord Front = FBDEdgeCoord::Between(UrnCell, UBDObjectiveSubsystem::GetDoorFor(UrnCell, Yaw), bAdjacent);
+				if (bAdjacent && Grid->IsEdgeBlockedAt(Front))
+				{
+					bFoundFenced = true;
+					Facing = Objectives != nullptr ? Objectives->EvaluateCell(UrnCell, Yaw) : EBDObjectiveRefusal::None;
+					Turned = FString::Printf(TEXT("yaw %.0f"), Yaw);
+				}
+			}
+			Check(TEXT("URNA"), TEXT("an urn turned to face a divider is refused as unreachable"),
+				bFoundFenced && Facing == EBDObjectiveRefusal::Unreachable,
+				FString::Printf(TEXT("%s: %s"), *Turned, *UBDObjectiveSubsystem::DescribeRefusal(Facing)));
+		}
 
 		// The fences come off again: the rest of the script wants an open urn.
 		Placement->CancelSelection();
@@ -1011,6 +1086,65 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 
 	case 2:
 	{
+		// No fence anywhere: a creep born right behind the urn, and one on each side, walks
+		// round to the door and steps in through it. Each is taken off the moment it is in
+		// the urn's cell, before it can vote: the count stays as it was.
+		if (!bDoorWalkDone)
+		{
+			const UBDObjectiveSubsystem* Objectives = World->GetSubsystem<UBDObjectiveSubsystem>();
+			const FBDCellCoord Door = Objectives != nullptr ? Objectives->GetDoorCell() : FBDCellCoord();
+			const double Now = World->GetTimeSeconds();
+			if (DoorWalkStart < 0.0)
+			{
+				DoorWalkStart = Now;
+				const int32 DX = Door.X - UrnCell.X;
+				const int32 DY = Door.Y - UrnCell.Y;
+				// Back, left and right of the urn as it faces its door.
+				for (const FBDCellCoord& Cell : { FBDCellCoord(UrnCell.X - DX, UrnCell.Y - DY),
+					FBDCellCoord(UrnCell.X - DY, UrnCell.Y + DX), FBDCellCoord(UrnCell.X + DY, UrnCell.Y - DX) })
+				{
+					DoorWalkers.Add(Waves->SpawnEnemyAtCell(UBDWaveSettings::Get().ResolveWaveEnemy(), Cell, TEXT("BD.Test.Regression")));
+					DoorWalkersEntered.Add(FBDCellCoord(INDEX_NONE, INDEX_NONE));
+				}
+			}
+			int32 Walking = 0;
+			for (int32 Walker = 0; Walker < DoorWalkers.Num(); ++Walker)
+			{
+				ABDEnemyBase* Enemy = DoorWalkers[Walker].Get();
+				if (Enemy == nullptr || Enemy->HasArrived())
+				{
+					continue;
+				}
+				if (Enemy->GetEnteredUrnFrom().X != INDEX_NONE)
+				{
+					DoorWalkersEntered[Walker] = Enemy->GetEnteredUrnFrom();
+					Enemy->Destroy();
+					continue;
+				}
+				++Walking;
+			}
+			if (Walking > 0 && Now - DoorWalkStart <= 30.0)
+			{
+				return true;
+			}
+			bDoorWalkDone = true;
+			int32 ThroughDoor = 0;
+			FString Trail;
+			for (int32 Walker = 0; Walker < DoorWalkersEntered.Num(); ++Walker)
+			{
+				ThroughDoor += DoorWalkersEntered[Walker] == Door ? 1 : 0;
+				Trail += FString::Printf(TEXT(" %s;"), *DoorWalkersEntered[Walker].ToString());
+			}
+			for (const TWeakObjectPtr<ABDEnemyBase>& Left : DoorWalkers)
+			{
+				if (Left.IsValid()) { Left->Destroy(); }
+			}
+			Check(TEXT("URNA"), TEXT("with no fence at all, creeps born behind and beside the urn walk round and step in through its door"),
+				DoorWalkers.Num() == 3 && ThroughDoor == 3 && Match->GetVotesRed() == 0,
+				FString::Printf(TEXT("door %s; stepped in from%s %d of 3 through the door in %.1fs; red %d"), *Door.ToString(), *Trail, ThroughDoor,
+					static_cast<float>(Now - DoorWalkStart), Match->GetVotesRed()));
+		}
+
 		// No platform on the board yet: a character has nowhere to stand and is not offered.
 		const EBDPlacementRefusal NoSlot = Placement->GetHandRefusal(Character);
 		Check(TEXT("COLOCACAO"), TEXT("a character is refused with no free slot"), NoSlot == EBDPlacementRefusal::NoFreeSlot, RefusalName(NoSlot));
@@ -3577,6 +3711,16 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Far->ApplyDamage(Far->GetMaxHealth() * 10.0f, nullptr);
 			Check(TEXT("HORDA"), TEXT("a Black Bloc killed is one blue vote, like a donkey"), Match->GetVotesBlue() == Blue + 1,
 				FString::Printf(TEXT("blue %d -> %d"), Blue, Match->GetVotesBlue()));
+		}
+
+		// Every creep and candidate that reached the urn in the whole run stepped into its
+		// cell from the door, measured on where the body walked, not on the route.
+		if (const UBDObjectiveSubsystem* Objectives = World->GetSubsystem<UBDObjectiveSubsystem>())
+		{
+			Check(TEXT("URNA"), TEXT("every arrival of the run came in through the urn's door, none round the side or the back"),
+				Objectives->GetArrivalsThroughDoor() > 0 && Objectives->GetArrivalsOutsideDoor() == 0,
+				FString::Printf(TEXT("%d through the door, %d elsewhere, %d sent home by hand"), Objectives->GetArrivalsThroughDoor(),
+					Objectives->GetArrivalsOutsideDoor(), Objectives->GetArrivalsUnwalked()));
 		}
 
 		FString SlotMeasured;

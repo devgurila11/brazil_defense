@@ -719,12 +719,18 @@ bool UBDDebugAutoSetup::PlaceObjective(UBDPlacementComponent& Placement, FRandom
 	Placement.SelectPlaceable(Piece);
 	for (const FBDCellCoord& Cell : Zone)
 	{
-		Placement.SetHoveredCellDirect(Cell);
-		if (Placement.IsCurrentPlacementValid() && Placement.TryPlaceAtHovered())
+		// Every turn of the urn, from where it faces by default: a cell whose door looks
+		// at a wall or off the board may still take the urn the other way round.
+		for (int32 Turn = 0; Turn < 4; ++Turn)
 		{
-			// Kept so the maze can be built around it without asking the world again.
-			ObjectiveCell = Cell;
-			return true;
+			Placement.SetRotationSteps(Turn);
+			Placement.SetHoveredCellDirect(Cell);
+			if (Placement.IsCurrentPlacementValid() && Placement.TryPlaceAtHovered())
+			{
+				// Kept so the maze can be built around it without asking the world again.
+				ObjectiveCell = Cell;
+				return true;
+			}
 		}
 	}
 

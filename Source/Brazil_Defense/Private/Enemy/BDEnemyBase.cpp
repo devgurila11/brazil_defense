@@ -17,6 +17,7 @@
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
 #include "Grid/BDGridSubsystem.h"
+#include "Objective/BDObjectiveSubsystem.h"
 #include "Palace/BDAgent.h"
 #include "Palace/BDMinisterSettings.h"
 #include "Tower/BDTowerBase.h"
@@ -756,6 +757,7 @@ void ABDEnemyBase::Tick(const float DeltaSeconds)
 	}
 
 	SetActorLocation(Location);
+	TrackWalkedCell();
 	UpdateAnimationRate();
 	UpdateVocal(DeltaSeconds);
 
@@ -797,6 +799,24 @@ float ABDEnemyBase::GetBaseMoveSpeed() const
 	return Data != nullptr ? Data->MoveSpeed * Data->SpeedScale : 0.0f;
 }
 
+void ABDEnemyBase::TrackWalkedCell()
+{
+	const UBDGridSubsystem* Grid = GetGrid();
+	FBDCellCoord Cell;
+	if (Grid == nullptr || !Grid->WorldToCell(GetActorLocation(), Cell) || Cell == WalkedCell)
+	{
+		return;
+	}
+
+	// Asked only on a change of cell, a few times per creep per second at most.
+	const UBDObjectiveSubsystem* Objectives = UBDObjectiveSubsystem::Get(this);
+	if (Objectives != nullptr && Objectives->IsPlaced() && Cell == Objectives->GetGoalCell())
+	{
+		EnteredUrnFrom = WalkedCell;
+	}
+	WalkedCell = Cell;
+}
+
 void ABDEnemyBase::Arrive()
 {
 	if (bFinished)
@@ -804,6 +824,11 @@ void ABDEnemyBase::Arrive()
 		return;
 	}
 	bFinished = true;
+
+	if (UBDObjectiveSubsystem* Objectives = UBDObjectiveSubsystem::Get(this))
+	{
+		Objectives->NoteArrival(EnteredUrnFrom);
+	}
 
 	// Where the arrival really happened, for anyone wondering why the urn rang: the last
 	// waypoint is the urn itself.

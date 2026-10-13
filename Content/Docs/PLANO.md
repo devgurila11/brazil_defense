@@ -263,6 +263,31 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-14 (leva do briefing 18:00, item 1: chegada só pela frente da urna)** (desde a9ee655):
+  - **Porta da urna**: a célula da urna só se entra pela aresta da face do teclado (giro do
+    ator + `EntryFaceYaw` nas settings da urna, 0 = frente +X; a urna não tem BP, por isso o
+    campo ficou nas settings). As outras três arestas viram paredes para tudo que pergunta
+    `IsEdgeBlocked` — A*, `WouldBlockPath`/`WouldBlockPathEdges`, `WouldCutOffCells`, faixa e
+    curvas do creep, busca da multidão do comício — sem serem divisórias (`IsEdgeBlockedAt`
+    não as vê). Horda e candidato seguem a mesma regra.
+  - **Colocação**: a urna exige a porta no board, andável, sem divisória na aresta e alcançável
+    por todas as bocas sem passar pela célula dela; senão `Unreachable` (a mesma recusa de
+    fechar o caminho). Divisória na aresta da porta e plataforma na célula da porta caem em
+    `WouldBlockPath`. O giro da peça já existia e decide a porta; o AutoSetup tenta os 4.
+  - **Chegada**: o creep anota de que célula pisou na da urna, pelo corpo e não pela rota.
+    Chegada que não veio da porta é erro no log e contada (`BD.Objective.Status`); ainda vale,
+    para não segurar a onda com um creep parado.
+  - **Console**: `BD.Objective.PlaceAt <x> <y> [yaw]`; o Status mostra porta e chegadas.
+  - **Regressão**: o caso que cercava 3 lados fixos agora cerca os 3 que não são a porta e
+    recusa a porta; 5 checks novos (rotas terminam pela porta; `WouldBlockPath` na porta × atrás;
+    urna virada para uma divisória recusada; sem cerca nenhuma, 3 creeps nascidos atrás e dos
+    lados entram pela porta; nenhuma chegada da partida fora da porta). Antes: 155/155; depois:
+    160/160. Dois alvos compilados.
+  - RAIOX (urna na mão, porta, chegada, validação, settings, console, regra 43).
+  - **Onde paramos**: (1) ele conferir na tela que o teclado da malha olha para +X do ator
+    (`EntryFaceYaw` 0); se olhar para outro lado, é só mudar o número nas settings da urna;
+    (2) não há marca visual da porta na prévia além da própria malha.
+
 - **2026-10-14 (comício brota os tipos 1..N, briefing 15:00) — bee04d7** (desde 8968a36):
   - **Comício**: o candidato N sorteia entre as hordas 1..N com peso 1; cada entrada sai ela
     mesma se o tipo está liberado (≤ 1 + caídos) e tem corpo, jumento se não

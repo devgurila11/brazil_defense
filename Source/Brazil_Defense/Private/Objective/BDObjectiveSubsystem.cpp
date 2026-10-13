@@ -64,7 +64,38 @@ FString UBDObjectiveSubsystem::DescribeRefusal(const EBDObjectiveRefusal Refusal
 	return StaticEnum<EBDObjectiveRefusal>()->GetNameStringByValue(static_cast<int64>(Refusal));
 }
 
-EBDObjectiveRefusal UBDObjectiveSubsystem::EvaluateCell(const FBDCellCoord& Coord) const
+FBDCellCoord UBDObjectiveSubsystem::GetDoorFor(const FBDCellCoord& Coord, const float Yaw)
+{
+	// A quarter turn per step, counted the way the engine turns: 0 faces +X, 90 faces +Y.
+	const float Facing = Yaw + UBDObjectiveSettings::Get().EntryFaceYaw;
+	const int32 Quarter = ((FMath::RoundToInt(Facing / 90.0f) % 4) + 4) % 4;
+	static constexpr int32 StepX[] = { 1, 0, -1, 0 };
+	static constexpr int32 StepY[] = { 0, 1, 0, -1 };
+	return FBDCellCoord(Coord.X + StepX[Quarter], Coord.Y + StepY[Quarter]);
+}
+
+void UBDObjectiveSubsystem::NoteArrival(const FBDCellCoord& EnteredFrom)
+{
+	if (!bPlaced || EnteredFrom == DoorCell)
+	{
+		++ArrivalsThroughDoor;
+		return;
+	}
+
+	// Never seen stepping in: put on the urn or sent home by hand (the console, the
+	// regression), with no walk to judge.
+	if (EnteredFrom.X == INDEX_NONE)
+	{
+		++ArrivalsUnwalked;
+		return;
+	}
+
+	++ArrivalsOutsideDoor;
+	UE_LOG(LogBDGrid, Error, TEXT("A creep reached the urn at %s from %s, not through its door at %s."),
+		*GoalCell.ToString(), *EnteredFrom.ToString(), *DoorCell.ToString());
+}
+
+EBDObjectiveRefusal UBDObjectiveSubsystem::EvaluateCell(const FBDCellCoord& Coord, const float Yaw) const
 {
 	const UBDGridSubsystem* Grid = GetGrid();
 	if (Grid == nullptr || !Grid->IsValidCoord(Coord))
@@ -87,7 +118,7 @@ EBDObjectiveRefusal UBDObjectiveSubsystem::EvaluateCell(const FBDCellCoord& Coor
 	}
 
 	const UBDPathfinder* Pathfinder = GetPathfinder();
-	if (Pathfinder == nullptr || !Pathfinder->CanEverySpawnReach(Grid, Coord))
+	if (Pathfinder == nullptr || !Pathfinder->CanEverySpawnReach(Grid, Coord, GetDoorFor(Coord, Yaw)))
 	{
 		return EBDObjectiveRefusal::Unreachable;
 	}
@@ -127,7 +158,7 @@ float UBDObjectiveSubsystem::ResolveGroundZ(const FVector& Point) const
 
 bool UBDObjectiveSubsystem::PlaceObjective(const FBDCellCoord& Coord, UClass* ActorClass, UStaticMesh* Mesh, EBDObjectiveRefusal& OutRefusal, const float Yaw)
 {
-	OutRefusal = EvaluateCell(Coord);
+	OutRefusal = EvaluateCell(Coord, Yaw);
 	if (OutRefusal != EBDObjectiveRefusal::None)
 	{
 		UE_LOG(LogBDGrid, Warning, TEXT("Objective refused at %s: %s."), *Coord.ToString(), *DescribeRefusal(OutRefusal));
@@ -185,13 +216,17 @@ bool UBDObjectiveSubsystem::PlaceObjective(const FBDCellCoord& Coord, UClass* Ac
 			Grid->SetCellState(Previous, EBDCellState::Free);
 		}
 	}
+	// The walls before the Goal: the routes the cell change sets off must already go
+	// round to the door.
+	DoorCell = GetDoorFor(Coord, Yaw);
+	Grid->SetGoalDoor(Coord, DoorCell);
 	Grid->SetCellState(Coord, EBDCellState::Goal);
 
 	GoalCell = Coord;
 	bPlaced = true;
 
-	UE_LOG(LogBDGrid, Log, TEXT("Objective placed at %s (%s) facing yaw %.0f, %d previous goal cell(s) freed."),
-		*Coord.ToString(), *Location.ToCompactString(), Yaw, PreviousGoals.Num());
+	UE_LOG(LogBDGrid, Log, TEXT("Objective placed at %s (%s) facing yaw %.0f, door at %s, %d previous goal cell(s) freed."),
+		*Coord.ToString(), *Location.ToCompactString(), Yaw, *DoorCell.ToString(), PreviousGoals.Num());
 	return true;
 }
 
@@ -210,6 +245,7 @@ void UBDObjectiveSubsystem::ClearObjective()
 		{
 			Grid->SetCellState(Goal, EBDCellState::Free);
 		}
+		Grid->ClearGoalDoor();
 	}
 
 	bPlaced = false;

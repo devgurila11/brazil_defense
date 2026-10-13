@@ -35,6 +35,14 @@ public:
 	TSoftObjectPtr<UBDPlaceableData> ObjectivePlaceable;
 
 	/**
+	 * Where the urn's keyboard faces, in degrees from the actor's forward (+X), turned with
+	 * the actor. Creeps vote only from the cell in front of it: the urn's cell is walled
+	 * on the other three sides. Rounded to the nearest quarter turn.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Objective", meta = (UIMin = "-180.0", UIMax = "180.0", ForceUnits = "deg"))
+	float EntryFaceYaw = 0.0f;
+
+	/**
 	 * Whether the urn is held to the zone below. Off, it goes on any free cell that every
 	 * mouth can reach, and the zone only tells the obstacle generator where a goal is
 	 * likely to be. Off by default: the player decides how deep the urn sits.

@@ -196,5 +196,11 @@ private:
 	bool bReturnChecked = false;
 	bool bNearStopped = false;
 	bool bNearGaveUp = false;
+
+	/** The urn's door walk: creeps born behind and beside the urn, each taken off as it steps into the urn's cell. */
+	TArray<TWeakObjectPtr<ABDEnemyBase>> DoorWalkers;
+	TArray<FBDCellCoord> DoorWalkersEntered;
+	double DoorWalkStart = -1.0;
+	bool bDoorWalkDone = false;
 	int32 WaveSixSpecials = 0;
 };

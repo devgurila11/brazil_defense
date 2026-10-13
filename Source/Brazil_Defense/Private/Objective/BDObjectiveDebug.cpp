@@ -15,7 +15,7 @@
 namespace BDObjectiveDebug
 {
 	static constexpr int32 ArgCountPlaceAtMin = 2;
-	static constexpr int32 ArgCountPlaceAtMax = 3;
+	static constexpr int32 ArgCountPlaceAtMax = 4;
 
 	static UBDObjectiveSubsystem* FindObjectives(const UWorld* World)
 	{
@@ -72,7 +72,7 @@ namespace BDObjectiveDebug
 	{
 		if (Args.Num() < ArgCountPlaceAtMin || Args.Num() > ArgCountPlaceAtMax)
 		{
-			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Objective.PlaceAt <x> <y> [placeable asset path or name]"));
+			UE_LOG(LogBDGrid, Error, TEXT("Usage: BD.Objective.PlaceAt <x> <y> [yaw] [placeable asset path or name]"));
 			return;
 		}
 
@@ -82,7 +82,10 @@ namespace BDObjectiveDebug
 			return;
 		}
 
-		const UBDPlaceableData* Placeable = ResolveObjectivePlaceable(Args, 2);
+		// A number in third place is the turn of the urn, which decides its door.
+		const bool bYaw = Args.IsValidIndex(2) && Args[2].IsNumeric();
+		const float Yaw = bYaw ? FCString::Atof(*Args[2]) : 0.0f;
+		const UBDPlaceableData* Placeable = ResolveObjectivePlaceable(Args, bYaw ? 3 : 2);
 		UClass* ActorClass = Placeable != nullptr ? Placeable->ActorClass.LoadSynchronous() : nullptr;
 		UStaticMesh* Mesh = Placeable != nullptr ? Placeable->PreviewMesh.LoadSynchronous() : nullptr;
 
@@ -90,7 +93,7 @@ namespace BDObjectiveDebug
 		// the urn around while tuning, as many times as it takes.
 		const FBDCellCoord Coord(FCString::Atoi(*Args[0]), FCString::Atoi(*Args[1]));
 		EBDObjectiveRefusal Refusal;
-		const bool bPlaced = Objectives->PlaceObjective(Coord, ActorClass, Mesh, Refusal);
+		const bool bPlaced = Objectives->PlaceObjective(Coord, ActorClass, Mesh, Refusal, Yaw);
 
 		UE_LOG(LogBDGrid, Log, TEXT("BD.Objective.PlaceAt %s: %s%s."), *Coord.ToString(),
 			bPlaced ? TEXT("placed") : TEXT("refused: "),
@@ -108,9 +111,11 @@ namespace BDObjectiveDebug
 		const UBDObjectiveSettings& Settings = UBDObjectiveSettings::Get();
 		const ABDObjective* Urn = Objectives->GetObjective();
 
-		UE_LOG(LogBDGrid, Log, TEXT("BD.Objective.Status: %s, cell %s, actor %s, zone %d..%d x %d..%d."),
+		UE_LOG(LogBDGrid, Log, TEXT("BD.Objective.Status: %s, cell %s, door %s, arrivals %d through the door / %d elsewhere, actor %s, zone %d..%d x %d..%d."),
 			Objectives->IsPlaced() ? TEXT("placed") : TEXT("NOT placed"),
 			Objectives->IsPlaced() ? *Objectives->GetGoalCell().ToString() : TEXT("-"),
+			Objectives->IsPlaced() ? *Objectives->GetDoorCell().ToString() : TEXT("-"),
+			Objectives->GetArrivalsThroughDoor(), Objectives->GetArrivalsOutsideDoor(),
 			Urn != nullptr ? *Urn->GetActorLocation().ToCompactString() : TEXT("none"),
 			Settings.MinX, Settings.MaxX, Settings.MinY, Settings.MaxY);
 
@@ -134,7 +139,7 @@ namespace BDObjectiveDebug
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdPlaceAt(
 		TEXT("BD.Objective.PlaceAt"),
-		TEXT("BD.Objective.PlaceAt <x> <y> [placeable]: puts the urn on a cell, skipping the gesture and the budget."),
+		TEXT("BD.Objective.PlaceAt <x> <y> [yaw] [placeable]: puts the urn on a cell turned to yaw (its door follows), skipping the gesture and the budget."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecPlaceAt));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(

@@ -94,12 +94,15 @@ public:
 		const TArray<FBDCellCoord>& BlockedCells, const TArray<FBDEdgeCoord>& BlockedEdges) const;
 
 	/**
-	 * Whether every Spawn cell can walk to Target on the board as it is. What placing the
-	 * urn asks: a cell no spawn can reach is not a goal, it is a hole. Cached like the
-	 * blocking checks, since it runs every frame while the urn hovers.
-	 * @return false when there is no spawn, or some spawn cannot reach the cell.
+	 * Whether every Spawn cell can walk to Target through Door on the board as it is. What
+	 * placing the urn asks: the urn is voted at from one face, so its cell counts as
+	 * reached only from the cell in front of that face, across an edge with no divider.
+	 * The search to the door never passes through Target, which will be walled. Cached
+	 * like the blocking checks, since it runs every frame while the urn hovers.
+	 * @return false when there is no spawn, the door is off the board, not walkable or
+	 *         fenced, or some spawn cannot reach it.
 	 */
-	bool CanEverySpawnReach(const UBDGridSubsystem* Grid, FBDCellCoord Target) const;
+	bool CanEverySpawnReach(const UBDGridSubsystem* Grid, FBDCellCoord Target, FBDCellCoord Door) const;
 
 	/** Whether the last WouldBlockPath call was answered from the cache instead of searching. */
 	bool WasLastBlockCheckCached() const { return bLastBlockCheckWasCached; }
@@ -175,6 +178,7 @@ private:
 
 	mutable TWeakObjectPtr<const UBDGridSubsystem> CachedReachGrid;
 	mutable FBDCellCoord CachedReachTarget;
+	mutable FBDCellCoord CachedReachDoor;
 	mutable int32 CachedReachGridVersion = 0;
 	mutable bool bCachedReachResult = false;
 	mutable bool bHasCachedReachResult = false;

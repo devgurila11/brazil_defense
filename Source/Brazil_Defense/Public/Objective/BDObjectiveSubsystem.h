@@ -53,8 +53,31 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Objective", meta = (WorldContext = "WorldContextObject"))
 	static UBDObjectiveSubsystem* Get(const UObject* WorldContextObject);
 
-	/** Whether a cell may take the urn right now, and why not when it may not. Runs every hover frame; the reachability part is cached by the pathfinder. */
-	EBDObjectiveRefusal EvaluateCell(const FBDCellCoord& Coord) const;
+	/**
+	 * Whether a cell may take the urn right now, turned to Yaw, and why not when it may not.
+	 * Unreachable covers a door that is off the board, fenced or not walkable. Runs every
+	 * hover frame; the reachability part is cached by the pathfinder.
+	 */
+	EBDObjectiveRefusal EvaluateCell(const FBDCellCoord& Coord, float Yaw = 0.0f) const;
+
+	/** The cell in front of the urn's keyboard for an urn on Coord turned to Yaw. May be off the board. */
+	static FBDCellCoord GetDoorFor(const FBDCellCoord& Coord, float Yaw);
+
+	/** The cell in front of the placed urn's keyboard. Meaningful only once placed. */
+	FBDCellCoord GetDoorCell() const { return DoorCell; }
+
+	/**
+	 * Counts an arrival by where the creep stepped into the urn's cell from. Anything
+	 * but the door is the bug the walls exist to prevent: logged as an error, counted
+	 * for the regression, and still an arrival - a creep left standing would hold the
+	 * wave forever. A creep never seen walking in (EnteredFrom invalid: put there by
+	 * hand) is counted apart.
+	 */
+	void NoteArrival(const FBDCellCoord& EnteredFrom);
+
+	int32 GetArrivalsThroughDoor() const { return ArrivalsThroughDoor; }
+	int32 GetArrivalsOutsideDoor() const { return ArrivalsOutsideDoor; }
+	int32 GetArrivalsUnwalked() const { return ArrivalsUnwalked; }
 
 	/**
 	 * Puts the urn on a cell. Refuses with the same reasons EvaluateCell gives.
@@ -120,5 +143,10 @@ private:
 	void EnsureOutdoorReverb(UWorld& World);
 
 	FBDCellCoord GoalCell;
+	FBDCellCoord DoorCell;
 	bool bPlaced = false;
+
+	int32 ArrivalsThroughDoor = 0;
+	int32 ArrivalsOutsideDoor = 0;
+	int32 ArrivalsUnwalked = 0;
 };

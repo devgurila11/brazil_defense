@@ -196,6 +196,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	bool HasArrived() const { return Waypoints.Num() > 0 && CurrentWaypoint >= Waypoints.Num(); }
 
+	/** The cell it stepped into the urn's cell from, by where its body walked. Invalid until it has. */
+	FBDCellCoord GetEnteredUrnFrom() const { return EnteredUrnFrom; }
+
 	/** Whether every cell of the route is behind the creep and it is walking to the objective actor. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	bool IsOnFinalLeg() const { return Path.Num() > 0 && GetCurrentPathIndex() >= Path.Num() && !HasArrived(); }
@@ -330,6 +333,17 @@ private:
 	/** Waypoint the creep is currently walking towards. Waypoints.Num() once it arrived. */
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "Brazil Defense|Enemy")
 	int32 CurrentWaypoint = 0;
+
+	/**
+	 * The cell the creep is standing in, and the one it stood in before stepping into the
+	 * urn's cell: what the arrival is checked against, the urn's door. Read off where the
+	 * body actually is, not off the route, so a corner cut through a wall would show.
+	 */
+	FBDCellCoord WalkedCell = FBDCellCoord(INDEX_NONE, INDEX_NONE);
+	FBDCellCoord EnteredUrnFrom = FBDCellCoord(INDEX_NONE, INDEX_NONE);
+
+	/** Updates WalkedCell and EnteredUrnFrom from where the body stands now. */
+	void TrackWalkedCell();
 
 	/** The lane this creep leans to, as a signed fraction of a cell. What it wanders around. */
 	float LateralOffsetFrac = 0.0f;

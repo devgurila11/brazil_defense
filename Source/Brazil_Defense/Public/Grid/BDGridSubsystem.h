@@ -139,6 +139,26 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Grid")
 	bool SetEdgeBlocked(const FBDEdgeCoord& Edge, bool bBlocked);
 
+	//~ The urn's door --------------------------------------------------------
+	// The urn is voted at from one face only, the one with the keyboard. Its cell is
+	// walled on the other three sides for anything that asks IsEdgeBlocked: the
+	// pathfinder, every blocking check and the walk of the creeps. The walls are not
+	// dividers: IsEdgeBlockedAt does not see them and nothing can be built on them.
+
+	/** Opens the urn's cell only towards Door, a four-adjacent cell. Bumps the version. */
+	void SetGoalDoor(const FBDCellCoord& Goal, const FBDCellCoord& Door);
+
+	/** No urn on the board: no walls. Bumps the version when there was a door. */
+	void ClearGoalDoor();
+
+	bool HasGoalDoor() const { return bHasGoalDoor; }
+
+	/** The cell in front of the urn's door. Meaningful only with HasGoalDoor. */
+	FBDCellCoord GetGoalDoor() const { return GoalDoor; }
+
+	/** Whether the crossing From -> To goes through one of the urn's three walls. */
+	bool IsGoalWall(const FBDCellCoord& From, const FBDCellCoord& To) const;
+
 	/**
 	 * The edges of a straight run of fence: Length edges of the same direction, one per
 	 * cell along the line they form. +X edges line up along Y and +Y edges along X.
@@ -222,6 +242,11 @@ private:
 
 	/** See GetVersion. Starts at 1 so a cached version of 0 never looks current. */
 	int32 Version = 1;
+
+	/** See SetGoalDoor. */
+	FBDCellCoord GoalDoorCell;
+	FBDCellCoord GoalDoor;
+	bool bHasGoalDoor = false;
 
 	int32 SizeX = 0;
 	int32 SizeY = 0;

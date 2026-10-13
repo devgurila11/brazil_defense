@@ -153,7 +153,42 @@ bool UBDGridSubsystem::IsEdgeBlocked(const FBDCellCoord& From, const FBDCellCoor
 
 	// Cells that do not touch share no edge, so there is nothing to be blocked. Whether
 	// the move itself is legal is the pathfinder's business, not this one's.
-	return bAdjacent && IsEdgeBlockedAt(Edge);
+	return bAdjacent && (IsEdgeBlockedAt(Edge) || IsGoalWall(From, To));
+}
+
+void UBDGridSubsystem::SetGoalDoor(const FBDCellCoord& Goal, const FBDCellCoord& Door)
+{
+	if (bHasGoalDoor && GoalDoorCell == Goal && GoalDoor == Door)
+	{
+		return;
+	}
+
+	GoalDoorCell = Goal;
+	GoalDoor = Door;
+	bHasGoalDoor = true;
+	// The walls change every route and every blocking answer, like a divider does.
+	++Version;
+}
+
+void UBDGridSubsystem::ClearGoalDoor()
+{
+	if (bHasGoalDoor)
+	{
+		bHasGoalDoor = false;
+		++Version;
+	}
+}
+
+bool UBDGridSubsystem::IsGoalWall(const FBDCellCoord& From, const FBDCellCoord& To) const
+{
+	if (!bHasGoalDoor)
+	{
+		return false;
+	}
+
+	// Either way across: walking out of the urn's cell through a wall is as wrong as in,
+	// and a flood from the urn has to see the same walls as a search towards it.
+	return (From == GoalDoorCell && To != GoalDoor) || (To == GoalDoorCell && From != GoalDoor);
 }
 
 bool UBDGridSubsystem::SetEdgeBlocked(const FBDEdgeCoord& Edge, const bool bBlocked)

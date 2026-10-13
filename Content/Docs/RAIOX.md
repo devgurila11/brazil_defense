@@ -1,6 +1,6 @@
 # Raio-X da mecânica — Brazil Defense
 
-**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00, pelas hordas especiais do briefing 2026-10-14 09:00 e pelo comício com os tipos 1..N (briefing 15:00).
+**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00, pelas hordas especiais do briefing 2026-10-14 09:00, pelo comício com os tipos 1..N (briefing 15:00) e pela leva do briefing 18:00 (porta da urna).
 
 > O que o jogo FAZ hoje, lido no código. O PLANO.md diz o que o jogo deve
 > ser; este arquivo diz o que ele é, e marca onde os dois discordam.
@@ -33,7 +33,7 @@
 |---|---|---|---|---|
 | Entrada | `BDGameMode` cria o `ABDMatchManager` (o mapa não traz); fora do editor, quem não passou pelo menu volta ao menu | GlobalDefaultGameMode = BDGameMode | BDGameMode.cpp:30-52 | Não está no PLANO |
 | Fase Setup | Dura um frame: sorteia seed, gerador de obstáculos (desligado), vai para Building no mesmo BeginPlay. Em Setup não se coloca nem move nada | `bRandomizeSeed` true; `bGenerateObstacles` False | BDMatchManager.cpp:89-128, 231-254 | Não está no PLANO |
-| Urna na mão | Sem urna no board, ela vai para a mão; as outras peças são recusadas até ela estar no chão (ObjectiveMissing). Qualquer célula livre e alcançável | `bRestrictToZone` False | BDGameMode.cpp:54-70; BDPlacementComponent.cpp:1320-1350 | Sim — §2.1 "zona restrita"; §5 e código: livre |
+| Urna na mão | Sem urna no board, ela vai para a mão; as outras peças são recusadas até ela estar no chão (ObjectiveMissing). Qualquer célula livre cuja **porta** (célula em frente ao teclado, pelo giro da peça) esteja no board, seja andável, sem divisória na aresta e alcançável por todas as bocas sem passar pela célula da urna; senão `Unreachable` | `bRestrictToZone` False | BDGameMode.cpp:54-70; BDPlacementComponent.cpp:1320-1350 | Sim — §2.1 "zona restrita"; §5 e código: livre |
 | Urna travada | Só se coloca antes da onda 1; nunca é vendida nem movida | IsBuildLocked = onda ≥ 1 | BDMatchManager.h:175; CanPlace/CanRemove | Não (§5) |
 | Primeira contagem | Só corre com a **urna no chão**: sem urna fica parada no valor cheio e o HUD mostra "coloque a urna para a contagem começar"; a urna no chão dispara do `FirstWaveDelay` cheio | Easy 90 / Normal 120 / Hard 45 s | Tick / IsAwaitingUrn (BDMatchManager.cpp); HUD.Wave.PlaceUrn | Não (§2.2) |
 | Contagem entre ondas | max(10; 45 × 0,94^onda): ≈42 s após a onda 1, piso de 10 s a partir da 25. Em tempo dilatado (2x/4x acelera, pausa para) | BaseWaveDelay 45, Decay 0,94, Min 10 | GetWaveDelay (BDGameBalanceSettings.cpp:140-144) | Não (§2.4) |
@@ -110,11 +110,12 @@
 | Boca bloqueada | Procura saída livre, sempre dentro da coleira de 5; senão fica bloqueada | — | :471-492 | Parcial — §5 "posição aberta mais próxima" |
 | Ônibus | **Todos** seguem sua boca; só os das ativas têm motor e buzina (buzina no 1º creep). O creep nasce na célula de saída, não no ônibus | BusMoveSeconds 2 | BDBusSubsystem.cpp:55-160 | Parcial — §9 "marcam as bocas ativas" |
 | Pathfinding | A* em 4 direções; Free/Tower/Spawn/Goal andáveis; Platform e Blocked bloqueiam; divisórias bloqueiam arestas; vai à Goal de menor custo | StepCost 1000 | BDPathfinder.cpp:28-60 | Não (§6) |
+| Porta da urna | A célula da urna só se entra pela aresta da face de entrada (a do teclado: giro do ator + `EntryFaceYaw`, arredondado a 90°); as outras 3 arestas são paredes para tudo que pergunta `IsEdgeBlocked` (A*, `WouldBlockPath*`, `WouldCutOffCells`, faixa e curvas do creep, multidão do comício). Não são divisórias: `IsEdgeBlockedAt` não as vê. Divisória na aresta da porta ou plataforma/palácio na célula da porta = `WouldBlockPath`. Vale para horda e candidato | EntryFaceYaw 0 (= frente +X do ator) | UBDGridSubsystem::SetGoalDoor / IsGoalWall; UBDObjectiveSubsystem::GetDoorFor | Não está no PLANO |
 | Variação de rota | Mapa de custo por creep em [1; 1,3] por célula: espalha a horda; rota mais curta da boca como fallback | RouteCostVariance 1,3; PerCreep | DrawRouteCost (:952-978) | Não está no PLANO |
 | Reroteamento | Qualquer mudança no grid reroteia na hora todos os vivos (menos os da perna final) | — | RerouteLivingEnemies (:980-1016) | Não está no PLANO |
 | Proteção dos creeps em campo | `WouldCutOffCells`: recusa peça que deixe sem rota a célula para onde um creep vai | — | BDPathfinder.cpp ~250-330; WouldFenceInCreeps (BDPlacementComponent.cpp:1114-1135) | Parcial — §6 só "não fechar o caminho" |
 | Movimento orgânico | Faixa lateral ±0,4 célula com ondulação, curvas abertas suavizadas, giro cosmético | LateralOffsetMax 0,4; LaneWander 0,6; CornerSmoothRadius 0,35 | BDEnemyBase.cpp:396-549 | Não está no PLANO |
-| Chegada | ≤150 cm da urna (perna final até o ator): +1 vermelho, bipe, destruído sem corpo, grito ou sangue | ArrivalDistance 150 | Arrive (BDEnemyBase.cpp:704-723) | Parcial (§9 bipe ok; §3 por HP) |
+| Chegada | ≤150 cm da urna (perna final até o ator; a rota sempre termina porta → urna): +1 vermelho, bipe, destruído sem corpo, grito ou sangue. O creep anota de que célula pisou na da urna (pelo corpo, não pela rota); chegada que não veio da porta é logada como erro e contada (`BD.Objective.Status`), mas vale — creep parado seguraria a onda | ArrivalDistance 150 | Arrive / TrackWalkedCell (BDEnemyBase.cpp); UBDObjectiveSubsystem::NoteArrival | Parcial (§9 bipe ok; §3 por HP) |
 | Morte | Avisa o atirador → +1 azul e placar de abates → grito → corpo → sangue → destroy | — | BDEnemyBase.cpp:786-838 | Não está no PLANO |
 | Corpo | Só com malha esquelética e anim de morte: 1 de 4 quedas a 1,5x, afunda em 0,4 s; máx. 40 deitados | MaxCorpses 40 | BDCreepCorpse.cpp:34-133 | Não está no PLANO |
 | Sangue | Sem `BloodTexture` no ini: **nenhuma mancha aparece no jogo** (só a regressão injeta) | BloodTexture vazio | BDBloodDecals.cpp:53-107 | Não está no PLANO |
@@ -235,7 +236,7 @@
 | Alcance na plataforma | ×1,25 fixo nas três (nenhum BP sobrescreve); altura não importa | RangeMultiplier 1,25 | BDTowerBase.cpp:378-379 | Parcial (§6) |
 | Bloco | Evolui em bloco; deck sobe 120 cm por nível do bloco, tinta dourada (só visual) | FloorHeight 120 | BDPlatformComponent.cpp:97-164 | Não está no PLANO |
 | Divisória | Na aresta; recusa borda do grid e aresta tomada; não bloqueia o Mito | InstancesPerEdge 2 | EvaluateEdgePlacement (:1199-1233) | Não (§6) |
-| Validação | `WouldBlockPath`/`WouldBlockPathEdges` (nenhuma boca perde a urna) + `WouldCutOffCells` (creeps em campo) | — | BDPathfinder.cpp:134-242+ | Parcial |
+| Validação | `WouldBlockPath`/`WouldBlockPathEdges` (nenhuma boca perde a urna, que só se alcança pela porta) + `WouldCutOffCells` (creeps em campo) | — | BDPathfinder.cpp:134-242+ | Parcial |
 | Escolha de alvo | Creep com **menos caminho restante dentro do alcance**; `TargetPriority` ignorado | — | AcquireTarget (:445-478) | Sim (§4) |
 | Re-olhar | Antes de cada tiro troca para um creep mais adiantado (margem de 1 cm) | — | Tick (:586-596) | Não está no PLANO |
 | Giro | Só yaw, 360°/s; atira com erro ≤ 5° | TurnRate 360; AimTolerance 5 | :487-509 | Não está no PLANO |
@@ -466,6 +467,7 @@ DA_Character_Test não é apontado por nenhuma peça.
 | Classe.Campo | Valor | Default | O que faz |
 |---|---|---|---|
 | Objective.ObjectivePlaceable | DA_Objective | | Urna |
+| Objective.EntryFaceYaw | 0 | 0 | Para onde o teclado olha, em graus a partir da frente (+X) do ator; decide a porta |
 | Objective.bRestrictToZone | False | | Zona desligada |
 | Objective.MinX/MaxX/MinY/MaxY | 40/47/6/15 | | Sem efeito |
 | Obstacle.bGenerateObstacles | False | | Desliga todo o gerador |
@@ -526,6 +528,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | 40 | Comício: a multidão não entra no total W × bocas (conta em `CreepsRaised`); procura lugar até 20 passos e o que não acha não brota; o tell usa a buzina do ônibus; o candidato fica parado e vulnerável os 0,6 s do brotar; o comício vem do DA do número e o corpo ainda do 01 |
 | 41 | Hordas: a liberação vale na distribuição da onda (o plano inteiro é feito ali); a 1ª parada do Black Bloc é sorteada no intervalo 4–8 s com piso de 3 s; o aviso "NOVA HORDA" reaparece depois de um load; o corpo do Black Bloc é provisório (jumento preto, sem sons próprios) |
 | 42 | Comício com tipos: a lista do candidato N para no número de hordas do elenco (hoje 4), para não apontar para DA que não existe — o `BDScaffoldCast` estende a lista de quem ainda tem a sequência padrão quando o elenco crescer; tipo travado ou sem corpo sai jumento (não é redistribuído entre os outros); o sorteio usa a semente do comício do candidato, não a da onda |
+| 43 | Urna com porta: só se entra na célula dela pela face do teclado (`EntryFaceYaw` nas settings da urna, não no BP — a urna não tem BP); as outras três arestas são paredes invisíveis que não são divisórias; o AutoSetup tenta os 4 giros por célula |
 
 ## Divergências PLANO × código
 
@@ -587,7 +590,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | BD.Place.PickUp / PickUpEdge / CancelMove | `<x> <y> …` | Mover | idem |
 | BD.Grid.CellState / SetEdge / SetCells / Audit / SaveLayout | vários | Grid | Grid/* |
 | BD.Path.WouldBlock / WouldBlockEdges / Test | vários | Validação de caminho | Path/BDPathfinder.cpp |
-| BD.Objective.PlaceAt / Status | `<x> <y>` | Urna | Objective/BDObjectiveDebug.cpp |
+| BD.Objective.PlaceAt / Status | `<x> <y> [yaw]` | Urna (com giro, que decide a porta) / estado com porta e chegadas pela porta × fora | Objective/BDObjectiveDebug.cpp |
 | BD.Obstacles.Generate | `<seed>` | Gerador (respeita o flag desligado) | Obstacle/BDObstacleGenerator.cpp |
 | BD.Tower.Status / Upgrade / UpgradeCost / UpgradeAll / SetAllLevels | vários | Defensores | Tower/BDTowerDebug.cpp |
 | BD.Palace.Status / SetLevel | `<0-5>` | Nível do palácio (troca a arma do Mito) | Palace/BDPalace.cpp |
