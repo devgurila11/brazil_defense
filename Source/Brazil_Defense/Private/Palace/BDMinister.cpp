@@ -12,6 +12,7 @@
 #include "Grid/BDFreeWalk.h"
 #include "Grid/BDGridSubsystem.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Palace/BDMinisterData.h"
 #include "Palace/BDMinisterSettings.h"
 #include "Palace/BDMinisterSubsystem.h"
 #include "Wave/BDWaveSubsystem.h"
@@ -72,10 +73,11 @@ FBDFreeWalk ABDMinister::Walk() const
 	return FBDFreeWalk(GetWorld(), GetGrid(), { this, StfBuilding.Get() }, /*bOverDividers*/ true);
 }
 
-void ABDMinister::InitializeMinister(const FVector& Outside, const FBDCellCoord& InDoorCell, const AActor* Stf, const int32 InSeat)
+void ABDMinister::InitializeMinister(const FVector& Outside, const FBDCellCoord& InDoorCell, const AActor* Stf, const int32 InSeat, const UBDMinisterData* InData)
 {
 	const UBDMinisterSettings& Settings = UBDMinisterSettings::Get();
 	Seat = InSeat;
+	Data = InData;
 	StfBuilding = Stf;
 	DoorOutside = Outside;
 	DoorCell = InDoorCell;
@@ -428,7 +430,7 @@ void ABDMinister::Cry()
 	// His voice when he has one; the black exclamation either way, so who cried reads now.
 	const UBDMinisterSettings& Settings = UBDMinisterSettings::Get();
 	UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(this);
-	const bool bVoiced = !Settings.ScreamSound.IsNull() && Sounds != nullptr && Sounds->SayAlways(*this, Settings.ScreamSound);
+	const bool bVoiced = Data != nullptr && !Data->FleeSound.IsNull() && Sounds != nullptr && Sounds->SayAlways(*this, Data->FleeSound);
 	if (!bVoiced)
 	{
 		if (UBDSpeechMarkSubsystem* Marks = UBDSpeechMarkSubsystem::Get(this))

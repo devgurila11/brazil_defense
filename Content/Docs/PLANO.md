@@ -263,6 +263,35 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-13 (elenco pronto na UE: 39 DAs, pastas, textos e audit) — COMMIT** (desde 222ee6b):
+  - **Fase nova** (briefing 09:30): todo o elenco criado vazio para a produção. Convenção e
+    tabela na seção 14 "Elenco" (nova). Mecânica nenhuma mudou.
+  - **`BDScaffoldCast`** (commandlet novo, idempotente): `-Candidatos=20 -Ministros=11
+    -Personagens=4 -Hordas=4 [-DryRun]`. Rodado uma vez: 36 DAs criados, 195 pastas de arte
+    com `.gitkeep`, 38 chaves em `BD_pt` e `BD_en`, contagens em `[/Script/Brazil_Defense.BDCastSettings]`.
+    Rodar de novo com os mesmos números não cria nada (conferido); número maior só acrescenta.
+  - **Reaproveitados, movidos com o rename do editor**: `DA_Enemy_Test` → `DA_Horda_01` com 74
+    assets só dele (malha, esqueleto, física, `SM_Jumento`, 4 MIs, 12 texturas, ícone, 5 anims,
+    5 cues, 43 waves + os `.wav`); `DA_Shooter_Pistol` → `DA_Personagem_01` com 26 (malha,
+    esqueleto, MI, 3 texturas, 2 anims, cue, 17 falas + `.wav`); `DA_Candidate` →
+    `DA_Candidato_01` com `M_Candidate_Red`. Ficaram no lugar: pistola (o Mito usa),
+    `M_Master_Environment`, sound classes. Conferido em sessão nova: 0 referência quebrada,
+    0 redirector novo, as 60 fontes de áudio achadas. Config (`WaveEnemy`, `DebugEnemy`,
+    `CandidateEnemy`), `BDSpeechMarks` e a regressão apontam para os caminhos novos; a chave
+    `Enemy.DA_Enemy_Test` virou `Enemy.01`.
+  - **Campos novos**: `UBDEnemyData` ganhou `Skeleton`, `IdleAnimation` e `CandidateFace`
+    (candidato); `UBDMinisterData` novo (corpo, Walk/Idle/Read/Kicked/Flee, `SpeechSound`,
+    `FleeSound`). O ministro recebe o DA no spawn por assento (`UBDMinisterSettings::Ministers`,
+    vazio); `ScreamSound` das settings saiu e virou o `FleeSound` do DA.
+  - **`BD.Cast.Audit`**: cada DA com os slots vazios e o resumo. Hoje: 39 DAs, 411 slots
+    vazios — candidatos 199, ministros 132, personagens 35, hordas 45. `BDLoc` resolve
+    `Candidate/Minister/Shooter/Enemy.NN` pelo nome do asset.
+  - Regressão 102/102 depois da mudança de lugar e antes dos checks; com os 4 checks ELENCO
+    novos, 106/106. Alvos do editor e do jogo compilados.
+  - **Onde paramos**: (1) produção dele pela lista do audit; (2) quantos personagens e tipos
+    de horda (rodar o commandlet de novo); (3) fase seguinte: quem sai em qual onda; (4) a
+    pendência de GPU da Rodada 9 segue em espera; (5) regra de firewall da 9171 como admin.
+
 - **2026-10-12 (Mito chuta ministro sem estamina, ministro sobre separador, console no ABNT2, Rodadas 8–9) — 9124658** (desde 4cf7a64):
   - **Mito no retorno** ("ministros ele deverá atacar mesmo sem estamina"): com a barra
     vazia ele passa pela horda sem atirar e só se desvia para chutar um ministro em pé no
@@ -2566,3 +2595,77 @@ desligados. Duas amostras de 900 quadros por rodada mais um `ProfileGPU`.
 da partida real, e põe 50 atiradores (a partida tinha 52). Arquivos:
 `profilegpu_w90_*.txt`, `csv\w90_*.csv`, `shots\w90_*.png` em
 `gpu_bench`.
+
+---
+
+## 14. Elenco
+
+Todo personagem do jogo existe na UE antes da arte: um DataAsset com
+todos os campos, vazios onde não houver nada, e uma pasta com o lugar
+de cada coisa. A produção (textura, MI, animação, som) só larga o
+arquivo na pasta e aponta o slot.
+
+**Convenção fixa — o nome do asset nunca muda.** `DA_Candidato_07` é o
+sétimo candidato para sempre, mesmo quando ganhar nome de verdade.
+Quando o oficial chegar, mudam só o `DisplayName` do DA e as string
+tables (`Candidate.07` em `BD_pt` e `BD_en`). Assim nenhuma referência,
+config ou save quebra por causa de um nome.
+
+**Pastas.** `Content/Elenco/<Tipo>/<Nome>/` com o DA na raiz e as
+subpastas `Mesh`, `Textures`, `Materials`, `Anim` e `Audio` (cada uma
+com um `.gitkeep` enquanto vazia):
+
+| Tipo | Pasta | DA | Classe | Chave de texto |
+|---|---|---|---|---|
+| Candidato | `Elenco/Candidatos/Candidato_NN` | `DA_Candidato_NN` | `UBDEnemyData` | `Candidate.NN` |
+| Ministro | `Elenco/Ministros/Ministro_NN` | `DA_Ministro_NN` | `UBDMinisterData` | `Minister.NN` |
+| Personagem de plataforma | `Elenco/Personagens/Personagem_NN` | `DA_Personagem_NN` | `UBDShooterData` | `Shooter.NN` |
+| Tipo de horda | `Elenco/Hordas/Horda_NN` | `DA_Horda_NN` | `UBDEnemyData` | `Enemy.NN` |
+
+**Quantos.** 20 candidatos e 11 ministros (fechado); personagens e
+hordas começam com 4 de cada até ele definir. Quem cria e acrescenta é
+o commandlet, que nunca sobrescreve nem apaga:
+
+`UnrealEditor-Cmd <uproject> -run=BDScaffoldCast -Candidatos=20 -Ministros=11 -Personagens=4 -Hordas=4 [-DryRun]`
+
+Rodar de novo com número maior só acrescenta (DA novo com os números
+de jogo do `_01` do tipo e a arte vazia, pastas, chaves de texto); um
+número menor é ignorado. As contagens ficam em Project Settings >
+Brazil Defense - Cast e a regressão confere o disco contra elas.
+
+**Slots de produção por tipo** (o que o `BD.Cast.Audit` lista):
+
+- Comum: ícone, malha esquelética, esqueleto, `MeshMaterial`,
+  `SkinMaterials`; `MeshScale`/`MeshYaw` são números, não slots.
+- Horda: anim Run (`MoveAnimation`) e Death_01..04
+  (`DeathAnimations`); sons fala (`SpeechSound`), zurro (`CallSound`),
+  casco (`FootstepSound`), grito (`DeathSound`), queda
+  (`BodyFallSound`); ícone = `KillIcon`.
+- Candidato: anims Walk (`MoveAnimation`), Idle, Death; sons fala
+  enquanto anda (`SpeechSound`) e **morte (`DeathSound`), banco separado
+  das falas**; ícone = `CandidateFace` (substitui o `CandidateFaces`
+  das settings de interface).
+- Ministro: anims Walk, Idle, Read (livro), Kicked (voo/queda), Flee;
+  sons fala (`SpeechSound`) e **fuga (`FleeSound`, toca ao levar o
+  chute)**. Ministro não morre, foge: não tem `DeathSound`. O antigo
+  `ScreamSound` das settings virou o `FleeSound` do DA.
+- Personagem: o `UBDShooterData` de sempre — corpo, Idle, Shooting, 6
+  armas (`Weapon_1..6`), `CelebrationSound`. O ícone da barra fica na
+  peça (`DA_Character`).
+
+**Checklist.** `BD.Cast.Audit` (console, no editor ou headless) lista
+cada DA com os slots vazios e um resumo por tipo. É a lista de produção.
+
+**Reaproveitados.** Os três personagens que já jogavam viraram o `_01`
+do tipo, movidos com a arte que só eles usam (rename do editor,
+referências conferidas em sessão nova): `DA_Enemy_Test` (jumento, 4
+skins) → `DA_Horda_01`; `DA_Shooter_Pistol` (Nicole) →
+`DA_Personagem_01`; `DA_Candidate` → `DA_Candidato_01`. A pistola, o
+master material e as sound classes ficaram onde estavam porque o Mito
+e o resto também usam.
+
+**O que ainda não entra.** Nenhum DA novo está apontado em settings de
+onda, candidato ou ministro: o jogo roda com os `_01`. Quem sai em
+qual onda é fase posterior. O ministro já recebe o seu DA no spawn
+(`UBDMinisterSettings::Ministers`, por assento, vazio por enquanto) e
+lê dele só o `FleeSound`.

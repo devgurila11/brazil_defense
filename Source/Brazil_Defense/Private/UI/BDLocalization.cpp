@@ -4,6 +4,7 @@
 
 #include "Internationalization/StringTableRegistry.h"
 #include "Internationalization/StringTableCore.h"
+#include "Cast/BDCast.h"
 #include "Tower/BDTowerData.h"
 #include "Enemy/BDEnemyData.h"
 #include "Placement/BDPlaceableData.h"
@@ -86,6 +87,11 @@ FText BDLoc::PieceName(const UBDPlaceableData* Data)
 	{
 		return Text(*Key);
 	}
+	const FString CastKey = BDCast::GetTextKeyOf(Data);
+	if (!CastKey.IsEmpty() && HasText(*CastKey))
+	{
+		return Text(*CastKey);
+	}
 	return Data->DisplayName.IsEmpty() ? FText::FromString(Data->GetName()) : Data->DisplayName;
 }
 
@@ -101,6 +107,11 @@ FText BDLoc::PieceName(const UBDTowerData* Data)
 	{
 		return Text(*Key);
 	}
+	const FString CastKey = BDCast::GetTextKeyOf(Data);
+	if (!CastKey.IsEmpty() && HasText(*CastKey))
+	{
+		return Text(*CastKey);
+	}
 	return Data->DisplayName.IsEmpty() ? FText::FromString(Data->GetName()) : Data->DisplayName;
 }
 
@@ -115,6 +126,11 @@ FText BDLoc::EnemyName(const UBDEnemyData* Data)
 	if (HasText(*Key))
 	{
 		return Text(*Key);
+	}
+	const FString CastKey = BDCast::GetTextKeyOf(Data);
+	if (!CastKey.IsEmpty() && HasText(*CastKey))
+	{
+		return Text(*CastKey);
 	}
 	return Data->DisplayName.IsEmpty() ? FText::FromString(Data->GetName()) : Data->DisplayName;
 }

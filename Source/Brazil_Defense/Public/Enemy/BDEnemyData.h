@@ -10,6 +10,7 @@ class ABDEnemyBase;
 class UAnimSequenceBase;
 class UMaterialInterface;
 class USkeletalMesh;
+class USkeleton;
 class USoundBase;
 class UStaticMesh;
 class UTexture2D;
@@ -95,6 +96,14 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (EditCondition = "SkeletalMesh != nullptr"))
 	TArray<TSoftObjectPtr<UAnimSequenceBase>> DeathAnimations;
+
+	/**
+	 * The skeleton the body and its animations share. Not read by the game, which takes the
+	 * mesh's own: it is there for the cast checklist (BD.Cast.Audit) and to say which skeleton
+	 * an animation of this creep must be imported onto before its mesh exists.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
+	TSoftObjectPtr<USkeleton> Skeleton;
 
 	/** Yaw added to the body so its front faces along the route. A Mixamo import faces +Y and wants -90. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual", meta = (ForceUnits = "deg"))
@@ -193,6 +202,22 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Sound", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
 	TSoftObjectPtr<USoundBase> BodyFallSound;
+
+	//~ Candidate --------------------------------------------------------------
+	// Only the candidates (DA_Candidato_NN) fill these; a creep of the horde leaves them empty.
+	// For a candidate MoveAnimation is his walk, DeathAnimations his fall, SpeechSound what he
+	// says while he walks and DeathSound his cry when he dies, a bank apart from the words.
+
+	/** Looped while the candidate stands. Not played yet. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Candidate")
+	TSoftObjectPtr<UAnimSequenceBase> IdleAnimation;
+
+	/**
+	 * His face, for the kill board and the panel. Not read yet: the board still shows
+	 * CandidateKillIcon of the interface settings for all of them.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Candidate", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
+	TSoftObjectPtr<UTexture2D> CandidateFace;
 
 	/** Whether this creep ever speaks or calls. */
 	bool IsVocal() const { return !SpeechSound.IsNull() || !CallSound.IsNull(); }

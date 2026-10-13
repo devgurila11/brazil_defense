@@ -75,6 +75,13 @@ private:
 	 */
 	void CheckCellsComeBack(UBDPlaceableData* Tower, UBDPlaceableData* Platform, UBDPlaceableData* Divider);
 
+	/**
+	 * The cast (BDCast): as many data assets of each kind as BDScaffoldCast was asked for, all
+	 * found by the audit in their folders, the three characters of the game with their art
+	 * still in place, and the cries kept apart from the words.
+	 */
+	void CheckCast();
+
 	/** The defender standing that was not in a list taken before. */
 	ABDTowerBase* FindNewTower(const TArray<ABDTowerBase*>& Before) const;
 

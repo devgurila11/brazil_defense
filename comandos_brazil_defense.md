@@ -257,7 +257,7 @@ Overlay (`BD.HUD.Debug 1`): `CANDIDATO  HP x/y` enquanto vivo e
 Parâmetros em Project Settings > Brazil Defense - Balance > Candidate:
 `CandidateHealthMultiplier` (40 × o HP do creep da onda),
 `CandidateSpeed` (0.5 células/s), `CandidateKillPauseSeconds` (30).
-O asset é `DA_Candidate`, apontado em Brazil Defense - Waves >
+O asset é `DA_Candidato_01` (Content/Elenco/Candidatos/Candidato_01), apontado em Brazil Defense - Waves >
 `CandidateEnemy`.
 
 ---

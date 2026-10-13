@@ -8,6 +8,7 @@
 #include "BDMinister.generated.h"
 
 class ABDEnemyBase;
+class UBDMinisterData;
 class UBDGridSubsystem;
 class UStaticMeshComponent;
 struct FBDFreeWalk;
@@ -71,7 +72,10 @@ public:
 	 * Sets him off: out of Outside (the STF door, off the board), onto DoorCell, then the
 	 * stroll. Running back, he heads for the same door.
 	 */
-	void InitializeMinister(const FVector& Outside, const FBDCellCoord& DoorCell, const AActor* Stf, int32 InSeat);
+	void InitializeMinister(const FVector& Outside, const FBDCellCoord& DoorCell, const AActor* Stf, int32 InSeat, const UBDMinisterData* InData = nullptr);
+
+	/** Who he is: his body, his animations, his voice. Null while his seat has no data. */
+	const UBDMinisterData* GetData() const { return Data; }
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -156,6 +160,9 @@ private:
 	float QuietSeconds = 0.0f;
 
 	int32 Seat = 0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<const UBDMinisterData> Data;
 
 	EBDMinisterState State = EBDMinisterState::Entering;
 

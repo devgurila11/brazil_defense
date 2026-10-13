@@ -13,6 +13,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Palace/BDAgent.h"
 #include "Palace/BDMinister.h"
+#include "Palace/BDMinisterData.h"
 #include "Palace/BDMinisterSettings.h"
 #include "Wave/BDWaveSubsystem.h"
 
@@ -165,7 +166,9 @@ int32 UBDMinisterSubsystem::SpawnMinisters(const int32 Count)
 		ABDMinister* Minister = World->SpawnActor<ABDMinister>(ABDMinister::StaticClass(), FTransform(Outside + Along * Offset), Params);
 		if (Minister != nullptr)
 		{
-			Minister->InitializeMinister(Outside + Along * Offset, DoorCell, Building, Seat);
+			const TArray<TSoftObjectPtr<UBDMinisterData>>& Datas = UBDMinisterSettings::Get().Ministers;
+			const UBDMinisterData* Data = Datas.IsValidIndex(Seat - 1) ? Datas[Seat - 1].LoadSynchronous() : nullptr;
+			Minister->InitializeMinister(Outside + Along * Offset, DoorCell, Building, Seat, Data);
 			++Spawned;
 		}
 		else

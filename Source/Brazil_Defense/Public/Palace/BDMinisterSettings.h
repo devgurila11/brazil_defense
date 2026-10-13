@@ -6,6 +6,7 @@
 #include "Engine/DeveloperSettings.h"
 #include "BDMinisterSettings.generated.h"
 
+class UBDMinisterData;
 class UMaterialInterface;
 class USoundBase;
 class UStaticMesh;
@@ -178,13 +179,20 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "STF", meta = (ClampMin = "0"))
 	int32 MaxOnBoard = 11;
 
+	//~ Who they are -------------------------------------------------------------
+
+	/**
+	 * Each minister's own data, by his seat in the STF's order (entry 0 the first out): his
+	 * body, his animations, his words and the cry he flees with (FleeSound). Empty for now:
+	 * the eleven DA_Ministro_NN exist and wait for their art; a seat with no entry is the
+	 * black block and only the black exclamation when kicked.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Ministers")
+	TArray<TSoftObjectPtr<UBDMinisterData>> Ministers;
+
 	//~ Voice --------------------------------------------------------------------
 
-	/** His cry when kicked. Empty for now: the black exclamation still goes up, for ScreamMarkSeconds. */
-	UPROPERTY(config, EditAnywhere, Category = "Voice")
-	TSoftObjectPtr<USoundBase> ScreamSound;
-
-	/** How long the black exclamation of a cry with no sound stays up. */
+	/** How long the black exclamation of a cry with no sound (no FleeSound on his data) stays up. */
 	UPROPERTY(config, EditAnywhere, Category = "Voice", meta = (ClampMin = "0.0", ForceUnits = "s"))
 	float ScreamMarkSeconds = 1.6f;
 };

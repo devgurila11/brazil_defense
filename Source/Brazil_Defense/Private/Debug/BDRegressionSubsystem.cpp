@@ -3,6 +3,7 @@
 #include "Debug/BDRegressionSubsystem.h"
 
 #include "BDBuildInfo.h"
+#include "Cast/BDCast.h"
 #include "BDLog.h"
 #include "Bribe/BDBribeSubsystem.h"
 #include "Candidate/BDCandidateSubsystem.h"
@@ -70,6 +71,7 @@
 #include "GameFramework/GameUserSettings.h"
 #include "Palace/BDMinisterSettings.h"
 #include "Palace/BDMinister.h"
+#include "Palace/BDMinisterData.h"
 #include "Components/StaticMeshComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Objective/BDObjectiveSettings.h"
@@ -356,6 +358,79 @@ bool UBDRegressionSubsystem::MoveNear(const FBDCellCoord& Near, const int32 Radi
 	return false;
 }
 
+void UBDRegressionSubsystem::CheckCast()
+{
+	const BDCast::FAudit Audit = BDCast::RunAudit();
+	const UBDCastSettings& Settings = UBDCastSettings::Get();
+	constexpr int32 Kinds = static_cast<int32>(EBDCastKind::Count);
+
+	// As many of each kind as the commandlet was last asked for: none lost, none stray.
+	bool bCounts = true;
+	int32 Expected = 0;
+	FString Counts;
+	for (int32 Kind = 0; Kind < Kinds; ++Kind)
+	{
+		const int32 Wanted = Settings.GetCount(static_cast<EBDCastKind>(Kind));
+		bCounts &= Wanted > 0 && Audit.Found[Kind] == Wanted;
+		Expected += Wanted;
+		Counts += FString::Printf(TEXT("%s%s %d/%d"), Counts.IsEmpty() ? TEXT("") : TEXT(", "), BDCast::GetFolder(static_cast<EBDCastKind>(Kind)), Audit.Found[Kind], Wanted);
+	}
+	Check(TEXT("ELENCO"), TEXT("the cast holds as many data assets of each kind as BDScaffoldCast was asked for"), bCounts, Counts);
+
+	// The audit finds every one where the convention puts it, with its slots listed.
+	bool bInPlace = Audit.Missing.Num() == 0 && Audit.TotalFound() == Expected;
+	for (const BDCast::FAuditEntry& Entry : Audit.Entries)
+	{
+		bInPlace &= Entry.PackageName == BDCast::GetPackageName(Entry.Kind, Entry.Number) && Entry.Slots.Num() > 0;
+	}
+	Check(TEXT("ELENCO"), TEXT("BD.Cast.Audit finds every one in its own folder and lists its slots"), bInPlace,
+		FString::Printf(TEXT("%d DAs, %d empty slots, %d missing"), Audit.TotalFound(), Audit.TotalEmpty(), Audit.Missing.Num()));
+
+	// The three characters of the game came over whole, and the game still plays them.
+	const auto Unfilled = [&Audit](const EBDCastKind Kind, const TArray<FString>& Slots, FString& Out)
+	{
+		const BDCast::FAuditEntry* Entry = Audit.Find(Kind, 1);
+		if (Entry == nullptr)
+		{
+			Out += FString::Printf(TEXT(" %s_01 gone;"), BDCast::GetStem(Kind));
+			return;
+		}
+		for (const BDCast::FSlot& Slot : Entry->Slots)
+		{
+			if (!Slot.bFilled && (Slots.Num() == 0 || Slots.Contains(Slot.Name)))
+			{
+				Out += FString::Printf(TEXT(" %s_01 %s;"), BDCast::GetStem(Kind), *Slot.Name);
+			}
+		}
+	};
+	FString Lost;
+	Unfilled(EBDCastKind::Horde, {}, Lost);
+	Unfilled(EBDCastKind::Shooter, { TEXT("SkeletalMesh"), TEXT("Anim.Idle"), TEXT("Anim.Shooting"), TEXT("Weapon_1"), TEXT("Sound.Celebration") }, Lost);
+	Unfilled(EBDCastKind::Candidate, { TEXT("MeshMaterial") }, Lost);
+	const UBDWaveSettings& WaveSettings = UBDWaveSettings::Get();
+	const UBDPlaceableData* CharacterPiece = LoadObject<UBDPlaceableData>(nullptr, TEXT("/Game/BD/Data/DA_Character.DA_Character"));
+	const FString Played = FString::Printf(TEXT("wave %s, candidate %s, character piece %s"), *WaveSettings.WaveEnemy.GetAssetName(),
+		*WaveSettings.CandidateEnemy.GetAssetName(), CharacterPiece != nullptr ? *CharacterPiece->TowerData.GetAssetName() : TEXT("-"));
+	const bool bPlayed = WaveSettings.WaveEnemy.ToSoftObjectPath().GetLongPackageName() == BDCast::GetPackageName(EBDCastKind::Horde, 1)
+		&& WaveSettings.CandidateEnemy.ToSoftObjectPath().GetLongPackageName() == BDCast::GetPackageName(EBDCastKind::Candidate, 1)
+		&& CharacterPiece != nullptr && CharacterPiece->TowerData.ToSoftObjectPath().GetLongPackageName() == BDCast::GetPackageName(EBDCastKind::Shooter, 1);
+	Check(TEXT("ELENCO"), TEXT("the donkey, Nicole and the candidate became the first of their kind with today's slots filled, and the game plays them"),
+		Lost.IsEmpty() && bPlayed, FString::Printf(TEXT("%s; %s"), Lost.IsEmpty() ? TEXT("nothing lost") : *Lost.TrimEnd(), *Played));
+
+	// The candidate dies with a cry and the minister flees with one, each a bank apart from the words.
+	const auto Distinct = [](const UClass* Class, const TCHAR* Cry)
+	{
+		const FProperty* Words = FindFProperty<FProperty>(Class, TEXT("SpeechSound"));
+		const FProperty* Other = FindFProperty<FProperty>(Class, Cry);
+		return Words != nullptr && Other != nullptr && Words != Other && Words->GetOffset_ForInternal() != Other->GetOffset_ForInternal();
+	};
+	const bool bCandidate = Distinct(UBDEnemyData::StaticClass(), TEXT("DeathSound"));
+	const bool bMinister = Distinct(UBDMinisterData::StaticClass(), TEXT("FleeSound"))
+		&& FindFProperty<FProperty>(UBDMinisterData::StaticClass(), TEXT("DeathSound")) == nullptr;
+	Check(TEXT("ELENCO"), TEXT("the candidate has a DeathSound and the minister a FleeSound (no death), each apart from SpeechSound"), bCandidate && bMinister,
+		FString::Printf(TEXT("candidate %s, minister %s"), bCandidate ? TEXT("apart") : TEXT("SHARED OR MISSING"), bMinister ? TEXT("apart") : TEXT("SHARED, MISSING OR WITH A DEATH")));
+}
+
 void UBDRegressionSubsystem::CheckCellsComeBack(UBDPlaceableData* Tower, UBDPlaceableData* Platform, UBDPlaceableData* Divider)
 {
 	using namespace BDRegressionPrivate;
@@ -555,6 +630,8 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 	{
 	case 0:
 	{
+		CheckCast();
+
 		// The night is a short stretch of the day's waves: the share asked, not the third
 		// of the sky the clock gives it. The light curves are not touched.
 		{
@@ -1227,7 +1304,7 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 						Voice.SpeechInnerRadius, AtMiddle, AtOverview, Voice.GetSpeechReach(), Voice.VoiceInnerRadius));
 
 				const UBDPalaceData* Palace = LoadObject<UBDPalaceData>(nullptr, TEXT("/Game/BD/Data/DA_PalaceData.DA_PalaceData"));
-				const UBDEnemyData* Candidate = LoadObject<UBDEnemyData>(nullptr, TEXT("/Game/BD/Data/DA_Candidate.DA_Candidate"));
+				const UBDEnemyData* Candidate = LoadObject<UBDEnemyData>(nullptr, TEXT("/Game/Elenco/Candidatos/Candidato_01/DA_Candidato_01.DA_Candidato_01"));
 				const bool bTall = Palace != nullptr && FMath::IsNearlyEqual(Palace->AgentMeshScale, 2.0f) && FMath::IsNearlyEqual(Palace->WalkAnimRate, 0.5f)
 					&& Candidate != nullptr && Candidate->MeshScale.Equals(FVector(6.0f, 6.0f, 8.0f)) && Militant != nullptr && Militant->MeshScale.Z < Candidate->MeshScale.Z;
 				Check(TEXT("TAMANHO"), TEXT("the Agent and the candidates stand twice their old size; the militants as they were"), bTall,

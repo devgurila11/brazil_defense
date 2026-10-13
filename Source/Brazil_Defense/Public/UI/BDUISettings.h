@@ -252,6 +252,7 @@ public:
 	/**
 	 * One face per scheduled candidate, by his number (first is index 0), for when they get
 	 * faces. Not read yet: the board shows one counter with CandidateKillIcon for all of them.
+	 * Superseded by CandidateFace on each candidate's own data (DA_Candidato_NN): fill that one.
 	 */
 	UPROPERTY(config, EditAnywhere, Category = "Kill Boards", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
 	TArray<TSoftObjectPtr<UTexture2D>> CandidateFaces;

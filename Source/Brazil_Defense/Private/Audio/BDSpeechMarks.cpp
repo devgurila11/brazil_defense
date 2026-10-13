@@ -142,7 +142,7 @@ namespace BDSpeechMarkCommands
 				Speaker = *It;
 			}
 		}
-		USoundBase* Words = LoadObject<USoundBase>(nullptr, TEXT("/Game/BD/Audio/SCue_Militante_Falas.SCue_Militante_Falas"));
+		USoundBase* Words = LoadObject<USoundBase>(nullptr, TEXT("/Game/Elenco/Hordas/Horda_01/Audio/SCue_Militante_Falas.SCue_Militante_Falas"));
 		if (Speaker == nullptr || Words == nullptr)
 		{
 			UE_LOG(LogBDDebug, Warning, TEXT("BD.Speech.Say: no actor of a class with '%s', or no sentence to say."), *Args[0]);

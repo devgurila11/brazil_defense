@@ -15,6 +15,12 @@ public class Brazil_Defense : ModuleRules
 		// Slate and SlateCore back the UMG widgets the interface layer builds in code.
 		// AnimationBudgetAllocator throttles the animation of a horde of skinned creeps.
 		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore", "RHI", "AssetRegistry", "Slate", "SlateCore", "AnimationBudgetAllocator" });
+
+		// The cast commandlet moves assets with the editor's own rename and redirector fix-up.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "AssetTools" });
+		}
 		
 		// Uncomment if you are using online features
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");
