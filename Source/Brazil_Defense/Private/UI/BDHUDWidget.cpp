@@ -2,6 +2,7 @@
 
 #include "UI/BDHUDWidget.h"
 
+#include "UI/BDLocalization.h"
 #include "BDBuildInfo.h"
 #include "BDLog.h"
 #include "Blueprint/WidgetTree.h"
@@ -788,7 +789,7 @@ void UBDHUDWidget::ApplyResponsiveSizes()
 void UBDHUDWidget::RefreshTexts()
 {
 	SpeedLabel->SetText(Loc(TEXT("HUD.Speed")));
-	CandidateNotice->SetText(Loc(bRallyNotice ? TEXT("HUD.Candidate.Rally") : TEXT("HUD.Candidate.Notice")));
+	CandidateNotice->SetText(NoticeText());
 	CancelLabel->SetText(Loc(TEXT("HUD.Placement.Cancel")));
 	MenuLabel->SetText(Loc(TEXT("HUD.Menu")));
 	EndlessLabel->SetText(Loc(TEXT("HUD.End.Endless")));
@@ -1447,6 +1448,25 @@ void UBDHUDWidget::UpdateMouths()
 
 //~ Candidate -------------------------------------------------------------------------
 
+FText UBDHUDWidget::NoticeText() const
+{
+	switch (NoticeKind)
+	{
+	case ENotice::Rally:
+		return Loc(TEXT("HUD.Candidate.Rally"));
+	case ENotice::NewHorde:
+	{
+		const UWorld* World = GetWorld();
+		const UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+		FFormatNamedArguments Args;
+		Args.Add(TEXT("Name"), BDLoc::EnemyName(Waves != nullptr ? Waves->GetLastNewHorde() : nullptr));
+		return BDLoc::Format(TEXT("HUD.Wave.NewHorde"), Args);
+	}
+	default:
+		return Loc(TEXT("HUD.Candidate.Notice"));
+	}
+}
+
 void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 {
 	const UBDCandidateSubsystem* Candidates = GetCandidates();
@@ -1456,8 +1476,8 @@ void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 	if (Candidate != nullptr && Candidate != LastCandidate.Get())
 	{
 		NoticeRemaining = UBDUISettings::Get().CandidateNoticeSeconds;
-		bRallyNotice = false;
-		CandidateNotice->SetText(Loc(TEXT("HUD.Candidate.Notice")));
+		NoticeKind = ENotice::Candidate;
+		CandidateNotice->SetText(NoticeText());
 	}
 	LastCandidate = Candidate;
 
@@ -1466,10 +1486,22 @@ void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 	if (Rallies > LastRalliesSeen)
 	{
 		NoticeRemaining = UBDUISettings::Get().RallyNoticeSeconds;
-		bRallyNotice = true;
-		CandidateNotice->SetText(Loc(TEXT("HUD.Candidate.Rally")));
+		NoticeKind = ENotice::Rally;
+		CandidateNotice->SetText(NoticeText());
 	}
 	LastRalliesSeen = Rallies;
+
+	// A kind of the horde out of the buses for the first time: its name, on the same line.
+	const UWorld* World = GetWorld();
+	const UBDWaveSubsystem* Waves = World != nullptr ? World->GetSubsystem<UBDWaveSubsystem>() : nullptr;
+	const int32 Hordes = Waves != nullptr ? Waves->GetNewHordeNotices() : 0;
+	if (Hordes > LastHordeNoticesSeen)
+	{
+		NoticeRemaining = UBDUISettings::Get().NewHordeNoticeSeconds;
+		NoticeKind = ENotice::NewHorde;
+		CandidateNotice->SetText(NoticeText());
+	}
+	LastHordeNoticesSeen = Hordes;
 
 	NoticeRemaining = FMath::Max(0.0f, NoticeRemaining - RealDeltaSeconds);
 	CandidateNotice->SetVisibility(NoticeRemaining > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);

@@ -30,6 +30,10 @@ struct FBDCandidateRecord
 	UPROPERTY()
 	float MaxHealth = 0.0f;
 
+	/** The wave he was first killed on; 0 while he has not been (or in a save older than this). */
+	UPROPERTY()
+	int32 DeathWave = 0;
+
 	/** His rallies, read off his data when he first came out, like the health. */
 	UPROPERTY()
 	FBDRallyParams Rally;
@@ -127,6 +131,9 @@ public:
 	/** How many of them have been killed at least once. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
 	int32 GetFallenCount() const { return Fallen.Num(); }
+
+	/** The candidates killed at least once, in the order of their first death. A scheduled walk is always the first one. */
+	const TArray<FBDCandidateRecord>& GetFallen() const { return Fallen; }
 
 	/** Whether red is ahead of blue on the count, with at least one red vote in. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")

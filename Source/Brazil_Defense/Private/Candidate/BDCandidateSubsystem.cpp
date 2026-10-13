@@ -609,7 +609,8 @@ void UBDCandidateSubsystem::NotifyCandidateKilled(ABDCandidate* Killed)
 		const FBDCandidateRecord* SentRecord = Sent.FindByPredicate([Killed](const FBDCandidateRecord& Record) { return Record.Ordinal == Killed->Ordinal; });
 		if (SentRecord != nullptr)
 		{
-			Fallen.Add(*SentRecord);
+			FBDCandidateRecord& Record = Fallen.Add_GetRef(*SentRecord);
+			Record.DeathWave = Match != nullptr ? Match->GetCurrentWave() : 0;
 		}
 	}
 

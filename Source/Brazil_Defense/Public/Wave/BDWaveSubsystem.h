@@ -194,6 +194,40 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Wave")
 	int32 GetWaveSpawnsRemaining() const { return WaveSpawnsRemaining; }
 
+	//~ The kinds of the horde ---------------------------------------------------
+	// Horda_01 (the donkeys) from the first wave; the death of scheduled candidate N unlocks
+	// Horda N+1, up to Horda_20. Never stored: unlocked = 1 + the candidates killed (their
+	// first death is always the scheduled walk), so a load rebuilds it from the fallen. A
+	// wave takes the count as it stands when it is dealt, so a kind unlocked during wave 5
+	// comes out of the buses from wave 6. One creep in every SpecialEvery is a special kind,
+	// drawn by weight among the unlocked kinds that have a body; the rest are donkeys.
+
+	/** How many kinds are unlocked now: 1 + the candidates killed, at most 20; or what BD.Wave.SetUnlocked forced. */
+	int32 GetUnlockedKinds() const;
+
+	/** Debug: forces the count of unlocked kinds from the next wave on. 0 gives it back to the candidates. */
+	void SetUnlockedOverride(int32 Kinds) { UnlockedOverride = FMath::Clamp(Kinds, 0, 20); }
+	int32 GetUnlockedOverride() const { return UnlockedOverride; }
+
+	/**
+	 * The kind of every creep of a wave, in the order the round robin sends them: the donkey
+	 * everywhere, and at every SpecialEvery-th place a special kind drawn by weight, with a
+	 * stream seeded off the match and the wave - the same match plays the same waves.
+	 * @param OutSpecialNumbers the kinds the draw was among (2 = Horda_02), when asked for.
+	 */
+	void PlanWaveKinds(int32 Wave, int32 Total, int32 Unlocked, const UBDEnemyData* Donkey,
+		TArray<const UBDEnemyData*>& OutPlan, TArray<int32>* OutSpecialNumbers = nullptr) const;
+
+	/** The wave out: how many kinds were unlocked when it was dealt, the kinds it draws from, its plan and what it sent. */
+	int32 GetWaveUnlocked() const { return WaveUnlocked; }
+	const TArray<int32>& GetWaveSpecialNumbers() const { return WaveSpecialNumbers; }
+	const TArray<TObjectPtr<const UBDEnemyData>>& GetWavePlan() const { return WavePlan; }
+	const TArray<TObjectPtr<const UBDEnemyData>>& GetWaveSent() const { return WaveSent; }
+
+	/** How many times a kind came out of the buses for the first time this match, and which one last did. For the HUD. */
+	int32 GetNewHordeNotices() const { return NewHordeNotices; }
+	const UBDEnemyData* GetLastNewHorde() const { return LastNewHorde.Get(); }
+
 	//~ Spawn loop, for load testing ------------------------------------------
 
 	/**
@@ -355,6 +389,22 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ABDEnemyBase>> LivingEnemies;
+
+	/** See GetUnlockedKinds and PlanWaveKinds. */
+	int32 UnlockedOverride = 0;
+	int32 WaveUnlocked = 1;
+	TArray<int32> WaveSpecialNumbers;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<const UBDEnemyData>> WavePlan;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<const UBDEnemyData>> WaveSent;
+
+	/** The highest kind the HUD has announced this match, and the announcements so far. */
+	int32 AnnouncedKinds = 1;
+	int32 NewHordeNotices = 0;
+	TWeakObjectPtr<const UBDEnemyData> LastNewHorde;
 
 	/**
 	 * Indices into SpawnPoints of the mouths the current wave comes out of, drawn when it

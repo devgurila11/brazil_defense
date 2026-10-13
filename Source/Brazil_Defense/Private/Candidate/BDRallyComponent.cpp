@@ -239,8 +239,9 @@ void UBDRallyComponent::RaiseCrowd()
 	float TotalWeight = 0.0f;
 	for (const FBDRallyCrowdEntry& Entry : Params.RallyComposition)
 	{
+		// A kind with no body yet is not raised, as it is not sent by the buses.
 		const UBDEnemyData* Kind = Entry.Weight > 0.0f ? Entry.Enemy.LoadSynchronous() : nullptr;
-		if (Kind != nullptr)
+		if (Kind != nullptr && Kind->HasBody())
 		{
 			Kind->PreloadSkins();
 			Kinds.Add(Kind);

@@ -16,9 +16,8 @@ FBDRallyParams FBDRallyParams::DefaultsFor(const int32 Ordinal)
 
 	// Kinds 1..N with the same weight, once they exist. Only the first has art today, so
 	// every candidate raises the first kind; the list is there for the other nineteen.
-	const FString Horde = BDCast::GetPackageName(EBDCastKind::Horde, 1);
 	FBDRallyCrowdEntry& Entry = Params.RallyComposition.AddDefaulted_GetRef();
-	Entry.Enemy = TSoftObjectPtr<UBDEnemyData>(FSoftObjectPath(Horde + TEXT(".") + FPackageName::GetShortName(Horde)));
+	Entry.Enemy = TSoftObjectPtr<UBDEnemyData>(FSoftObjectPath(BDCast::GetObjectPath(EBDCastKind::Horde, 1)));
 	Entry.Weight = 1.0f;
 	return Params;
 }
@@ -27,8 +26,7 @@ const UBDCandidateData* UBDCandidateData::LoadForOrdinal(const int32 Ordinal)
 {
 	const int32 Count = FMath::Max(1, UBDCastSettings::Get().GetCount(EBDCastKind::Candidate));
 	const int32 Number = (FMath::Max(1, Ordinal) - 1) % Count + 1;
-	const FString Package = BDCast::GetPackageName(EBDCastKind::Candidate, Number);
-	return LoadObject<UBDCandidateData>(nullptr, *(Package + TEXT(".") + FPackageName::GetShortName(Package)), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	return Cast<UBDCandidateData>(BDCast::LoadData(EBDCastKind::Candidate, Number));
 }
 
 FBDRallyParams UBDCandidateData::RallyForOrdinal(const int32 Ordinal)

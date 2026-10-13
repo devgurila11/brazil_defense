@@ -1,6 +1,9 @@
 // Brazil Defense. Console access to the creeps, until waves have content and a HUD.
 
 #include "BDDebugAssetLookup.h"
+#include "Cast/BDCast.h"
+#include "Candidate/BDCandidateSubsystem.h"
+#include "UI/BDLocalization.h"
 #include "BDLog.h"
 #include "Enemy/BDEnemyBase.h"
 #include "Enemy/BDEnemyData.h"
@@ -170,6 +173,26 @@ namespace BDWaveDebug
 				Index, Point.Cells.Num(), *Point.Cells[0].ToString(), *Point.ExitCell.ToString(), *Route);
 		}
 
+		// What the wave is made of, kind by kind: planned when it was dealt, and sent so far.
+		{
+			TMap<FString, int32> Planned;
+			TMap<FString, int32> Sent;
+			for (const UBDEnemyData* Kind : Waves->GetWavePlan()) { ++Planned.FindOrAdd(GetNameSafe(Kind)); }
+			for (const UBDEnemyData* Kind : Waves->GetWaveSent()) { ++Sent.FindOrAdd(GetNameSafe(Kind)); }
+			FString Mix;
+			for (const TPair<FString, int32>& Each : Planned)
+			{
+				Mix += FString::Printf(TEXT("%s%d x %s (%d sent)"), Mix.IsEmpty() ? TEXT("") : TEXT(", "), Each.Value, *Each.Key, Sent.FindRef(Each.Key));
+			}
+			FString Kinds;
+			for (const int32 Number : Waves->GetWaveSpecialNumbers())
+			{
+				Kinds += FString::Printf(TEXT("%s%d"), Kinds.IsEmpty() ? TEXT("") : TEXT(", "), Number);
+			}
+			UE_LOG(LogBDWave, Log, TEXT("BD.Wave.Status: composition of the wave: %s; %d kind(s) unlocked when dealt, specials drawn among [%s], one every %d."),
+				Mix.IsEmpty() ? TEXT("nothing planned") : *Mix, Waves->GetWaveUnlocked(), *Kinds, UBDWaveSettings::Get().SpecialEvery);
+		}
+
 		TArray<ABDEnemyBase*> Enemies;
 		Waves->GetLivingEnemies(Enemies);
 		for (const ABDEnemyBase* Enemy : Enemies)
@@ -178,6 +201,47 @@ namespace BDWaveDebug
 				*Enemy->GetName(), Enemy->SpawnPointIndex, Enemy->GetCurrentPathIndex(), Enemy->GetPath().Num(),
 				*Enemy->GetHeadingCell().ToString(), Enemy->GetCurrentSpeed(), Enemy->GetCurrentHealth(), Enemy->GetMaxHealth());
 		}
+	}
+
+	static void ExecUnlocked(const TArray<FString>& Args, UWorld* World)
+	{
+		UBDWaveSubsystem* Waves = FindWaves(World);
+		const UBDCandidateSubsystem* Candidates = World != nullptr ? World->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
+		if (Waves == nullptr || Candidates == nullptr)
+		{
+			return;
+		}
+		const int32 Unlocked = Waves->GetUnlockedKinds();
+		UE_LOG(LogBDWave, Log, TEXT("BD.Wave.Unlocked: %d kind(s) of the horde unlocked%s; the next wave draws its specials among the unlocked ones with a body."),
+			Unlocked, Waves->GetUnlockedOverride() > 0 ? TEXT(" (forced by BD.Wave.SetUnlocked)") : TEXT(""));
+		const TArray<FBDCandidateRecord>& Fallen = Candidates->GetFallen();
+		for (int32 Number = 1; Number <= Unlocked; ++Number)
+		{
+			const UBDEnemyData* Kind = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, Number));
+			FString Since = TEXT("from wave 1");
+			if (Number > 1)
+			{
+				const FBDCandidateRecord* By = Fallen.IsValidIndex(Number - 2) ? &Fallen[Number - 2] : nullptr;
+				Since = By == nullptr ? FString(TEXT("forced"))
+					: By->DeathWave > 0 ? FString::Printf(TEXT("from wave %d (candidate %d fell on wave %d)"), By->DeathWave + 1, By->Ordinal, By->DeathWave)
+					: FString::Printf(TEXT("candidate %d fell (wave not on record)"), By->Ordinal);
+			}
+			UE_LOG(LogBDWave, Log, TEXT("  %2d %s '%s': %s, %s."), Number, *BDCast::GetName(EBDCastKind::Horde, Number),
+				Kind != nullptr ? *BDLoc::EnemyName(Kind).ToString() : TEXT("-"), *Since,
+				Kind == nullptr ? TEXT("NO DATA ASSET") : (Kind->HasBody() ? TEXT("in the buses") : TEXT("no body yet: not sent")));
+		}
+	}
+
+	static void ExecSetUnlocked(const TArray<FString>& Args, UWorld* World)
+	{
+		UBDWaveSubsystem* Waves = FindWaves(World);
+		if (Waves == nullptr)
+		{
+			return;
+		}
+		Waves->SetUnlockedOverride(Args.Num() > 0 ? FCString::Atoi(*Args[0]) : 0);
+		UE_LOG(LogBDWave, Log, TEXT("BD.Wave.SetUnlocked: %d kind(s) unlocked from the next wave on%s."), Waves->GetUnlockedKinds(),
+			Waves->GetUnlockedOverride() > 0 ? TEXT(" (forced; BD.Wave.SetUnlocked 0 gives it back to the candidates)") : TEXT(" (by the candidates killed)"));
 	}
 
 	static void ExecVotesStatus(const TArray<FString>& Args, UWorld* World)
@@ -254,6 +318,16 @@ namespace BDWaveDebug
 		TEXT("BD.Wave.Status"),
 		TEXT("BD.Wave.Status: lists the spawn points, their routes and every creep out."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecStatus));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdUnlocked(
+		TEXT("BD.Wave.Unlocked"),
+		TEXT("BD.Wave.Unlocked: the kinds of the horde unlocked, since which wave, and whether each has a body to come out of the buses."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecUnlocked));
+
+	static FAutoConsoleCommandWithWorldAndArgs CmdSetUnlocked(
+		TEXT("BD.Wave.SetUnlocked"),
+		TEXT("BD.Wave.SetUnlocked <k>: debug, k kinds of the horde unlocked from the next wave on, whatever the candidates killed. 0 gives it back to them."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSetUnlocked));
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdVotesStatus(
 		TEXT("BD.Votes.Status"),

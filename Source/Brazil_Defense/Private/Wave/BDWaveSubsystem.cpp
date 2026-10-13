@@ -4,6 +4,7 @@
 
 #include "Audio/BDAudioSettings.h"
 #include "BDLog.h"
+#include "Cast/BDCast.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "DrawDebugHelpers.h"
 #include "Enemy/BDEnemyBase.h"
@@ -237,6 +238,50 @@ void UBDWaveSubsystem::HandleWaveStarted(const int32 Wave)
 		UE_LOG(LogBDWave, Log, TEXT("Wave %d is the candidates' parade: its %d creep(s) are not sent."), Wave, WaveSpawnsRemaining);
 		WaveSpawnsRemaining = 0;
 	}
+	// Which kind each of them is: the donkey, and every SpecialEvery-th one a special kind
+	// unlocked by the candidates killed before this wave was dealt.
+	WaveUnlocked = GetUnlockedKinds();
+	{
+		TArray<const UBDEnemyData*> Plan;
+		PlanWaveKinds(Wave, WaveSpawnsRemaining, WaveUnlocked, Data, Plan, &WaveSpecialNumbers);
+		WavePlan.Reset(Plan.Num());
+		int32 Specials = 0;
+		int32 Newest = 0;
+		const UBDEnemyData* NewestKind = nullptr;
+		for (const UBDEnemyData* Kind : Plan)
+		{
+			WavePlan.Add(Kind);
+			if (Kind != Data && Kind != nullptr)
+			{
+				++Specials;
+				Kind->PreloadSkins();
+				EBDCastKind CastKind;
+				int32 Number = 0;
+				if (BDCast::ParseAssetName(Kind->GetName(), CastKind, Number) && Number > Newest)
+				{
+					Newest = Number;
+					NewestKind = Kind;
+				}
+			}
+		}
+		WaveSent.Reset();
+		// A kind out of the buses for the first time this match: the HUD says so.
+		if (Newest > AnnouncedKinds && NewestKind != nullptr)
+		{
+			AnnouncedKinds = Newest;
+			++NewHordeNotices;
+			LastNewHorde = NewestKind;
+			UE_LOG(LogBDWave, Log, TEXT("Wave %d: a new horde comes out of the buses, %s."), Wave, *NewestKind->GetName());
+		}
+		FString Kinds;
+		for (const int32 Number : WaveSpecialNumbers)
+		{
+			Kinds += FString::Printf(TEXT("%s%d"), Kinds.IsEmpty() ? TEXT("") : TEXT(", "), Number);
+		}
+		UE_LOG(LogBDWave, Log, TEXT("Wave %d: %d kind(s) unlocked; %d special(s) among %d, drawn from [%s]."),
+			Wave, WaveUnlocked, Specials, WaveSpawnsRemaining, *Kinds);
+	}
+
 	WaveSpawnCursor = 0;
 	WaveSpawnInterval = UBDGameBalanceSettings::Get().GetWaveSpawnInterval(Wave);
 	// The first one goes out on the next tick, not an interval from now - unless
@@ -573,11 +618,12 @@ void UBDWaveSubsystem::HandlePhaseChanged(const EBDMatchPhase NewPhase)
 	}
 
 	// Rewound to its start (the console, or a save being loaded): the totals start over
-	// with the match, like the candidates do.
+	// with the match, like the candidates do, and every kind is new again.
 	const ABDMatchManager* Match = GetMatch();
 	if (NewPhase == EBDMatchPhase::Building && Match != nullptr && Match->GetCurrentWave() == 0)
 	{
 		ResetMatchTotals();
+		AnnouncedKinds = 1;
 	}
 }
 
@@ -591,12 +637,16 @@ void UBDWaveSubsystem::SpawnNextOfWave()
 		return;
 	}
 
-	const auto Accept = [this](const int32 Index)
+	// The kind of the next one in the wave's sequence, as the plan has it.
+	const UBDEnemyData* Kind = WavePlan.IsValidIndex(WaveSent.Num()) && WavePlan[WaveSent.Num()] != nullptr
+		? WavePlan[WaveSent.Num()].Get() : WaveEnemyData.Get();
+	const auto Accept = [this, Kind](const int32 Index)
 	{
-		if (SpawnEnemy(WaveEnemyData, Index) == nullptr)
+		if (SpawnEnemy(Kind, Index) == nullptr)
 		{
 			return false;
 		}
+		WaveSent.Add(Kind);
 
 		// The horn of the bus the first militant of the wave leaves, at the moment he does.
 		if (!HornedSpawnPoints.Contains(Index))
@@ -1149,6 +1199,67 @@ ABDEnemyBase* UBDWaveSubsystem::SpawnEnemyAs(const TSubclassOf<ABDEnemyBase> Ene
 		*Enemy->GetName(), *Data->GetName(), SpawnPointIndex, OwnRoute.Num(), Point.Route.Num());
 
 	return Enemy;
+}
+
+int32 UBDWaveSubsystem::GetUnlockedKinds() const
+{
+	if (UnlockedOverride > 0)
+	{
+		return FMath::Min(UnlockedOverride, UBDWaveSettings::MaxHordeKinds);
+	}
+	const UWorld* World = GetWorld();
+	const UBDCandidateSubsystem* Candidates = World != nullptr ? World->GetSubsystem<UBDCandidateSubsystem>() : nullptr;
+	return FMath::Min(1 + (Candidates != nullptr ? Candidates->GetFallenCount() : 0), UBDWaveSettings::MaxHordeKinds);
+}
+
+void UBDWaveSubsystem::PlanWaveKinds(const int32 Wave, const int32 Total, const int32 Unlocked, const UBDEnemyData* Donkey,
+	TArray<const UBDEnemyData*>& OutPlan, TArray<int32>* OutSpecialNumbers) const
+{
+	OutPlan.Init(Donkey, FMath::Max(0, Total));
+	if (OutSpecialNumbers != nullptr)
+	{
+		OutSpecialNumbers->Reset();
+	}
+
+	// The kinds a special is drawn among: unlocked, with a body, with a weight.
+	const UBDWaveSettings& Settings = UBDWaveSettings::Get();
+	TArray<const UBDEnemyData*> Kinds;
+	TArray<float> Weights;
+	float TotalWeight = 0.0f;
+	for (int32 Number = 2; Number <= FMath::Min(Unlocked, UBDWaveSettings::MaxHordeKinds); ++Number)
+	{
+		const UBDEnemyData* Kind = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, Number));
+		const float* Weight = Settings.SpecialWeights.Find(Number);
+		if (Kind == nullptr || !Kind->HasBody() || (Weight != nullptr && *Weight <= 0.0f))
+		{
+			continue;
+		}
+		Kinds.Add(Kind);
+		Weights.Add(Weight != nullptr ? *Weight : 1.0f);
+		TotalWeight += Weights.Last();
+		if (OutSpecialNumbers != nullptr)
+		{
+			OutSpecialNumbers->Add(Number);
+		}
+	}
+	if (Kinds.Num() == 0 || Settings.SpecialEvery <= 0)
+	{
+		return;
+	}
+
+	const ABDMatchManager* Match = GetMatch();
+	FRandomStream Stream(static_cast<int32>(HashCombine(HashCombine(::GetTypeHash(Match != nullptr ? Match->ObstacleSeed : 0),
+		::GetTypeHash(Wave)), ::GetTypeHash(0x4B1AC))));
+	for (int32 Place = Settings.SpecialEvery; Place <= OutPlan.Num(); Place += Settings.SpecialEvery)
+	{
+		float Roll = Stream.FRandRange(0.0f, TotalWeight);
+		int32 Pick = 0;
+		for (; Pick < Kinds.Num() - 1 && Roll > Weights[Pick]; ++Pick)
+		{
+			Roll -= Weights[Pick];
+		}
+		OutPlan[Place - 1] = Kinds[Pick];
+	}
 }
 
 ABDEnemyBase* UBDWaveSubsystem::SpawnEnemyAtCell(const UBDEnemyData* Data, const FBDCellCoord& Cell, const TCHAR* Why)

@@ -81,6 +81,16 @@ namespace BDCast
 	/** "Candidate.07". */
 	BRAZIL_DEFENSE_API FString GetTextKey(EBDCastKind Kind, int32 Number);
 
+	/** The full object path of the Nth data asset: "/Game/.../DA_Horda_02.DA_Horda_02". */
+	BRAZIL_DEFENSE_API FString GetObjectPath(EBDCastKind Kind, int32 Number);
+
+	/**
+	 * The Nth data asset of a kind, loaded; null when it does not exist or is not of the
+	 * kind's class. The one answer to "which asset is the Horda N" for the waves and the
+	 * rallies alike.
+	 */
+	BRAZIL_DEFENSE_API UObject* LoadData(EBDCastKind Kind, int32 Number);
+
 	/** The subfolders every character gets for its art. */
 	BRAZIL_DEFENSE_API const TArray<FString>& GetArtFolders();
 

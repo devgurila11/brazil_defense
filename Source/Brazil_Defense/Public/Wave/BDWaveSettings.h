@@ -50,6 +50,22 @@ public:
 	const UBDEnemyData* ResolveWaveEnemy() const;
 
 	/**
+	 * The special kinds of the horde (DA_Horda_02..20) come out of the buses among the
+	 * donkeys once unlocked - the death of scheduled candidate N unlocks Horda N+1 - one in
+	 * every SpecialEvery creeps of the wave: the 10th, the 20th... of its round robin. The
+	 * total of the wave does not change; a special takes the place of a donkey. 0: none.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Waves|Hordes", meta = (ClampMin = "0", UIMin = "0"))
+	int32 SpecialEvery = 10;
+
+	/** Weight of a kind in the draw of the specials, by its number (2 = Horda_02). Missing: 1; 0 leaves it out. */
+	UPROPERTY(config, EditAnywhere, Category = "Waves|Hordes")
+	TMap<int32, float> SpecialWeights;
+
+	/** The last kind a candidate can unlock: Horda_20, unlocked by the nineteenth. */
+	static constexpr int32 MaxHordeKinds = 20;
+
+	/**
 	 * The red candidate. Its enemy class is expected to be ABDCandidate or a child; the
 	 * health on the asset is ignored, the candidate is as tough as the balance says.
 	 */

@@ -636,5 +636,14 @@ private:
 
 	/** Rallies counted when last looked: one more puts the "rally" notice up on the candidate's line. */
 	int32 LastRalliesSeen = 0;
-	bool bRallyNotice = false;
+
+	/** New hordes announced when last looked: one more puts "new horde: <name>" up on the same line. */
+	int32 LastHordeNoticesSeen = 0;
+
+	/** Which notice the line holds, so a change of language writes it again. */
+	enum class ENotice : uint8 { Candidate, Rally, NewHorde };
+	ENotice NoticeKind = ENotice::Candidate;
+
+	/** The text of the notice line for what it holds now. */
+	FText NoticeText() const;
 };

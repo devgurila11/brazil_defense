@@ -179,4 +179,22 @@ private:
 	int32 SpawnsLeftBefore = 0;
 	int32 RallyStartsA = 0;
 	TSet<FBDCellCoord> Corridor;
+
+	/** The cells turned to scenery for the corridor, given back before the hordes. */
+	TArray<FBDCellCoord> WalledCells;
+
+	//~ The hordes (HORDA)
+	TWeakObjectPtr<ABDEnemyBase> StopperA;
+	TWeakObjectPtr<ABDEnemyBase> StopperB;
+	double StopperBorn = 0.0;
+	double FirstStopAt = -1.0;
+	double FirstStopEnd = -1.0;
+	double SecondStopAt = -1.0;
+	bool bWasStopping = false;
+	bool bStopVulnerable = false;
+	bool bStopChecked = false;
+	bool bReturnChecked = false;
+	bool bNearStopped = false;
+	bool bNearGaveUp = false;
+	int32 WaveSixSpecials = 0;
 };

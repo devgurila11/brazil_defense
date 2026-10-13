@@ -129,7 +129,7 @@ void ABDEnemyBase::InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDC
 	Data = InData;
 	MaxHealth = MaxHealthOverride > 0.0f
 		? MaxHealthOverride
-		: (Data != nullptr ? Data->MaxHealth * FMath::Max(0.0f, HealthScale) : 0.0f);
+		: (Data != nullptr ? Data->MaxHealth * Data->HealthScale * FMath::Max(0.0f, HealthScale) : 0.0f);
 	CurrentHealth = MaxHealth;
 	IncomingDamage = 0.0f;
 	CurrentSpeed = 0.0f;
@@ -157,6 +157,13 @@ void ABDEnemyBase::InitializeEnemy(const UBDEnemyData* InData, const TArray<FBDC
 
 	// The first vocalization anywhere up to a full interval away, so a wave pouring out of
 	// a bus does not bray in unison.
+	// A kind that stops: the first one a draw of its interval, never before it is clear of the bus.
+	StopRemaining = 0.0f;
+	StopsMade = 0;
+	StopCountdown = Data != nullptr && Data->bStops
+		? FMath::Max(Data->StopFirstDelay, FMath::FRandRange(Data->StopIntervalMin, FMath::Max(Data->StopIntervalMin, Data->StopIntervalMax)))
+		: -1.0f;
+
 	VocalCountdown = Data != nullptr && Data->IsVocal()
 		? FMath::FRandRange(0.0f, FMath::Max(Data->VocalIntervalMin, Data->VocalIntervalMax))
 		: -1.0f;
@@ -623,22 +630,78 @@ void ABDEnemyBase::UpdateRise(const float DeltaSeconds)
 	}
 }
 
+void ABDEnemyBase::UpdateStops(const float DeltaSeconds)
+{
+	if (Data == nullptr || IsRising())
+	{
+		return;
+	}
+	if (StopRemaining > 0.0f)
+	{
+		StopRemaining = FMath::Max(0.0f, StopRemaining - DeltaSeconds);
+		if (StopRemaining > 0.0f)
+		{
+			return;
+		}
+		// On its way again, back in its walk, and the next stop drawn.
+		UAnimSequenceBase* Walk = Data->MoveAnimation.LoadSynchronous();
+		if (SkeletalBody != nullptr && Walk != nullptr && !Data->StopAnimation.IsNull())
+		{
+			SkeletalBody->PlayAnimation(Walk, /*bLooping*/ true);
+			SkeletalBody->SetPosition(FMath::FRandRange(0.0f, Walk->GetPlayLength()), /*bFireNotifies*/ false);
+		}
+		StopCountdown = FMath::FRandRange(Data->StopIntervalMin, FMath::Max(Data->StopIntervalMin, Data->StopIntervalMax));
+		return;
+	}
+	if (StopCountdown < 0.0f)
+	{
+		return;
+	}
+	StopCountdown -= DeltaSeconds;
+	if (StopCountdown > 0.0f)
+	{
+		return;
+	}
+	// Never on the last stretch: two cells from the urn it runs on and stops no more.
+	if (Path.Num() - GetCurrentPathIndex() <= 2)
+	{
+		StopCountdown = -1.0f;
+		return;
+	}
+	StopCountdown = 0.0f;
+	StopRemaining = FMath::Max(KINDA_SMALL_NUMBER, Data->StopDuration);
+	++StopsMade;
+	if (UAnimSequenceBase* Stop = SkeletalBody != nullptr ? Data->StopAnimation.LoadSynchronous() : nullptr)
+	{
+		SkeletalBody->PlayAnimation(Stop, /*bLooping*/ true);
+		SkeletalBody->SetPlayRate(1.0f);
+	}
+}
+
 void ABDEnemyBase::Tick(const float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	UpdateShelterBlink();
 	UpdateRise(DeltaSeconds);
+	if (!bFinished)
+	{
+		UpdateStops(DeltaSeconds);
+	}
 
 	if (bFinished || Data == nullptr || !Waypoints.IsValidIndex(CurrentWaypoint))
 	{
 		return;
 	}
 
-	// Rising out of the ground, or a candidate stopped for his rally: on the spot, feet still.
+	// Rising out of the ground, a stop of its kind, or a candidate stopped for his rally:
+	// on the spot, feet still - or playing the stop's own loop when it has one.
 	if (IsHeldInPlace())
 	{
 		CurrentSpeed = 0.0f;
-		UpdateAnimationRate();
+		if (!IsStopping() || Data->StopAnimation.IsNull())
+		{
+			UpdateAnimationRate();
+		}
 		return;
 	}
 
@@ -731,7 +794,7 @@ void ABDEnemyBase::UpdateVocal(const float DeltaSeconds)
 
 float ABDEnemyBase::GetBaseMoveSpeed() const
 {
-	return Data != nullptr ? Data->MoveSpeed : 0.0f;
+	return Data != nullptr ? Data->MoveSpeed * Data->SpeedScale : 0.0f;
 }
 
 void ABDEnemyBase::Arrive()

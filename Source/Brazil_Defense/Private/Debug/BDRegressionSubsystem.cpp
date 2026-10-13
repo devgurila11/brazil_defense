@@ -8,6 +8,7 @@
 #include "Save/BDProgressSave.h"
 #include "Cast/BDCast.h"
 #include "BDLog.h"
+#include "UI/BDLocalization.h"
 #include "Bribe/BDBribeSubsystem.h"
 #include "Candidate/BDCandidateSubsystem.h"
 #include "Candidate/BDCandidateData.h"
@@ -3118,6 +3119,7 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			}
 		}
 		int32 Walled = 0;
+		WalledCells.Reset();
 		for (int32 Y = 0; Y < Grid->GetSizeY(); ++Y)
 		{
 			for (int32 X = 0; X < Grid->GetSizeX(); ++X)
@@ -3125,7 +3127,11 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 				const FBDCellCoord Cell(X, Y);
 				if (!Corridor.Contains(Cell) && Grid->GetCellState(Cell) == EBDCellState::Free)
 				{
-					Walled += Grid->SetCellState(Cell, EBDCellState::Blocked) ? 1 : 0;
+					if (Grid->SetCellState(Cell, EBDCellState::Blocked))
+					{
+						++Walled;
+						WalledCells.Add(Cell);
+					}
 				}
 			}
 		}
@@ -3165,6 +3171,297 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Rally != nullptr && Rally->GetLastRaised() == 40 && bSound && Outside == 0,
 			Rally != nullptr ? FString::Printf(TEXT("%d of %d raised, %s, %d outside the corridor"), Rally->GetLastRaised(), Rally->GetLastAsked(), *CrowdMeasured, Outside)
 				: FString(TEXT("the candidate was gone")));
+		break;
+	}
+
+	case 20:
+	{
+		// The hordes. The board given back, nothing on it, nobody fallen.
+		for (const FBDCellCoord& Cell : WalledCells)
+		{
+			Grid->SetCellState(Cell, EBDCellState::Free);
+		}
+		WalledCells.Reset();
+		Waves->DespawnAll();
+		Candidates->ResetForNewMatch();
+		Waves->SetUnlockedOverride(0);
+		const UBDEnemyData* Donkey = UBDWaveSettings::Get().ResolveWaveEnemy();
+		const UBDEnemyData* BlackBloc = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, 2));
+
+		const auto CountSpecials = [Donkey](const TArray<const UBDEnemyData*>& Plan)
+		{
+			return Plan.FilterByPredicate([Donkey](const UBDEnemyData* Kind) { return Kind != Donkey; }).Num();
+		};
+		{
+			int32 Specials = 0;
+			for (const int32 Wave : { 1, 6, 50, 100 })
+			{
+				TArray<const UBDEnemyData*> Plan;
+				Waves->PlanWaveKinds(Wave, 60, Waves->GetUnlockedKinds(), Donkey, Plan);
+				Specials += CountSpecials(Plan);
+			}
+			Check(TEXT("HORDA"), TEXT("with no candidate killed only the donkeys come out, on any wave"),
+				Waves->GetUnlockedKinds() == 1 && Specials == 0,
+				FString::Printf(TEXT("%d kind(s) unlocked, %d special(s) planned over waves 1, 6, 50 and 100"), Waves->GetUnlockedKinds(), Specials));
+		}
+
+		Check(TEXT("HORDA"), TEXT("DA_Horda_02 is the Black Bloc: the donkey's body in black, 1.4x speed, 2x health, stops every 4-8 s for 1.5 s after 3 s, its own kind and icon"),
+			BlackBloc != nullptr && BlackBloc->HasBody() && FMath::IsNearlyEqual(BlackBloc->SpeedScale, 1.4f) && FMath::IsNearlyEqual(BlackBloc->HealthScale, 2.0f)
+				&& BlackBloc->bStops && FMath::IsNearlyEqual(BlackBloc->StopFirstDelay, 3.0f) && FMath::IsNearlyEqual(BlackBloc->StopIntervalMin, 4.0f)
+				&& FMath::IsNearlyEqual(BlackBloc->StopIntervalMax, 8.0f) && FMath::IsNearlyEqual(BlackBloc->StopDuration, 1.5f)
+				&& Donkey != nullptr && BlackBloc->GetKillType() != Donkey->GetKillType() && !BlackBloc->KillIcon.IsNull() && BlackBloc->KillIcon != Donkey->KillIcon
+				&& BlackBloc->DisplayName.ToString() == TEXT("Black Bloc") && BlackBloc->MeshMaterial.GetAssetName() == TEXT("MI_Jumento_BlackBloc"),
+			BlackBloc == nullptr ? FString(TEXT("no DA_Horda_02")) : FString::Printf(TEXT("'%s', body %s, x%.1f speed, x%.1f health, stops %s %.0f/%.0f-%.0f/%.1f s, kind %s, icon %s, material %s"),
+				*BlackBloc->DisplayName.ToString(), BlackBloc->HasBody() ? TEXT("yes") : TEXT("NO"), BlackBloc->SpeedScale, BlackBloc->HealthScale,
+				BlackBloc->bStops ? TEXT("on") : TEXT("OFF"), BlackBloc->StopFirstDelay, BlackBloc->StopIntervalMin, BlackBloc->StopIntervalMax, BlackBloc->StopDuration,
+				*BlackBloc->GetKillType().ToString(), *BlackBloc->KillIcon.GetAssetName(), *BlackBloc->MeshMaterial.GetAssetName()));
+
+		// Wave 5 dealt with nobody killed; its candidate falls during it.
+		Match->DebugSetWave(4);
+		Match->DebugForcePhase(EBDMatchPhase::WaveActive);
+		TArray<const UBDEnemyData*> WaveFive;
+		for (const UBDEnemyData* Kind : Waves->GetWavePlan()) { WaveFive.Add(Kind); }
+		if (ABDCandidate* Felled = Candidates->SpawnCandidate(TEXT("BD.Test.Regression")))
+		{
+			Felled->ApplyDamage(Felled->GetMaxHealth() * 10.0f, nullptr);
+		}
+		const int32 AfterKill = Waves->GetUnlockedKinds();
+		const int32 FiveSpecialsAfter = Waves->GetWavePlan().FilterByPredicate([Donkey](const UBDEnemyData* Kind) { return Kind != Donkey; }).Num();
+		Check(TEXT("HORDA"), TEXT("candidate 1 killed on wave 5 unlocks the Black Bloc, but wave 5 itself keeps its donkeys"),
+			Match->GetCurrentWave() == 5 && WaveFive.Num() > 0 && CountSpecials(WaveFive) == 0 && FiveSpecialsAfter == 0 && AfterKill == 2
+				&& Candidates->GetFallen().Num() == 1 && Candidates->GetFallen()[0].DeathWave == 5,
+			FString::Printf(TEXT("wave %d: %d creep(s), %d special(s) dealt and %d after the kill; %d kind(s) unlocked, candidate fell on wave %d"),
+				Match->GetCurrentWave(), WaveFive.Num(), CountSpecials(WaveFive), FiveSpecialsAfter, AfterKill,
+				Candidates->GetFallen().Num() > 0 ? Candidates->GetFallen()[0].DeathWave : -1));
+
+		// Wave 6: every tenth of its round robin a Black Bloc, the rest donkeys.
+		const int32 NoticesBefore = Waves->GetNewHordeNotices();
+		Waves->DespawnAll();
+		Match->DebugForcePhase(EBDMatchPhase::WaveActive);
+		const TArray<TObjectPtr<const UBDEnemyData>>& Plan = Waves->GetWavePlan();
+		int32 Wrong = 0;
+		WaveSixSpecials = 0;
+		for (int32 Place = 1; Place <= Plan.Num(); ++Place)
+		{
+			const bool bSpecialPlace = Place % UBDWaveSettings::Get().SpecialEvery == 0;
+			Wrong += (bSpecialPlace ? Plan[Place - 1] != BlackBloc : Plan[Place - 1] != Donkey) ? 1 : 0;
+			WaveSixSpecials += Plan[Place - 1] == BlackBloc ? 1 : 0;
+		}
+		Check(TEXT("HORDA"), TEXT("on wave 6 one creep in ten is a Black Bloc - the 10th, 20th, 30th of its round robin - in place of a donkey, the total unchanged"),
+			Match->GetCurrentWave() == 6 && Plan.Num() == UBDGameBalanceSettings::Get().GetCreepsPerSpawnPoint(6) * Waves->GetSpawnPointCount()
+				&& WaveSixSpecials == Plan.Num() / UBDWaveSettings::Get().SpecialEvery && Wrong == 0,
+			FString::Printf(TEXT("wave %d: %d creep(s), %d Black Bloc(s), %d in the wrong place"), Match->GetCurrentWave(), Plan.Num(), WaveSixSpecials, Wrong));
+		Check(TEXT("HORDA"), TEXT("the first wave a kind comes out of the buses puts NOVA HORDA with its name on the HUD"),
+			Waves->GetNewHordeNotices() == NoticesBefore + 1 && Waves->GetLastNewHorde() == BlackBloc,
+			FString::Printf(TEXT("%d notice(s) on this wave, last %s, '%s'"), Waves->GetNewHordeNotices() - NoticesBefore,
+				*GetNameSafe(Waves->GetLastNewHorde()), *BDLoc::EnemyName(BlackBloc).ToString()));
+
+		// The draw: same wave, same seed, same crowd; a kind with no body never drawn.
+		{
+			TArray<const UBDEnemyData*> First, Second, Other, Bodiless;
+			UBDEnemyData* Third = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, 3));
+			Waves->PlanWaveKinds(30, 200, 4, Donkey, Bodiless);
+			const int32 BodilessDrawn = Bodiless.FilterByPredicate([Donkey, BlackBloc](const UBDEnemyData* Kind) { return Kind != Donkey && Kind != BlackBloc; }).Num();
+			const TSoftObjectPtr<USkeletalMesh> ThirdBody = Third != nullptr ? Third->SkeletalMesh : TSoftObjectPtr<USkeletalMesh>();
+			if (Third != nullptr && BlackBloc != nullptr)
+			{
+				// For the length of the check only, the third kind borrows a body.
+				Third->SkeletalMesh = BlackBloc->SkeletalMesh;
+			}
+			Waves->PlanWaveKinds(30, 200, 3, Donkey, First);
+			Waves->PlanWaveKinds(30, 200, 3, Donkey, Second);
+			Waves->PlanWaveKinds(31, 200, 3, Donkey, Other);
+			if (Third != nullptr)
+			{
+				Third->SkeletalMesh = ThirdBody;
+			}
+			const int32 Twos = First.FilterByPredicate([BlackBloc](const UBDEnemyData* Kind) { return Kind == BlackBloc; }).Num();
+			const int32 Threes = Third != nullptr ? First.FilterByPredicate([Third](const UBDEnemyData* Kind) { return Kind == Third; }).Num() : 0;
+			const int32 Others = First.FilterByPredicate([Donkey, BlackBloc, Third](const UBDEnemyData* Kind) { return Kind != Donkey && Kind != BlackBloc && Kind != Third; }).Num();
+			Check(TEXT("HORDA"), TEXT("with two specials unlocked the draw is among them only, by the seed: the same wave draws the same crowd"),
+				Third != nullptr && Twos > 0 && Threes > 0 && Others == 0 && Twos + Threes == 20 && First == Second && First != Other,
+				FString::Printf(TEXT("wave 30: %d Black Bloc, %d Horda_03, %d other; again %s; wave 31 %s"), Twos, Threes, Others,
+					First == Second ? TEXT("the same") : TEXT("DIFFERENT"), First != Other ? TEXT("another") : TEXT("THE SAME")));
+			Check(TEXT("HORDA"), TEXT("an unlocked kind with no body in its DA is never drawn: the donkey stays in its place"),
+				BodilessDrawn == 0 && Bodiless.FilterByPredicate([BlackBloc](const UBDEnemyData* Kind) { return Kind == BlackBloc; }).Num() == 20,
+				FString::Printf(TEXT("4 unlocked (03 and 04 without a body): %d of them drawn, %d Black Bloc"), BodilessDrawn,
+					Bodiless.FilterByPredicate([BlackBloc](const UBDEnemyData* Kind) { return Kind == BlackBloc; }).Num()));
+		}
+
+		// A load with two scheduled candidates fallen: three kinds, from the records alone.
+		{
+			const FBDCandidateSaveState Before = Candidates->CaptureState();
+			FBDCandidateSaveState Loaded = Before;
+			FBDCandidateRecord Second = Loaded.Fallen.Num() > 0 ? Loaded.Fallen[0] : FBDCandidateRecord();
+			Second.Ordinal = 2;
+			Loaded.Sent.Add(Second);
+			Loaded.Fallen.Add(Second);
+			Candidates->RestoreState(Loaded);
+			const int32 OnLoad = Waves->GetUnlockedKinds();
+			Candidates->RestoreState(Before);
+			Check(TEXT("HORDA"), TEXT("a load with two scheduled candidates fallen has three kinds unlocked, with nothing more in the save"),
+				OnLoad == 3 && Waves->GetUnlockedKinds() == 2, FString::Printf(TEXT("%d kind(s) on that load, %d back on this match"), OnLoad, Waves->GetUnlockedKinds()));
+		}
+
+		Match->SetGameSpeed(4.0f);
+		RallyStepStart = World->GetTimeSeconds();
+		break;
+	}
+
+	case 21:
+	{
+		// Wave 6 sends all of it: what came out of the buses is the plan, place by place.
+		const int32 Planned = Waves->GetWavePlan().Num();
+		if (Waves->GetWaveSent().Num() < Planned && Waves->GetWaveSpawnsRemaining() > 0 && World->GetTimeSeconds() - RallyStepStart <= 120.0)
+		{
+			return true;
+		}
+		int32 Mismatch = 0;
+		int32 BlackBlocsOut = 0;
+		const UBDEnemyData* BlackBloc = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, 2));
+		for (int32 Index = 0; Index < Waves->GetWaveSent().Num(); ++Index)
+		{
+			Mismatch += Waves->GetWavePlan().IsValidIndex(Index) && Waves->GetWavePlan()[Index] == Waves->GetWaveSent()[Index] ? 0 : 1;
+			BlackBlocsOut += Waves->GetWaveSent()[Index] == BlackBloc ? 1 : 0;
+		}
+		Check(TEXT("HORDA"), TEXT("the buses send wave 6 exactly as planned: a Black Bloc at every tenth place of the round robin"),
+			Waves->GetWaveSent().Num() == Planned && Mismatch == 0 && BlackBlocsOut == WaveSixSpecials,
+			FString::Printf(TEXT("%d of %d sent, %d off the plan, %d Black Bloc(s) out"), Waves->GetWaveSent().Num(), Planned, Mismatch, BlackBlocsOut));
+		Match->SetGameSpeed(1.0f);
+		break;
+	}
+
+	case 22:
+	{
+		// One Black Bloc on the longest way to the urn, one beside it; both under cover so
+		// the towers leave them be while they are watched.
+		Waves->DespawnAll();
+		const UBDEnemyData* BlackBloc = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, 2));
+		const TArray<FBDSpawnPoint>& Points = Waves->GetSpawnPoints();
+		const FBDSpawnPoint* Longest = nullptr;
+		for (const FBDSpawnPoint& Point : Points)
+		{
+			if (Longest == nullptr || Point.Route.Num() > Longest->Route.Num()) { Longest = &Point; }
+		}
+		ABDEnemyBase* Far = Longest != nullptr && Longest->Route.Num() > 0 ? Waves->SpawnEnemyAtCell(BlackBloc, Longest->ExitCell, TEXT("BD.Test.Regression")) : nullptr;
+		ABDEnemyBase* Near = nullptr;
+		if (Longest != nullptr && Longest->Route.Num() >= 2)
+		{
+			Near = Waves->SpawnEnemyAtCell(BlackBloc, Longest->Route[Longest->Route.Num() - 2], TEXT("BD.Test.Regression"));
+		}
+		if (Far == nullptr || Near == nullptr)
+		{
+			Check(TEXT("HORDA"), TEXT("a Black Bloc walks, stops and walks on in the DA's times"), false, TEXT("no Black Bloc could be raised"));
+			return false;
+		}
+		const double Now = World->GetTimeSeconds();
+		Far->ShelterUntil(Now + 100000.0);
+		Near->ShelterUntil(Now + 100000.0);
+		Near->DebugSetNextStop(0.0f);
+
+		const float Expected = BlackBloc->MaxHealth * 2.0f * Match->GetHealthScale();
+		Check(TEXT("HORDA"), TEXT("a Black Bloc runs at 1.4x the donkey and takes 2x its health, scaled by the wave like any creep"),
+			FMath::IsNearlyEqual(Far->GetMaxHealth(), Expected, 0.01f) && FMath::IsNearlyEqual(Far->DebugBaseMoveSpeed(), BlackBloc->MoveSpeed * 1.4f, 0.001f),
+			FString::Printf(TEXT("health %.1f (expected %.1f on wave %d), pace %.2f cells/s (donkey %.2f)"), Far->GetMaxHealth(), Expected, Match->GetCurrentWave(),
+				Far->DebugBaseMoveSpeed(), BlackBloc->MoveSpeed));
+
+		StopperA = Far;
+		StopperB = Near;
+		StopperBorn = Now;
+		FirstStopAt = FirstStopEnd = SecondStopAt = -1.0;
+		bWasStopping = bStopVulnerable = bStopChecked = bReturnChecked = bNearStopped = bNearGaveUp = false;
+		// The return of the fallen, to see that killing one of them unlocks nothing.
+		Candidates->BeginReturn(TEXT("BD.Test.Regression"));
+		RallyStepStart = Now;
+		break;
+	}
+
+	case 23:
+	{
+		const double Now = World->GetTimeSeconds();
+		ABDEnemyBase* Far = StopperA.Get();
+		ABDEnemyBase* Near = StopperB.Get();
+
+		// One of the fallen come back, killed: no new kind.
+		if (!bReturnChecked)
+		{
+			TArray<ABDCandidate*> Living;
+			Candidates->GetLivingCandidates(Living);
+			for (ABDCandidate* Each : Living)
+			{
+				if (Each != nullptr && Each->bReturning && !bReturnChecked)
+				{
+					bReturnChecked = true;
+					const int32 Before = Waves->GetUnlockedKinds();
+					Each->ApplyDamage(Each->GetMaxHealth() * 10.0f, nullptr);
+					Check(TEXT("HORDA"), TEXT("one of the fallen come back and killed again unlocks nothing"),
+						Before == 2 && Waves->GetUnlockedKinds() == 2 && Candidates->GetFallen().Num() == 1,
+						FString::Printf(TEXT("%d kind(s) before, %d after, %d fallen"), Before, Waves->GetUnlockedKinds(), Candidates->GetFallen().Num()));
+				}
+			}
+		}
+
+		// The one by the urn, every frame it is still there.
+		if (Near != nullptr)
+		{
+			bNearStopped |= Near->GetStopsMade() > 0;
+			bNearGaveUp |= Near->GetNextStopIn() < 0.0f;
+		}
+
+		if (Far != nullptr)
+		{
+			const bool bStopping = Far->IsStopping();
+			if (bStopping && !bWasStopping)
+			{
+				if (FirstStopAt < 0.0) { FirstStopAt = Now; }
+				else if (SecondStopAt < 0.0) { SecondStopAt = Now; }
+				// Stopped he is a target like any: out from under the cover for a moment.
+				if (!bStopVulnerable)
+				{
+					Far->Unshelter();
+					int32 Aimers = 0;
+					for (TActorIterator<ABDTowerBase> It(World); It; ++It) { Aimers += It->DebugCouldTarget(Far) ? 1 : 0; }
+					const float Health = Far->GetCurrentHealth();
+					Far->ApplyDamage(1.0f, nullptr);
+					bStopVulnerable = Aimers > 0 && Far->GetCurrentHealth() < Health;
+					Far->ShelterUntil(Now + 100000.0);
+				}
+			}
+			if (!bStopping && bWasStopping && FirstStopEnd < 0.0)
+			{
+				FirstStopEnd = Now;
+			}
+			bWasStopping = bStopping;
+		}
+
+		const bool bDone = SecondStopAt >= 0.0 && bReturnChecked;
+		if (!bDone && Far != nullptr && Now - RallyStepStart <= 60.0)
+		{
+			return true;
+		}
+		const UBDEnemyData* BlackBloc = Cast<UBDEnemyData>(BDCast::LoadData(EBDCastKind::Horde, 2));
+		const float First = static_cast<float>(FirstStopAt - StopperBorn);
+		const float Lasted = static_cast<float>(FirstStopEnd - FirstStopAt);
+		const float Between = static_cast<float>(SecondStopAt - FirstStopEnd);
+		Check(TEXT("HORDA"), TEXT("a Black Bloc stops after 3 s at the earliest, 1.5 s each time, every 4-8 s of walking, and can be shot while stopped"),
+			BlackBloc != nullptr && FirstStopAt >= 0.0 && SecondStopAt >= 0.0 && First >= BlackBloc->StopFirstDelay - 0.05f && First <= BlackBloc->StopIntervalMax + 0.1f
+				&& FMath::IsNearlyEqual(Lasted, BlackBloc->StopDuration, 0.1f) && Between >= BlackBloc->StopIntervalMin - 0.1f && Between <= BlackBloc->StopIntervalMax + 0.1f
+				&& bStopVulnerable,
+			FString::Printf(TEXT("first stop at %.2fs, lasted %.2fs, next after %.2fs of walking; %s while stopped%s"), First, Lasted, Between,
+				bStopVulnerable ? TEXT("aimed at and hit") : TEXT("NOT A TARGET"), Far == nullptr ? TEXT(" (he was gone)") : TEXT("")));
+		Check(TEXT("HORDA"), TEXT("a Black Bloc due to stop two cells from the urn runs on and stops no more"),
+			bNearGaveUp && !bNearStopped,
+			FString::Printf(TEXT("%s, %s"), bNearStopped ? TEXT("STOPPED") : TEXT("never stopped"), bNearGaveUp ? TEXT("its stops dropped on the last stretch") : TEXT("STOP STILL DUE")));
+
+		// One vote, like any body.
+		if (Far != nullptr)
+		{
+			Far->Unshelter();
+			const int32 Blue = Match->GetVotesBlue();
+			Far->ApplyDamage(Far->GetMaxHealth() * 10.0f, nullptr);
+			Check(TEXT("HORDA"), TEXT("a Black Bloc killed is one blue vote, like a donkey"), Match->GetVotesBlue() == Blue + 1,
+				FString::Printf(TEXT("blue %d -> %d"), Blue, Match->GetVotesBlue()));
+		}
 
 		FString SlotMeasured;
 		Check(TEXT("SAVE"), TEXT("the whole run wrote only the test slots: the player's match save and progress are untouched"), UBDMatchSave::IsTestSlot() && IsPlayerSlotUntouched(SlotMeasured),

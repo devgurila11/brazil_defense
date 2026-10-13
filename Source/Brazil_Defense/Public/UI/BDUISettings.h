@@ -277,6 +277,10 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
 	float CandidateNoticeSeconds = 4.0f;
 
+	/** Seconds the "new horde" notice stays on the candidate's line, the first wave a kind comes out of the buses. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float NewHordeNoticeSeconds = 3.0f;
+
 	/** Seconds the "rally" notice stays on the candidate's line when one of them starts a rally. */
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
 	float RallyNoticeSeconds = 2.0f;

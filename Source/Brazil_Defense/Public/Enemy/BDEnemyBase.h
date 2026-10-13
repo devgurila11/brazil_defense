@@ -125,6 +125,19 @@ public:
 	/** Whether it is still rising out of the ground. */
 	bool IsRising() const { return RiseRemaining > 0.0f; }
 
+	/** Whether it is in one of the stops of its kind (UBDEnemyData::bStops), and how many it has made. */
+	bool IsStopping() const { return StopRemaining > 0.0f; }
+	int32 GetStopsMade() const { return StopsMade; }
+
+	/** Seconds to its next stop while walking; -1 when it makes no more. */
+	float GetNextStopIn() const { return StopCountdown; }
+
+	/** Debug: the next stop due in this many seconds. For BD.Test.Regression. */
+	void DebugSetNextStop(float Seconds) { StopCountdown = Seconds; }
+
+	/** Debug: its walking pace before its own variance, in cells per second. For BD.Test.Regression. */
+	float DebugBaseMoveSpeed() const { return GetBaseMoveSpeed(); }
+
 	/**
 	 * Replaces the route. The new path is expected to start at the cell the creep is
 	 * heading to, so the crossing already under way is finished and then the new route
@@ -225,7 +238,7 @@ protected:
 	virtual float GetBaseMoveSpeed() const;
 
 	/** Whether it stands where it is this frame instead of walking: rising, or a candidate's rally. */
-	virtual bool IsHeldInPlace() const { return IsRising(); }
+	virtual bool IsHeldInPlace() const { return IsRising() || IsStopping(); }
 
 private:
 	UBDGridSubsystem* GetGrid() const;
@@ -379,4 +392,12 @@ private:
 
 	/** The body grows up out of the floor while it rises. */
 	void UpdateRise(float DeltaSeconds);
+
+	/** Seconds to the next stop (-1: none), of the stop under way, and how many were made. */
+	float StopCountdown = -1.0f;
+	float StopRemaining = 0.0f;
+	int32 StopsMade = 0;
+
+	/** Counts down to the next stop and through it, and swaps the loops. */
+	void UpdateStops(float DeltaSeconds);
 };

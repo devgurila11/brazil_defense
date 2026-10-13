@@ -87,6 +87,22 @@ FString BDCast::GetPackageName(const EBDCastKind Kind, const int32 Number)
 	return FString::Printf(TEXT("%s/DA_%s"), *GetFolderPath(Kind, Number), *GetName(Kind, Number));
 }
 
+FString BDCast::GetObjectPath(const EBDCastKind Kind, const int32 Number)
+{
+	const FString Package = GetPackageName(Kind, Number);
+	return Package + TEXT(".") + FPackageName::GetShortName(Package);
+}
+
+UObject* BDCast::LoadData(const EBDCastKind Kind, const int32 Number)
+{
+	if (Number <= 0)
+	{
+		return nullptr;
+	}
+	UObject* Data = StaticLoadObject(GetDataClass(Kind), nullptr, *GetObjectPath(Kind, Number), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	return Data != nullptr && Data->IsA(GetDataClass(Kind)) ? Data : nullptr;
+}
+
 FString BDCast::GetTextKey(const EBDCastKind Kind, const int32 Number)
 {
 	return FString::Printf(TEXT("%s.%02d"), GetKeyStem(Kind), Number);
@@ -164,6 +180,11 @@ void BDCast::GetSlots(const UObject& Data, const EBDCastKind Kind, TArray<FSlot>
 			Add(OutSlots, TEXT("Sound.Footstep"), !Enemy->FootstepSound.IsNull());
 			Add(OutSlots, TEXT("Sound.Death"), !Enemy->DeathSound.IsNull());
 			Add(OutSlots, TEXT("Sound.BodyFall"), !Enemy->BodyFallSound.IsNull());
+			// Only a kind that stops has a loop to play while it does.
+			if (Enemy->bStops)
+			{
+				Add(OutSlots, TEXT("Anim.Stop"), !Enemy->StopAnimation.IsNull());
+			}
 		}
 	}
 	else if (const UBDMinisterData* Minister = Cast<UBDMinisterData>(&Data))

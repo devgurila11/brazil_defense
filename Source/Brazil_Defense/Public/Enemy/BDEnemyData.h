@@ -54,6 +54,17 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float Acceleration = 2.0f;
 
+	/**
+	 * Multipliers on MoveSpeed and on MaxHealth, so a kind of the horde is told by how it
+	 * differs from the one it was copied from: the Black Bloc runs 1.4 times the donkey and
+	 * takes twice the hits. The health still grows with the wave on top.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Movement", meta = (ClampMin = "0.1", UIMin = "0.1"))
+	float SpeedScale = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Enemy", meta = (ClampMin = "0.1", UIMin = "0.1"))
+	float HealthScale = 1.0f;
+
 	/** Added to the blue counter when this creep is killed. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Votes", meta = (ClampMin = "0", UIMin = "0"))
 	int32 VotesOnDeath = 1;
@@ -61,6 +72,33 @@ public:
 	/** Added to the red counter when this creep reaches the urn. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Votes", meta = (ClampMin = "0", UIMin = "0"))
 	int32 VotesOnArrival = 1;
+
+	//~ Stops ------------------------------------------------------------------
+	// A creep that stops now and then on its way and stands there a moment, playing
+	// StopAnimation (the Black Bloc's aggression). Stopped it is a target like any other.
+	// No effect on the game yet: what a stop does is still to be decided.
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stops")
+	bool bStops = false;
+
+	/** Never before this long out of the bus. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stops", meta = (EditCondition = "bStops", ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float StopFirstDelay = 3.0f;
+
+	/** Seconds of walking between two stops, drawn anew each time inside this range. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stops", meta = (EditCondition = "bStops", ClampMin = "0.1", UIMin = "0.1", ForceUnits = "s"))
+	float StopIntervalMin = 4.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stops", meta = (EditCondition = "bStops", ClampMin = "0.1", UIMin = "0.1", ForceUnits = "s"))
+	float StopIntervalMax = 8.0f;
+
+	/** Seconds a stop lasts. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stops", meta = (EditCondition = "bStops", ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float StopDuration = 1.5f;
+
+	/** Looped while stopped. Empty: the walk freezes where it is. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stops", meta = (EditCondition = "bStops"))
+	TSoftObjectPtr<UAnimSequenceBase> StopAnimation;
 
 	/** Pawn spawned for this enemy. Loaded on demand. Falls back to ABDEnemyBase itself when unset. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visual")
@@ -218,6 +256,9 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Candidate", meta = (AllowedClasses = "/Script/Engine.Texture2D"))
 	TSoftObjectPtr<UTexture2D> CandidateFace;
+
+	/** Whether it has a body to show: a skeletal or a static mesh. A kind of the horde without one is never sent. */
+	bool HasBody() const { return !SkeletalMesh.IsNull() || !Mesh.IsNull(); }
 
 	/** Whether this creep ever speaks or calls. */
 	bool IsVocal() const { return !SpeechSound.IsNull() || !CallSound.IsNull(); }
