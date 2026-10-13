@@ -263,6 +263,19 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-13 (RAIOX.md: o que o código faz hoje) — COMMIT** (desde ae47de3):
+  - Briefing 14:00 "Raio-X da mecânica — somente leitura": foto exata das regras do jogo
+    lidas no código e nos valores efetivos (DAs e ini), sem alterar nada.
+  - Novo `Content/Docs/RAIOX.md`: sumário das 10 regras centrais, 11 tabelas por área,
+    settings e DataAssets, 39 regras só no código, 27 divergências PLANO × código,
+    comandos de console e 23 dúvidas. Separado do PLANO de propósito: o PLANO diz o que
+    o jogo deve ser, o RAIOX o que ele é. Atualizar a cada mudança de mecânica.
+  - Código e conteúdo iguais a ae47de3.
+  - **Onde paramos**: decidir as divergências (votos por corpo × por HP, moeda única ×
+    dinheiro público, prioridade do candidato nas torres, níveis 6 × 10, growth 1,022 ×
+    1,035, saves e presos 2/2/2...) antes das mecânicas novas (poderes, magias, hordas
+    especiais).
+
 - **2026-10-13 (andamento da produção no PLANO) — 3618712** (desde b544ac1):
   - Seção 14 ganhou "Andamento da produção": tabela por tipo (DAs, slots vazios, o que
     está pronto), o passo 1 (elenco criado, 411 slots vazios) e os próximos passos. A
