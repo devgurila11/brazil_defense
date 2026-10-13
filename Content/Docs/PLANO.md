@@ -263,7 +263,7 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
-- **2026-10-13 (RAIOX.md: o que o código faz hoje) — COMMIT** (desde ae47de3):
+- **2026-10-13 (RAIOX.md: o que o código faz hoje) — 26b4e44** (desde ae47de3):
   - Briefing 14:00 "Raio-X da mecânica — somente leitura": foto exata das regras do jogo
     lidas no código e nos valores efetivos (DAs e ini), sem alterar nada.
   - Novo `Content/Docs/RAIOX.md`: sumário das 10 regras centrais, 11 tabelas por área,
