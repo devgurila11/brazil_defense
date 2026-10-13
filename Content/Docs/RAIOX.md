@@ -1,6 +1,6 @@
 # Raio-X da mecânica — Brazil Defense
 
-**Foto de: 2026-10-13, commit ae47de3**; atualizada no mesmo dia pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração) e pelo comício do briefing 21:00.
+**Foto de: 2026-10-13, commit ae47de3**; atualizada pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração), pelo comício do briefing 21:00 e pelas hordas especiais do briefing 2026-10-14 09:00.
 
 > O que o jogo FAZ hoje, lido no código. O PLANO.md diz o que o jogo deve
 > ser; este arquivo diz o que ele é, e marca onde os dois discordam.
@@ -90,7 +90,13 @@
 
 | Regra | Como funciona hoje | Parâmetro(s) e valor atual | Onde está | Diverge do PLANO? |
 |---|---|---|---|---|
-| Tipo | Um tipo só por onda (`WaveEnemy`, senão `DebugEnemy`); sem composição. Horda_02–04 não entram | WaveEnemy = DebugEnemy = DA_Horda_01 | ResolveWaveEnemy (BDWaveSettings.cpp:20-24) | Não está no PLANO |
+| Tipo | O jumento (`WaveEnemy` = DA_Horda_01) desde a onda 1; os tipos especiais (DA_Horda_02..20) entram nos ônibus quando liberados (abaixo). Hoje só a Horda_02 (Black Bloc) tem corpo; 03–20 liberadas sem malha não saem | WaveEnemy = DA_Horda_01 | ResolveWaveEnemy; PlanWaveKinds (BDWaveSubsystem.cpp) | Não (seção 16) |
+| Liberação | Liberados = 1 + candidatos mortos ao menos uma vez (a 1ª morte é sempre a do agendado; retornante morto não soma), teto 20. Derivado dos caídos, não gravado: o load reconstrói. A onda lê o número quando é distribuída, então quem morre na onda 5 libera a partir da 6 | MaxHordeKinds 20 | GetUnlockedKinds; FBDCandidateRecord::DeathWave | Não (seção 16) |
+| Composição | Total W × bocas inalterado; o 10º, 20º, 30º… da sequência round-robin é um especial no lugar do jumento, sorteado por peso (semente: seed + onda) entre os liberados 2..K **com corpo**; plano feito ao distribuir a onda, seguido creep a creep. Sem liberado com corpo, só jumento. Desfile: onda sem creeps, sem plano | SpecialEvery 10; SpecialWeights (vazio = 1) | PlanWaveKinds; SpawnNextOfWave | Não (seção 16) |
+| Escalas do tipo | Vida = MaxHealth × HealthScale do DA × 1,022^(W−1); velocidade = MoveSpeed × SpeedScale do DA (antes da variação por creep). Black Bloc: 10 × 2 = 20 de base, 1,5 × 1,4 = 2,1 cél/s | HealthScale, SpeedScale (DA) | InitializeEnemy; GetBaseMoveSpeed (BDEnemyBase.cpp) | Não (seção 16) |
+| Paradas (`bStops`) | Para de tempos em tempos e fica parado `StopDuration` tocando `StopAnimation` (vazia: congela o Run); sem efeito de jogo, alvo normal parado. A 1ª parada é um sorteio do intervalo, nunca antes de `StopFirstDelay`; depois a cada `StopIntervalMin..Max` de caminhada. A ≤2 células da urna para de parar | Black Bloc: 3 / 4–8 / 1,5 s, StopAnimation vazia | UpdateStops (BDEnemyBase.cpp) | Não (seção 16) |
+| Votos e placar por tipo | 1 voto por corpo em qualquer tipo; placar de abates por `KillType` + `KillIcon` (Black Bloc: "BlackBloc", silhueta preta) | bVotesByBody | NotifyEnemyDied | Não (§3) |
+| Aviso | Na 1ª onda da partida em que um tipo novo sai dos ônibus: "NOVA HORDA: <nome>" 3 s na linha dos avisos do candidato | NewHordeNoticeSeconds 3 | HandleWaveStarted; UBDHUDWidget::UpdateCandidate | Não (seção 16) |
 | Vida | MaxHealth × 1,022^(W−1): 10 na onda 1, ≈29 na 50, ≈86 na 100. `CF_HealthScaleByWave` existe mas está desligada. Aplicada no spawn | MaxHealth 10; HealthScaleGrowth **1,022** (default de classe 1,12) | GetHealthScale (BDGameBalanceSettings.cpp:35-44) | **Sim** — §7 ~1,12–1,15; §8 1,035 |
 | Dificuldade | Nenhum DA_Difficulty mexe em vida, quantidade ou cadência | — | UBDDifficultyData | **Sim** — §8 "velocidade de escalada" |
 | Velocidade | 1,5 cél/s (1050 cm/s), aceleração 3 cél/s² (≈0,5 s), ±10% por creep e "respiração" ±5% | MoveSpeed 1,5; Acceleration 3; SpeedVariance 0,1 | BDEnemyBase.cpp:153-156, 622-627 | Não está no PLANO |
@@ -132,7 +138,7 @@
 | Refúgio | Nunca é coberto por ministro; intocável só no discurso do comício (`IsRallyImmune`) | — | BDEnemyBase.cpp (IsSheltered, IsUntouchable) | Não está no PLANO |
 | Votos | 0 azul, 0 vermelho; fora das contagens e do placar por tipo | — | BDWaveSubsystem.cpp:1262-1299 | Não (§4) |
 | Morte: ordem | Solta ministro, entra nos caídos, propina/divisórias (ou nivelamento se for retorno); depois som, corpo e sangue | — | BDCandidate.cpp:85-93 | Não está no PLANO |
-| Morte: recompensa | Agendado: propina = vida, divisórias 4+(N−1). Retorno: nada. **Todos soltam 1 ministro** | bReleaseOnCandidateKilled true | :534-569 | **Sim** — §4 "+1 torre/+1 personagem"; "quem volta não dá nada" |
+| Morte: recompensa | Agendado: propina = vida, divisórias 4+(N−1) e **libera a Horda N+1** a partir da onda seguinte (até a 20). Retorno: nada disso. **Todos soltam 1 ministro** | bReleaseOnCandidateKilled true | :534-569 | **Sim** — §4 "+1 torre/+1 personagem"; "quem volta não dá nada" |
 | Morte: pausa | Não existe (IsCountFrozen = false) | — | BDCandidateSubsystem.h:111-113 | Não está no PLANO |
 | Chegada | Derrota imediata, agendado ou retorno, em qualquer fase e no endless; declarada antes da onda poder limpar | — | BDCandidate.cpp:73-83; :495-514 | Não (§2/§4/§8) |
 | A onda não espera | Limpa sem ele; a contagem segue | — | GetLivingWaveCreepCount (:1162-1173) | Não está no PLANO |
@@ -285,8 +291,8 @@
 | Regra | Como funciona hoje | Parâmetro(s) e valor atual | Onde está | Diverge do PLANO? |
 |---|---|---|---|---|
 | DAs | 20 candidatos, 11 ministros, 4 personagens, 4 hordas (39) em `Content/Elenco` | CastSettings 20/11/4/4 | — | Não (§14) |
-| Em jogo | Horda_01 (onda e multidão dos comícios), Candidato_01 (corpo de todos os candidatos), Candidato_01..20 (comício de cada número), Personagem_01 (único em `Shooters`); nenhum ministro | — | ini; settings; UBDCandidateData::LoadForOrdinal | Não (§14) |
-| Enemy, lidos | MaxHealth, MoveSpeed, Acceleration, EnemyClass, Mesh, SkeletalMesh, MeshScale, MeshYaw, MeshMaterial, SkinMaterials, MoveAnimation, DeathAnimations, sons (Speech, Call, Footstep, Death, BodyFall, pitch, intervalo), KillType, KillIcon, DisplayName | — | BDEnemyBase; BDCreepSoundSubsystem | Não está no PLANO |
+| Em jogo | Horda_01 (onda e multidão dos comícios), Horda_02 Black Bloc (ônibus, quando liberada; corpo provisório = jumento preto), Candidato_01 (corpo de todos os candidatos), Candidato_01..20 (comício de cada número), Personagem_01 (único em `Shooters`); nenhum ministro | — | ini; settings; BDCast::LoadData | Não (§14) |
+| Enemy, lidos | MaxHealth, HealthScale, MoveSpeed, SpeedScale, Acceleration, EnemyClass, Mesh, SkeletalMesh, MeshScale, MeshYaw, MeshMaterial, SkinMaterials, MoveAnimation, DeathAnimations, paradas (bStops, StopFirstDelay, StopInterval, StopDuration, StopAnimation), sons (Speech, Call, Footstep, Death, BodyFall, pitch, intervalo), KillType, KillIcon, DisplayName | — | BDEnemyBase; BDCreepSoundSubsystem | Não está no PLANO |
 | Enemy, não lidos | VotesOnArrival (nunca), VotesOnDeath (só no modo desligado), Skeleton, IdleAnimation, **CandidateFace** (só o audit) | — | — | Sim — §14 ícone do candidato = `CandidateFace` |
 | Candidate (`UBDCandidateData`) | Os 20 candidatos são `UBDCandidateData` (subclasse de `UBDEnemyData`, convertidos no lugar pelo `BDScaffoldCast`); `Rally` (FBDRallyParams) com os defaults do número. Slot novo no audit: `Sound.Rally` (RallySpeech) — audit 431 vazios (candidatos 219) | — | BDCandidateData.h; BDScaffoldCastCommandlet.cpp (1b) | Não (§14) |
 | Minister | Só FleeSound, e só com o DA ligado em `Ministers` (vazio); o resto só no audit | — | BDMinister.cpp:433 | Não (§14) |
@@ -387,6 +393,8 @@ DA_Character_Test não é apontado por nenhuma peça.
 | VotesOnDeath | 1 | 0 | 1 | Sem efeito hoje |
 | VotesOnArrival | 1 | 0 | 1 | **Não lido** |
 | EnemyClass | None | BDCandidate | | Classe do ator |
+| SpeedScale / HealthScale | 1 / 1 (Black Bloc 1,4 / 2) | 1 / 1 | 1 / 1 | Escalas do tipo |
+| bStops / StopFirstDelay / StopIntervalMin–Max / StopDuration | off (Black Bloc on, 3, 4–8, 1,5) | off | off, 3, 4–8, 1,5 | Paradas |
 
 ### UBDCandidateData (DA_Candidato_NN), campo Rally
 | Campo | DA_Candidato_01 | DA_Candidato_20 | Default (struct) | O que faz |
@@ -433,6 +441,8 @@ DA_Character_Test não é apontado por nenhuma peça.
 | CornerSmoothRadius / LateralOffsetMax / LaneWander / CornerRadiusVariance | 0,35 / 0,4 / 0,6 / 0,4 | Movimento |
 | SpeedVariance | 0,1 | Ritmo |
 | RouteCostVariance / RouteVarianceMode | 1,3 / PerCreep | Variação de rota |
+| SpecialEvery | 10 | Um especial a cada N creeps da onda (0: nenhum) |
+| SpecialWeights | vazio (= 1 cada) | Peso de cada tipo no sorteio, pelo número |
 
 ### UBDTowerSettings
 | Campo | Valor | O que faz |
@@ -514,6 +524,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | 38 | Teto de 2 falas em lados opostos; prioridade da fala do jogador; ducking a 0,5 |
 | 39 | Nome do candidato no HUD fixo ("Candidate N") |
 | 40 | Comício: a multidão não entra no total W × bocas (conta em `CreepsRaised`); procura lugar até 20 passos e o que não acha não brota; o tell usa a buzina do ônibus; o candidato fica parado e vulnerável os 0,6 s do brotar; o comício vem do DA do número e o corpo ainda do 01 |
+| 41 | Hordas: a liberação vale na distribuição da onda (o plano inteiro é feito ali); a 1ª parada do Black Bloc é sorteada no intervalo 4–8 s com piso de 3 s; o aviso "NOVA HORDA" reaparece depois de um load; o corpo do Black Bloc é provisório (jumento preto, sem sons próprios) |
 
 ## Divergências PLANO × código
 
@@ -563,7 +574,8 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | BD.Progress.Status / SetWon / Reset | `[dif]` | Progresso entre dificuldades | idem |
 | BD.Balance.Report | `[wave]` | Vida da horda × defesa de referência | idem |
 | BD.Votes.Status / AddBlue / AddRed | `<n>` | Votos (AddRed testa a virada) | Wave/BDWaveDebug.cpp |
-| BD.Wave.Spawn / SpawnAll / SpawnLoop / KillAll / Status | vários | Creeps manuais | idem |
+| BD.Wave.Spawn / SpawnAll / SpawnLoop / KillAll / Status | vários | Creeps manuais; Status mostra a composição da onda por tipo (planejado e enviado) | idem |
+| BD.Wave.Unlocked / SetUnlocked | `<k>` (Set) | Tipos liberados, desde qual onda e se têm corpo / força k liberados da próxima onda em diante (0 devolve aos candidatos) | Wave/BDWaveDebug.cpp |
 | BD.HUD.Debug (cvar) | 0/1 | Placar de teste | Debug/BDDebugScoreboard.cpp |
 | BD.Candidate.Spawn / Return / Status / Rally | `[ordinal]` (Rally) | Candidato agora, retorno, estado (com o comício: estado, próximo em N s, palavra), comício agora | Candidate/BDCandidateDebug.cpp |
 | BD.Bribe.Status / Grant / Flush / Report | `[n]` | Propina e Casa da Moeda | Bribe/BDBribeDebug.cpp |

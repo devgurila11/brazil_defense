@@ -263,6 +263,34 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-14 (hordas especiais nos ônibus + Black Bloc, briefing 09:00) — ab5c990** (desde 745e0de):
+  - **Liberação**: liberados = 1 + candidatos caídos (a 1ª morte é sempre a do agendado;
+    retornante morto não soma), teto 20, nunca gravado — o load reconstrói dos caídos. A onda
+    lê o número quando é distribuída: morto na 5 → sai na 6. O registro do caído ganhou a onda
+    da morte (`DeathWave`) só para o `BD.Wave.Unlocked` dizer "desde a onda N".
+  - **Mistura**: `PlanWaveKinds` faz o plano inteiro da onda na distribuição (semente da partida
+    + onda): o 10º, 20º, 30º… da sequência round-robin é um especial, sorteado por peso entre os
+    liberados com corpo; total W × bocas inalterado. `SpecialEvery` 10 e `SpecialWeights` em
+    Waves. `BDCast::LoadData` é a resposta única de "qual DA é a Horda N" (ondas e comício).
+  - **Black Bloc (DA_Horda_02)**: `SpeedScale` 1,4, `HealthScale` 2,0 e paradas (`bStops`,
+    3 s / 4–8 s / 1,5 s, sem efeito de jogo, alvo normal parado, nunca a ≤2 células da urna),
+    tudo no `UBDEnemyData` para qualquer horda. Corpo provisório: malha, Run e mortes do jumento,
+    `MI_Jumento_BlackBloc` (tinta quase preta), ícone `T_UI_BlackBloc` (silhueta preta com borda
+    clara, gerada do ícone do jumento), `KillType` BlackBloc, "Black Bloc" nas tabelas. Sem Idle
+    no jumento, a parada congela o Run. Sem sons próprios (audit mostra).
+  - **HUD**: "NOVA HORDA: <nome>" 3 s na 1ª onda em que um tipo sai dos ônibus.
+  - **Console**: `BD.Wave.Unlocked`, `BD.Wave.SetUnlocked <k>`, composição no `BD.Wave.Status`.
+  - Regressão 135/135 antes dos checks (Black Bloc já saindo nas ondas da regressão); com os 14
+    novos (HORDA), 149/149 quatro vezes. Simulação de 12 ondas: candidato 1 caiu na 6, Black
+    Blocs a partir da 7, Horda_03 liberada na 12 e não sorteada (sem corpo). Dois alvos compilados.
+  - RAIOX (§3, §4, §11, settings, regra 41, console) e seção nova 16 "Hordas" no PLANO; §14 com
+    o audit novo (423 vazios).
+  - **Onde paramos**: (1) ele ver na tela: `BD.Wave.SetUnlocked 2` + `BD.Match.SetWave 6` +
+    `BD.Match.CallWave` (com a urna no chão); (2) confirmar minhas decisões (1ª parada = sorteio
+    4–8 s com piso de 3; plano fixado na distribuição da onda; Black Bloc sem sons; aviso repete
+    depois de um load); (3) arte do Black Bloc e o efeito da parada; (4) o comício segue
+    brotando só jumentos (`RallyComposition` = Horda_01) — pôr os tipos 1..N lá é decisão dele.
+
 - **2026-10-13 (comício do candidato, briefing 21:00) — 1a42214** (desde 6af195f):
   - **Comício**: todo candidato (agendado e grupo do endless) para de tempos em tempos.
     Tell 1,5 s andando (exclamação vermelha + buzina do ônibus como som curto) → discurso
@@ -2769,13 +2797,19 @@ pastas e chaves de texto existem; nenhum DA novo está em jogo ainda.
 | Candidatos | 20 | 219 de 220 | `_01`: só o material vermelho do bloco provisório |
 | Ministros | 11 | 132 de 132 | nada (o jogo usa o bloco preto das settings) |
 | Personagens | 4 | 35 de 40 | `_01` Nicole: corpo, Idle, Shooting, arma 1 (pistola), festejo; faltam armas 2–6 |
-| Hordas | 4 | 45 de 60 | `_01` jumento: completo (malha, 4 skins, Run, 4 mortes, 5 sons, ícone) |
-| **Total** | **39** | **431** | |
+| Hordas | 4 | 37 de 61 | `_01` jumento: completo (malha, 4 skins, Run, 4 mortes, 5 sons, ícone); `_02` Black Bloc: corpo **provisório** (malha, Run e mortes do jumento, `MI_Jumento_BlackBloc` preto, ícone silhueta), faltam sons e a anim de parada |
+| **Total** | **39** | **423** | |
 
 **2026-10-13 (comício).** O candidato ganhou o slot `Sound.Rally` (a
 fala do comício): +20 slots vazios, um por candidato. Os 20 DAs viraram
 `UBDCandidateData` no lugar, com o comício do seu número preenchido;
 nenhuma arte mudou.
+
+**2026-10-14 (hordas especiais).** `DA_Horda_02` virou o Black Bloc e
+entrou em jogo pelos ônibus (seção 16), com corpo provisório: os slots
+de malha e animação aparecem preenchidos no audit, mas com a arte do
+jumento até a dele chegar. Tipo que para (`bStops`) ganha o slot
+`Anim.Stop`. Hordas 37 vazios de 61; total 423.
 
 **Próximos passos.**
 1. Produção da arte pela lista do audit (ele): textura, MI, animação e
@@ -2836,3 +2870,32 @@ durante o aviso vence (derrota).
 pulsando no chão em volta dele (diferente da cúpula azulada do
 ministro) e megafone sobre a cabeça. HUD: "COMÍCIO" por 2 s na linha
 do candidato.
+
+## 16. Hordas
+
+O jumento (Horda_01) sai desde a primeira onda. Os outros tipos de
+horda chegam pelos ônibus conforme os candidatos caem:
+
+- **Liberação.** A morte do candidato agendado N libera a Horda N+1,
+  que passa a sair dos ônibus a partir da onda seguinte à da morte
+  (morreu na onda 5 → sai na 6). Quem volta no desfile não libera
+  nada. Teto: Horda_20 (liberada pelo 19º; o 20º não libera). O que
+  está liberado não é guardado: é 1 + os candidatos agendados já
+  mortos, e o load reconstrói sozinho.
+- **Mistura.** O total da onda não muda (W × bocas). Dentro dele, um
+  especial a cada 10 creeps (o 10º, 20º, 30º… da sequência), no lugar
+  do jumento, sorteado entre os tipos liberados com a semente da
+  partida e da onda — a mesma partida tem as mesmas ondas. Sem tipo
+  liberado, só jumento. Tipo liberado cujo DA ainda não tem malha não
+  é sorteado.
+- **Vida e voto.** Vida do especial = a do DA dele × o crescimento da
+  onda, como a do jumento. Todo tipo vale 1 voto por corpo; o placar de
+  abates separa os tipos pelo ícone de cada um.
+- **Aviso.** Na primeira onda em que um tipo novo sai dos ônibus, o HUD
+  mostra "NOVA HORDA: <nome>" por 3 s.
+
+**Black Bloc (Horda_02).** Vândalo: 1,4 vez a velocidade do jumento e o
+dobro da vida. Para de tempos em tempos no caminho (a cada 4 a 8 s,
+nunca antes de 3 s fora do ônibus nem a 2 células da urna) e fica 1,5 s
+num gesto de agressão, alvo normal enquanto isso. A parada ainda não
+tem efeito de jogo — chutar cerca ou puxar a horda é decisão futura.
