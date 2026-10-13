@@ -263,6 +263,39 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-13 (comício do candidato, briefing 21:00) — 1a42214** (desde 6af195f):
+  - **Comício**: todo candidato (agendado e grupo do endless) para de tempos em tempos.
+    Tell 1,5 s andando (exclamação vermelha + buzina do ônibus como som curto) → discurso
+    parado e intocável (torres, Nicole e Mito não o miram; dano e projétil em voo viram nulo;
+    o Mito o perde e patrulha; só a fala dele, teto de falas 1) → brotam 2 × N militantes em
+    volta (0,6 s subindo do chão, ele parado e já vulnerável) → volta a andar e o Mito volta
+    a persegui-lo. Primeiro 6 s depois do ônibus; depois a cada 20 s (1º) a 10 s (20º), ±20%.
+  - **Dados**: `UBDCandidateData` (subclasse de `UBDEnemyData`) com `FBDRallyParams`; os 20
+    `DA_Candidato_NN` convertidos no lugar pelo `BDScaffoldCast` com os defaults do número
+    (composição = `DA_Horda_01`). Lido na saída e gravado no registro do candidato, como a
+    vida. O corpo de todos ainda é o do `CandidateEnemy` (01). Slot novo `Sound.Rally` no
+    audit (431 vazios).
+  - **Código**: `UBDRallyComponent` (Walking → Tell → Speaking → Spawning) no `ABDCandidate`;
+    um comício por vez no board (`TryClaimRally`); `IsRallyImmune`/`IsUntouchable` ao lado
+    do abrigo do ministro; `UBDWaveSubsystem::SpawnEnemyAtCell` (genérica, para a mistura dos
+    ônibus também): roteado, na lista de inimigos, fora do total W × bocas (`CreepsRaised`);
+    "palavra" no som (`TakeFloor`/`GiveBackFloor`); disco `M_RallyAura` em
+    `Candidatos/_Shared`, megafone no HUD, aviso "COMÍCIO" 2 s. Settings novas em Balance >
+    Rally (`bRallies`, `bRallyOnReturn` false, `RallyRiseSeconds`, `RallyMaxSteps`, aura).
+  - **Console**: `BD.Candidate.Rally [ordinal]` força o comício; `BD.Candidate.Status` mostra
+    estado, próximo em N s e quem tem a palavra.
+  - Regressão 121/121 antes dos checks (comício ligado); com os 14 novos (COMICIO ×12,
+    FALA ×2), 135/135 quatro vezes. `BD.Sim.Run` 15 ondas: 43 linhas de comício, multidão de
+    2N, sem erro. Os dois alvos compilados.
+  - RAIOX (§4, §6, §10, §11, settings, regra 40, console, dúvida 24) e seção nova 15
+    "Comício" no PLANO, só com a regra.
+  - **Onde paramos**: (1) ele ver na tela: onda 5, `BD.Candidate.Rally`, `BD.Candidate.Status`;
+    (2) confirmar as decisões padrão (sem comício no retorno; onda espera os nascidos; chegada
+    no tell vence) e as minhas (som do tell = buzina; candidato parado e vulnerável no brotar;
+    Free/Tower/Spawn contam como célula livre; aviso "COMÍCIO" no início do tell); (3) arte:
+    fala do comício por candidato, corpo por número; (4) próximo briefing: mistura de tipos
+    nos ônibus com `SpawnEnemyAtCell`.
+
 - **2026-10-13 (bugs do RAIOX: urna, ministros, save/load, apuração) — 2751f18** (desde a6eb6d0):
   - **Causa real do save "fixo"** (investigada antes de corrigir): não foi a regressão, mas um
     teste headless meu de 23/09 (reforma da economia) que rodou `BD.Save.Write` com a defesa
@@ -2666,7 +2699,7 @@ com um `.gitkeep` enquanto vazia):
 
 | Tipo | Pasta | DA | Classe | Chave de texto |
 |---|---|---|---|---|
-| Candidato | `Elenco/Candidatos/Candidato_NN` | `DA_Candidato_NN` | `UBDEnemyData` | `Candidate.NN` |
+| Candidato | `Elenco/Candidatos/Candidato_NN` | `DA_Candidato_NN` | `UBDCandidateData` (um `UBDEnemyData` com o comício) | `Candidate.NN` |
 | Ministro | `Elenco/Ministros/Ministro_NN` | `DA_Ministro_NN` | `UBDMinisterData` | `Minister.NN` |
 | Personagem de plataforma | `Elenco/Personagens/Personagem_NN` | `DA_Personagem_NN` | `UBDShooterData` | `Shooter.NN` |
 | Tipo de horda | `Elenco/Hordas/Horda_NN` | `DA_Horda_NN` | `UBDEnemyData` | `Enemy.NN` |
@@ -2692,8 +2725,11 @@ Brazil Defense - Cast e a regressão confere o disco contra elas.
   (`BodyFallSound`); ícone = `KillIcon`.
 - Candidato: anims Walk (`MoveAnimation`), Idle, Death; sons fala
   enquanto anda (`SpeechSound`) e **morte (`DeathSound`), banco separado
-  das falas**; ícone = `CandidateFace` (substitui o `CandidateFaces`
-  das settings de interface).
+  das falas**; **fala do comício (`RallySpeech`)**, banco à parte das
+  outras duas; ícone = `CandidateFace` (substitui o `CandidateFaces`
+  das settings de interface). Os números do comício (seção 15) também
+  ficam no DA, com os defaults do número do candidato; o material do
+  disco do discurso (`M_RallyAura`) fica em `Candidatos/_Shared`.
 - Ministro: anims Walk, Idle, Read (livro), Kicked (voo/queda), Flee;
   sons fala (`SpeechSound`) e **fuga (`FleeSound`, toca ao levar o
   chute)**. Ministro não morre, foge: não tem `DeathSound`. O antigo
@@ -2730,11 +2766,16 @@ pastas e chaves de texto existem; nenhum DA novo está em jogo ainda.
 
 | Tipo | DAs | Slots vazios | Pronto hoje |
 |---|---|---|---|
-| Candidatos | 20 | 199 de 200 | `_01`: só o material vermelho do bloco provisório |
+| Candidatos | 20 | 219 de 220 | `_01`: só o material vermelho do bloco provisório |
 | Ministros | 11 | 132 de 132 | nada (o jogo usa o bloco preto das settings) |
 | Personagens | 4 | 35 de 40 | `_01` Nicole: corpo, Idle, Shooting, arma 1 (pistola), festejo; faltam armas 2–6 |
 | Hordas | 4 | 45 de 60 | `_01` jumento: completo (malha, 4 skins, Run, 4 mortes, 5 sons, ícone) |
-| **Total** | **39** | **411** | |
+| **Total** | **39** | **431** | |
+
+**2026-10-13 (comício).** O candidato ganhou o slot `Sound.Rally` (a
+fala do comício): +20 slots vazios, um por candidato. Os 20 DAs viraram
+`UBDCandidateData` no lugar, com o comício do seu número preenchido;
+nenhuma arte mudou.
 
 **Próximos passos.**
 1. Produção da arte pela lista do audit (ele): textura, MI, animação e
@@ -2746,3 +2787,52 @@ pastas e chaves de texto existem; nenhum DA novo está em jogo ainda.
 4. Fase seguinte (não começada): pôr os DAs em jogo — quem sai em qual
    onda, ministros por assento em `UBDMinisterSettings::Ministers`, o
    corpo e as animações do ministro no lugar do bloco.
+
+## 15. Comício
+
+Todo candidato, no caminho até a urna, para de tempos em tempos para
+um comício. A regra é fechada:
+
+1. **Parada.** Antes de parar, um aviso de 1,5 s (exclamação vermelha
+   sobre ele e um som curto); ele ainda anda durante o aviso, e chegar
+   à urna nele é a derrota de sempre.
+2. **Discurso.** Parado, ele é **intocável**: nenhum defensor o mira
+   (torres, personagens, Mito) e o dano que chega, até o de um tiro já
+   em voo, vira nulo. O Mito deixa de vê-lo e volta a patrulhar. Só a
+   fala dele toca: as demais falas (horda, Mito, Nicole) ficam mudas
+   até ele terminar; efeitos (tiros, gritos de morte, bipe) seguem. O
+   teto de falas vira 1, dele, e volta a 2 no fim.
+3. **Multidão.** No fim da fala brota do chão em volta dele uma
+   multidão de militantes comuns, sem proteção, já a caminho da urna,
+   votando como qualquer militante (+azul se morre, +vermelho se
+   chega). Nascem nas células livres e alcançáveis mais próximas
+   dele, uma por célula, espalhando pela rota para frente e para trás;
+   se faltar célula, vão para o anel seguinte. A onda espera por eles
+   como espera qualquer creep, mas eles não contam no total da onda.
+4. **Retomada.** Ele volta a andar, vulnerável, e o Mito volta a
+   persegui-lo pela regra de sempre.
+
+Repete até ele morrer ou chegar à urna.
+
+**Números** (no DA do candidato, N = número do candidato, 1 a 20):
+primeiro comício 6 s depois de sair do ônibus (nunca na boca); um a
+cada 20 s no 1º caindo linearmente até 10 s no 20º, sorteado ±20% a
+cada vez; aviso 1,5 s; discurso de 4 s ou a duração da fala, se
+houver, nunca menos de 2,5 s; multidão de 2 × N (2 no 1º, 40 no 20º),
+dos tipos 1 a N de horda com o mesmo peso, com a vida da horda da onda
+em que brota. Tempo de comício é tempo de jogo: acelera em 2x/4x e
+para na pausa.
+
+**Um por vez.** Dois candidatos no board (endless): o segundo espera o
+primeiro terminar para começar o aviso.
+
+**Decisões padrão (a confirmar):** quem volta no desfile do retorno
+não faz comício — já é castigo, e multidão em cima seria derrota
+garantida; com o candidato discursando quando a onda limpa, a onda
+espera os nascidos e o candidato segue não contando; chegada à urna
+durante o aviso vence (derrota).
+
+**Leitura.** Aviso: exclamação vermelha. Discurso: disco vermelho
+pulsando no chão em volta dele (diferente da cúpula azulada do
+ministro) e megafone sobre a cabeça. HUD: "COMÍCIO" por 2 s na linha
+do candidato.

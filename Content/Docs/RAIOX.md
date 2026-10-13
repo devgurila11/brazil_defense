@@ -1,6 +1,6 @@
 # Raio-X da mecânica — Brazil Defense
 
-**Foto de: 2026-10-13, commit ae47de3**; atualizada no mesmo dia pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração).
+**Foto de: 2026-10-13, commit ae47de3**; atualizada no mesmo dia pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração) e pelo comício do briefing 21:00.
 
 > O que o jogo FAZ hoje, lido no código. O PLANO.md diz o que o jogo deve
 > ser; este arquivo diz o que ele é, e marca onde os dois discordam.
@@ -126,10 +126,10 @@
 | Vida | Vida do militante da onda (10) × 1,022^(W−1) × 40, gravada no registro; o MaxHealth do DA (100) só vale sem WaveEnemy | CandidateHealthMultiplier 40 | GetCandidateHealth (:109-112); SpawnCandidate (:402-430) | Não no ×40 (§4); crescimento diverge (§7/§8) |
 | Velocidade | `CandidateSpeed` sobrepõe o DA; aceleração do DA 1; mesma variação de faixa e rota da horda | 0,5 cél/s | BDCandidate.cpp:31-36 | Não (§4) |
 | Boca | Sorteio com semente (seed, onda, ordinal) entre todas as bocas com rota, não só as ativas; em grupo, bocas diferentes | — | SpawnFromRecord (:324-363) | Não (§4); semente não está no PLANO |
-| DA | Todos usam o DA_Candidato_01 (cubo vermelho 6×6×8) | CandidateEnemy | ini:101 | Não (§14) |
+| DA | Corpo, andar, falas e grito: todos usam o DA_Candidato_01 (cubo vermelho 6×6×8). O **comício** vem do DA do seu número (`DA_Candidato_N`, `UBDCandidateData`; acima de 20 volta ao 01), lido na saída e gravado no registro como a vida | CandidateEnemy; Rally do DA | ini:101; SpawnCandidate / SpawnFromRecord (BDCandidateSubsystem.cpp) | Não (§14) |
 | Mira do Mito | Prioridade total: persegue em **qualquer ponto do board**, só atira nele enquanto ele vive | Detection 3; Chase 1,5; CloseIn 0,75 | BDAgent.cpp:515-611, 999-1083 | Parcial (§4) |
 | Mira de torres e personagens | **Sem prioridade**: candidato = creep comum (mais adiantado no alcance) | TargetPriority não é lido | BDTowerBase.cpp:445-477 (coment. 452-456) | **Sim** — §4 "alvo prioritário de todo defensor" |
-| Refúgio | Nunca é coberto por ministro | — | BDEnemyBase.cpp:571-575 | Não está no PLANO |
+| Refúgio | Nunca é coberto por ministro; intocável só no discurso do comício (`IsRallyImmune`) | — | BDEnemyBase.cpp (IsSheltered, IsUntouchable) | Não está no PLANO |
 | Votos | 0 azul, 0 vermelho; fora das contagens e do placar por tipo | — | BDWaveSubsystem.cpp:1262-1299 | Não (§4) |
 | Morte: ordem | Solta ministro, entra nos caídos, propina/divisórias (ou nivelamento se for retorno); depois som, corpo e sangue | — | BDCandidate.cpp:85-93 | Não está no PLANO |
 | Morte: recompensa | Agendado: propina = vida, divisórias 4+(N−1). Retorno: nada. **Todos soltam 1 ministro** | bReleaseOnCandidateKilled true | :534-569 | **Sim** — §4 "+1 torre/+1 personagem"; "quem volta não dá nada" |
@@ -140,6 +140,13 @@
 | Nome no HUD | `NSLOCTEXT "Candidate {N}"` fixo: não lê o DA nem `Candidate.NN` | — | :389-392 | Sim — §14 prevê nome pelo DA/tabela |
 | HUD | Até 6 linhas no topo "Nome HP x/y" (barra após o 1º dano) + "+N a caminho"; aviso "O CANDIDATO SAIU" 4 s; linha "OS CAÍDOS VOLTAM · faltam N"; barra vermelha no mundo após o 1º dano; placar com ícone único (`CandidateKillIcon`), `CandidateFace` não é lido | MaxCandidateRows 6; CandidateNoticeSeconds 4 | BDHUDWidget.cpp:1241-1258, 1450-1524; BDMatchHUD.cpp:238-283 | Sim — §14 ícone = `CandidateFace` |
 | Rebobinar | Building com onda 0 esquece vivos, enviados, caídos e retorno | — | ResetForNewMatch (:270-296) | Não está no PLANO |
+| Comício: quando | `RallyFirstDelay` (6 s) depois de sair do ônibus, depois a cada `RallyEvery` de caminhada (20 s no 1º → 10 s no 20º, linear), sorteado ±20% por comício com semente (seed, onda, ordinal). Tempo de jogo: acelera em 2x/4x, para na pausa | DA: RallyFirstDelay 6; RallyEvery 20→10; RallyEveryJitter 0,2 | UBDRallyComponent (Candidate/BDRallyComponent.cpp) | Não (seção Comício) |
+| Comício: sequência | Walking → **Tell** (1,5 s andando, exclamação vermelha + buzina do ônibus como som curto; chegar à urna aqui é derrota) → **Speaking** (parado, `RallyDuration` 4 s ou a duração da cue `RallySpeech`, mínimo 2,5 s) → **Spawning** (parado e já vulnerável, 0,6 s enquanto a multidão brota) → Walking | RallyTellSeconds 1,5; RallyDuration 4; RallyMinDuration 2,5; RallyRiseSeconds 0,6; RallyTellSound SCue_Bus_Horn | TickComponent / Enter* | Não (seção Comício) |
+| Comício: discurso | Intocável: torres, personagens e Mito não o miram; dano que chega (inclusive projétil em voo) vira nulo como o do abrigo do ministro. O Mito perde o alvo e segue a patrulha; acaba o discurso, volta a persegui-lo. Só a fala dele: as outras falas que soavam são cortadas e nenhuma começa (horda, Mito, Nicole, grito do ministro); efeitos seguem. Sem `RallySpeech`, toca a `SpeechSound` dele (hoje vazia: só o megafone) | — | IsUntouchable; ABDAgent::FindCandidate; UBDCreepSoundSubsystem::TakeFloor | Não (seção Comício) |
+| Comício: multidão | `RallyCount` = 2×N militantes (N = ordinal até 20), sorteados por peso em `RallyComposition` (hoje só DA_Horda_01; vazio = creep da onda), vida da horda da onda. Busca em anel a partir da célula dele sobre células andáveis (respeita divisórias), até 20 passos: uma por célula, só Free/Tower/Spawn (nunca plataforma, palácio, Blocked, urna) e com rota até a urna; o que não acha lugar não brota. Brotam do chão (escala Z 0→1 em 0,6 s, parados, já alvejáveis), votam como qualquer militante, a onda espera por eles, mas **não** entram no total W × bocas (contam em `CreepsRaised`) | RallyCount 2N; RallyMaxSteps 20 | RaiseCrowd; UBDWaveSubsystem::SpawnEnemyAtCell | Não (seção Comício) |
+| Comício: um por vez | Um comício no board: o segundo candidato devido espera o primeiro voltar a andar para começar o tell | — | UBDCandidateSubsystem::TryClaimRally | Não (seção Comício) |
+| Comício: retorno | Quem volta no desfile não discursa (nem forçado) | bRallyOnReturn false | SpawnFromRecord | Não (seção Comício) |
+| Comício: visual | Disco vermelho translúcido no chão (1,5 célula de raio, pulso 1 Hz, `M_RallyAura` sobre o cilindro da engine) e megafone vermelho sobre a cabeça no discurso; aviso "COMÍCIO" 2 s na linha do "O CANDIDATO SAIU" ao começar o tell | RallyAuraRadiusCells 1,5; RallyAuraPulseHz 1; RallyNoticeSeconds 2 | ShowAura; ABDMatchHUD::DrawRallyMegaphones; UBDHUDWidget::UpdateCandidate | Não (seção Comício) |
 
 ## 5. Virada e retorno
 
@@ -174,7 +181,7 @@
 | Corpo | SMK_Mito ×2, arma no socket RightHand, sem colisão | agent_mesh_scale 2 | BDAgent.cpp:80-176 | Não está no PLANO |
 | Patrulha | Trechos de 1–3 células em linha livre (não cruza divisória nem Blocked; atravessa peças e creeps); 40% de parar 1–3,5 s | walk 0,5 cél/s; giro 540°/s | StartWalk (:305-365) | Não está no PLANO |
 | Alcance | 3 células (2100 cm) contra a horda; **não persegue militantes**. Ministros: 3 + 0,25 × ministros de pé | DetectionRadiusCells 3; AgentReachStepCells 0,25 | :120-133 | Não está no PLANO |
-| Alvo válido | Vivo, não chegou, não condenado, não abrigado, dentro do raio | — | :508-513 | Não está no PLANO |
+| Alvo válido | Vivo, não chegou, não condenado, não intocável (abrigado por ministro ou candidato discursando), dentro do raio | — | :508-513 | Não está no PLANO |
 | Quem primeiro | Candidato no alcance > mais próximo | bTargetFurthestAlong False | AcquireTarget (:515-551) | Parcial (§4) |
 | Troca de alvo | Antes de cada tiro: só por um 15% mais perto (Dynamic); por candidato sempre | AimSwitchMargin 0,15 | :553-584 | Não está no PLANO |
 | Tiro | Hitscan direto (sem projétil, sem reservar dano) | dano 10 | Fire (:726-755) | Não está no PLANO |
@@ -184,7 +191,7 @@
 | Volta para casa | Reto ou BFS até a célula de dormir; passa pela horda sem atirar, mas ainda chuta ministro | — | :367-398, 1011-1036 | Não está no PLANO |
 | Onde dorme | Vizinha ao palácio: frente → direita → trás → esquerda | — | FindSleepCell (:239-284) | Não está no PLANO |
 | Descanso | max(10; 45 − 0,5 × abates); dormindo não defende nem chuta; acorda sozinho com 120 s | 45 / 0,5 / 10 | GetRestTime; :400-436 | Não está no PLANO |
-| Perseguição | Qualquer candidato vivo, a qualquer distância: corre a 0,75 cél/s, para a 75% do raio, ignora militantes e ministros; não persegue voltando para casa | ChaseSpeedScale 1,5; ChaseCloseIn 0,75 | :586-642 | Não está no PLANO |
+| Perseguição | Qualquer candidato vivo **que não esteja discursando**, a qualquer distância: corre a 0,75 cél/s, para a 75% do raio, ignora militantes e ministros; não persegue voltando para casa. No discurso o candidato some para ele (patrulha); no fim, persegue de novo | ChaseSpeedScale 1,5; ChaseCloseIn 0,75 | FindCandidate (:586-642) | Parcial (seção Comício) |
 | Chute | Sem candidato no board, ministro no alcance tem prioridade sobre militante, mesmo com a barra vazia; chuta a ≤1 célula + corpo, alinhado em 12°, pé acerta em 0,45 s | KickReachCells 1; KickImpactSeconds 0,45 | :786-859 | Não está no PLANO |
 | Falas | Abate: 9%, 15 s por falante, 4 s globais. Chute: sempre | CelebrationChance 0,09 | :761-767, 854-857 | Não está no PLANO |
 
@@ -269,7 +276,7 @@
 | Sem efeito no combate | Nada de dano, alcance ou spawn depende da hora | — | — | Não |
 | Postes | Acendem pela elevação do sol (apagados acima de −3°, cheios abaixo de −12°). **Cada poste bloqueia a própria célula** | — | BDStreetLightComponent.cpp:44-66, 176-205 | Parcial — célula bloqueada não está no PLANO |
 | Música | Só em WaveActive, tempo real (continua na pausa); ambiência cai para 0,5 sob a música | — | BDSoundscapeSubsystem.cpp:118-170 | Não está no PLANO |
-| Teto de falas | 2 simultâneas, lados opostos da câmera, ≥30°; horda mira 0,2 fala/s; fala do jogador toma a vaga de militante | SpeechMaxConcurrent 2 | CanSpeak (:570-640) | Não está no PLANO |
+| Teto de falas | 2 simultâneas, lados opostos da câmera, ≥30°; horda mira 0,2 fala/s; fala do jogador toma a vaga de militante. **No discurso de um comício o teto é 1, do candidato**: as outras falas são cortadas e recusadas (inclusive as "sempre ditas", chute e grito do ministro), e volta a 2 no fim | SpeechMaxConcurrent 2 | CanSpeak; TakeFloor / GiveBackFloor / SayOnFloor | Parcial (seção Comício) |
 | Ducking | Fala baixa efeitos e ambiência a 0,5 (fade 0,4 s) | — | :327-359 | Não está no PLANO |
 | Bipe da urna | 1 por voto vermelho, intervalo mín. 0,4 s, "pesado" a partir de 200, máx. 4 | — | BDObjectiveSubsystem.cpp:219-260 | Não (§9) |
 
@@ -278,9 +285,10 @@
 | Regra | Como funciona hoje | Parâmetro(s) e valor atual | Onde está | Diverge do PLANO? |
 |---|---|---|---|---|
 | DAs | 20 candidatos, 11 ministros, 4 personagens, 4 hordas (39) em `Content/Elenco` | CastSettings 20/11/4/4 | — | Não (§14) |
-| Em jogo | Horda_01 (onda), Candidato_01 (todos os candidatos), Personagem_01 (único em `Shooters`); nenhum ministro. Os outros 35 não são referenciados | — | ini; settings | Não (§14) |
+| Em jogo | Horda_01 (onda e multidão dos comícios), Candidato_01 (corpo de todos os candidatos), Candidato_01..20 (comício de cada número), Personagem_01 (único em `Shooters`); nenhum ministro | — | ini; settings; UBDCandidateData::LoadForOrdinal | Não (§14) |
 | Enemy, lidos | MaxHealth, MoveSpeed, Acceleration, EnemyClass, Mesh, SkeletalMesh, MeshScale, MeshYaw, MeshMaterial, SkinMaterials, MoveAnimation, DeathAnimations, sons (Speech, Call, Footstep, Death, BodyFall, pitch, intervalo), KillType, KillIcon, DisplayName | — | BDEnemyBase; BDCreepSoundSubsystem | Não está no PLANO |
 | Enemy, não lidos | VotesOnArrival (nunca), VotesOnDeath (só no modo desligado), Skeleton, IdleAnimation, **CandidateFace** (só o audit) | — | — | Sim — §14 ícone do candidato = `CandidateFace` |
+| Candidate (`UBDCandidateData`) | Os 20 candidatos são `UBDCandidateData` (subclasse de `UBDEnemyData`, convertidos no lugar pelo `BDScaffoldCast`); `Rally` (FBDRallyParams) com os defaults do número. Slot novo no audit: `Sound.Rally` (RallySpeech) — audit 431 vazios (candidatos 219) | — | BDCandidateData.h; BDScaffoldCastCommandlet.cpp (1b) | Não (§14) |
 | Minister | Só FleeSound, e só com o DA ligado em `Ministers` (vazio); o resto só no audit | — | BDMinister.cpp:433 | Não (§14) |
 | Shooter, lidos | BodyMesh, BodyScale, BodyYaw, HandSocket, Idle, Shoot, CelebrationSound, IdleAfter, ImpactEffect; armas: Mesh, Grip, Muzzle, Damage, FireRate, Flash, FireSound; herdados da torre | — | BDShooter.cpp | Não |
 | Shooter, não lidos | TargetPriority, UnlockWave; Name e bPlaceholder das armas só em log | — | — | Não está no PLANO |
@@ -305,6 +313,13 @@
 | CandidateGroupStep | 20 | | Grupo no endless |
 | CandidateLeadSeconds | 5 | | Atraso da horda na onda do candidato |
 | ReturnParadeSeconds | 30 | | Desfile |
+| bRallies | True | | Liga os comícios (chave geral, para medir sem eles) |
+| bRallyOnReturn | False | | Retornante discursa? |
+| RallyRiseSeconds | 0,6 | | Brotar da multidão (o candidato espera) |
+| RallyMaxSteps | 20 | | Até onde a multidão procura lugar |
+| RallyTellSound | SCue_Bus_Horn | vazio | Som curto do tell (placeholder) |
+| RallyAuraRadiusCells / RallyAuraPulseHz | 1,5 / 1 | | Disco do discurso |
+| RallyAuraMesh / RallyAuraMaterial | Cylinder / M_RallyAura | vazio | Malha e material do disco |
 | HealthScaleByWave | None | | Curva desligada |
 | HealthScaleGrowth | **1,022** | 1,12 | Crescimento da vida |
 | WaveSpawnInterval Base/Decay/Min | 0,35 / 0,97 / 0,20 | | Intervalo entre creeps |
@@ -372,6 +387,18 @@ DA_Character_Test não é apontado por nenhuma peça.
 | VotesOnDeath | 1 | 0 | 1 | Sem efeito hoje |
 | VotesOnArrival | 1 | 0 | 1 | **Não lido** |
 | EnemyClass | None | BDCandidate | | Classe do ator |
+
+### UBDCandidateData (DA_Candidato_NN), campo Rally
+| Campo | DA_Candidato_01 | DA_Candidato_20 | Default (struct) | O que faz |
+|---|---|---|---|---|
+| bRallies | True | True | True | Discursa |
+| RallyFirstDelay | 6 | 6 | 6 | 1º comício após o ônibus |
+| RallyEvery / RallyEveryJitter | 20 / 0,2 | 10 / 0,2 | 20 / 0,2 | Intervalo e sorteio |
+| RallyTellSeconds | 1,5 | 1,5 | 1,5 | Aviso |
+| RallyDuration / RallyMinDuration | 4 / 2,5 | 4 / 2,5 | 4 / 2,5 | Discurso sem cue / piso |
+| RallyCount | 2 | 40 | 0 (= nunca preenchido: usa o default do número) | Multidão |
+| RallyComposition | DA_Horda_01 ×1 | DA_Horda_01 ×1 | vazio (= creep da onda) | Tipos e pesos |
+| RallySpeech | vazio | vazio | vazio | Fala do comício (sem ela, SpeechSound) |
 
 ### UBDPalaceData (DA_PalaceData)
 | Campo | Valor | O que faz |
@@ -486,6 +513,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | 37 | Música só em WaveActive |
 | 38 | Teto de 2 falas em lados opostos; prioridade da fala do jogador; ducking a 0,5 |
 | 39 | Nome do candidato no HUD fixo ("Candidate N") |
+| 40 | Comício: a multidão não entra no total W × bocas (conta em `CreepsRaised`); procura lugar até 20 passos e o que não acha não brota; o tell usa a buzina do ônibus; o candidato fica parado e vulnerável os 0,6 s do brotar; o comício vem do DA do número e o corpo ainda do 01 |
 
 ## Divergências PLANO × código
 
@@ -537,7 +565,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | BD.Votes.Status / AddBlue / AddRed | `<n>` | Votos (AddRed testa a virada) | Wave/BDWaveDebug.cpp |
 | BD.Wave.Spawn / SpawnAll / SpawnLoop / KillAll / Status | vários | Creeps manuais | idem |
 | BD.HUD.Debug (cvar) | 0/1 | Placar de teste | Debug/BDDebugScoreboard.cpp |
-| BD.Candidate.Spawn / Return / Status | — | Candidato agora, retorno, estado | Candidate/BDCandidateDebug.cpp |
+| BD.Candidate.Spawn / Return / Status / Rally | `[ordinal]` (Rally) | Candidato agora, retorno, estado (com o comício: estado, próximo em N s, palavra), comício agora | Candidate/BDCandidateDebug.cpp |
 | BD.Bribe.Status / Grant / Flush / Report | `[n]` | Propina e Casa da Moeda | Bribe/BDBribeDebug.cpp |
 | BD.Economy.Report | — | Preços, desbloqueios, propina | idem |
 | BD.Place.Select / Take / SelectTransient / EmptyHand | vários | Mão | Placement/BDPlacementDebug.cpp |
@@ -586,3 +614,4 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | 21 | **Slots de cada plataforma** (Palanque/Caminhão/Arquibancada) estão nos BPs e não foram extraídos; §6 diz 4/6/8. |
 | 22 | **Propina na fila no fim da partida** é descartada: se a última onda mata um candidato e a apuração vem logo, a conversão em andamento se perde. Ordem exata não testada. |
 | 23 | **Ordem de tick** entre os subsistemas de candidato, ministro e torres no mesmo frame não é fixa; a cobertura de 0,3 s deve absorver. |
+| 24 | **Comício e corpo por número**: Candidato_02..20 já têm comício próprio, mas o corpo de todos ainda é o do `CandidateEnemy` (01). Quando a arte de cada um chegar, o spawn precisa passar a ler o corpo do DA do número. |
