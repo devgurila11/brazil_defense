@@ -1,106 +1,106 @@
 # Briefing atual — Brazil Defense
 
-**Versão: 2026-10-13 14:00**
+**Versão: 2026-10-13 17:30**
 
 > Arquivo sempre sobrescrito. Só o trabalho pendente da vez.
 
-# Raio-X da mecânica atual — SOMENTE LEITURA
+# Bugs apontados pelo RAIOX — corrigir antes de mecânica nova
 
-Vamos adicionar mecânicas novas (poderes de ministro e candidato,
-magias do jogador, hordas especiais liberadas por candidato morto).
-Antes disso precisamos de uma foto exata do que o jogo FAZ hoje, para
-não quebrar o que está bom nem implementar coisa que já existe de outro
-jeito.
+Primeiro: commitar o `Content/Docs/RAIOX.md` como está (entrada curta
+no §12). Depois esta leva. Nada de mecânica nova aqui; só o que está
+abaixo. Cada item ganha check na regressão. No fim, corrigir no RAIOX
+as linhas que mudaram e a data do cabeçalho.
 
-**Nesta rodada não se modifica nada**: nenhum arquivo de código, asset,
-config, PLANO ou briefing. Nenhum commit. Nenhum teste novo. Só ler,
-rodar o que for preciso para confirmar um valor (headless, `Status`,
-`Report`) e responder.
+## 1. Contagem da onda 1 só começa com a urna no chão
 
-## Fonte da verdade
+Hoje a contagem da onda 1 corre sem urna; se zera, a onda sai, os
+creeps são descartados e a partida fica presa. Regra: enquanto não há
+urna no board, a contagem não anda (HUD mostra "coloque a urna" no
+lugar do tempo) e `BD.Match.CallWave` recusa. A urna no chão dispara
+a contagem com o `FirstWaveDelay` cheio. Ela continua travada a partir
+da onda 1 como hoje.
 
-Código em C++ primeiro; depois os valores reais gravados nos DataAssets,
-`DefaultGame.ini` e Project Settings; o PLANO §1–11 por último. Onde o
-PLANO diz uma coisa e o código faz outra, a tabela mostra o que o
-CÓDIGO faz e marca a divergência. Nunca descrever uma regra a partir do
-PLANO sem confirmar no código.
+Check: sem urna, 200 s de jogo não iniciam onda; urna posta → contagem
+começa do valor do DA.
 
-## Produto: tabelas, uma por área
+## 2. Ministros não são resetados no endless
 
-Cada linha = uma regra. Colunas fixas:
+Ministro só sai de campo pelo chute do Mito. Vitória na onda 100 →
+"Continuar (endless)": os ministros de pé continuam exatamente como
+estão (posição, estado, assento), e a fila de assentos também. Nenhum
+reset.
 
-| Regra | Como funciona hoje | Parâmetro(s) e valor atual | Onde está (classe / asset / setting) | Diverge do PLANO? |
+Limpeza só quando o board é desfeito de qualquer forma: partida nova
+(Play), rebobinar para onda 0, derrota seguida de load. Aí todos somem
+e a fila volta a 1..11. Conferir que hoje não existe essa limpeza e
+que o subsistema do ministro é zerado junto com o `ResetForNewMatch`.
 
-Valores sempre os que VALEM em jogo (asset sobrescreve default de
-classe; se o asset não define, dizer "default de classe: X").
+Check: 3 ministros de pé → vitória → endless → os 3 continuam no mesmo
+lugar e o próximo candidato morto solta o assento certo. Partida nova
+→ zero ministros, fila 1..11.
 
-Áreas, nesta ordem:
+## 3. Save/load não respeita as regras
 
-1. **Loop da partida** — setup, montagem, onda, entre ondas, fim; o que
-   trava quando; velocidades 1x/2x/4x; pausa.
-2. **Economia** — votos azul/vermelho/nulo (por corpo ou por HP, o que
-   vale hoje); dinheiro público (de onde entra, o que gasta); propina
-   (quem solta, quanto, para onde vai); preço de cada peça; evolução
-   (base, crescimento, níveis); venda; mover; cota de separador;
-   `StartingFunds`/`StartingVotes` por dificuldade; desbloqueios por onda.
-3. **Horda** — tipos existentes e seus números (HP, velocidade, escala
-   por onda, crescimento); quantos por onda e por boca; bocas ativas;
-   bocas móveis; ônibus; rota e variação; comportamento ao chegar na
-   urna; morte (corpo, som, sangue).
-4. **Candidato** — intervalo, HP, velocidade, boca, prioridade de mira
-   (o que vale hoje: Mito sim, torres não?), o que acontece ao morrer
-   (propina, ministro, ...), ao chegar (derrota), grupo no endless,
-   barra/nome no HUD.
-5. **Virada e retorno** — gatilho exato, quem volta, com quanta vida, em
-   quanto tempo, o que a onda vira, o que acontece ao matar todos, sem
-   caídos.
-6. **Palácio e Mito** — custo, 2×2, níveis/estrelas, armas por nível;
-   Mito: patrulha, alcance, mira (quem primeiro), tiro, barra de
-   tempo/estamina, descanso, bônus por abate, perseguição, volta pra
-   casa, chute, falas, tamanho.
-7. **Ministro** — quando sai, quantos, de onde, passeio, refúgio
-   (raio, quem protege, o que bloqueia), leitura e tempo pós-raio
-   vazio, chute (distância, voo, queda, fuga), separadores, DA e campos.
-8. **Peças de defesa** — torres, personagens de plataforma, plataformas
-   (slots, altura, bloco), separadores (aresta, validação); mira de cada
-   um (mais adiantado no alcance / mais próximo / trava); alcance por
-   nível e por plataforma; cadência, pente, recarga; coice;
-   reconhecimento; "todos condenados".
-9. **Dificuldade, vitória, saves** — WavesToWin, presos, saves, bônus em
-   cadeia, endless, o que decide vitória/derrota e em que ordem as
-   condições são checadas.
-10. **Ambientação que afeta jogo** — dia/noite (ondas por dia, fatia de
-    noite), postes; áudio só o que tem regra de jogo (teto de falas,
-    ducking) — sem detalhar mixagem.
-11. **Elenco (seção 14)** — DAs por tipo, campos de cada classe de
-    dados, quais estão ligados ao jogo hoje e quais só existem no asset.
+Sintoma do usuário: o "Continue" / load traz um layout que foi criado
+na época dos testes de save, como se fosse fixo, e a contagem de saves
+não é respeitada. Investigar ANTES de corrigir — hipótese principal: a
+regressão e o `BD.Save.Write` dos testes headless gravam no MESMO slot
+`BDMatch` que o jogador usa, então o último teste rodado vira o
+"Continue" do jogador. Confirmar lendo o `.sav` atual e o log da
+regressão.
 
-## Tabelas extras
+Regras a valer depois da correção (PLANO §8, com o que o RAIOX achou):
 
-- **Settings e DataAssets**: lista de TODOS os `UBD*Settings` e `DA_*`
-  com os campos que afetam gameplay e seus valores atuais. Uma tabela
-  por classe. Campos de debug/visual podem ficar de fora.
-- **Regras só no código**: tudo que o jogo faz e que NÃO está escrito
-  em nenhuma seção do PLANO §1–11 (ex.: regra de espera dos ônibus,
-  proteção `WouldCutOffCells`, `ReacquireGrace`...). Uma linha cada.
-- **Divergências PLANO × código**: lista consolidada do que as tabelas
-  marcaram, com a seção do PLANO e o que o código faz.
-- **Comandos de console** que afetam ou inspecionam gameplay, com o que
-  cada um faz (uma linha cada; os de debug visual podem ficar de fora).
+- Slot do jogador separado de qualquer slot de teste. Testes e
+  regressão usam `BDMatch_Test` (ou gravam em memória) e NUNCA tocam
+  no slot do jogador. Check que falha se tocarem.
+- Um ponto de restauração por partida, sobrescrito a cada save, só em
+  Building. `SaveBudget` desconta a cada save; a quantidade por
+  dificuldade fica a que estiver nos DAs (o usuário decide 3/2/1 ou
+  2/2/2 — não mudar nesta leva, só respeitar).
+- O save pertence à partida: guarda dificuldade, seed e `MatchStart`.
+  Load só é oferecido/aceito para a mesma dificuldade; um save de
+  outra dificuldade não aparece no "Continue" daquela.
+- Load não consome save (é o ponto de restauração), mas o slot é
+  apagado quando a partida termina em vitória ou quando o jogador
+  começa uma partida nova (Play). Derrota mantém o slot (é o caso de
+  uso do painel de derrota).
+- Load por console (`BD.Save.Load`) segue a mesma trava de fase e
+  dificuldade que o botão.
+- Restaurar o que hoje não restaura: posição das bocas, registros de
+  candidatos (enviados, caídos, ordinal), `LevelDownCount` e o tempo
+  restante da contagem. O load reabre na montagem da onda salva com
+  o estado que ela tinha.
 
-## Formato da resposta
+Checks: slot de teste nunca é o do jogador; save em WaveActive
+recusado; load de outra dificuldade recusado; vitória apaga o slot;
+derrota mantém; load repõe bocas e caídos iguais aos salvos.
 
-- Tudo na resposta do terminal, em Markdown, tabelas de verdade (não
-  listas). Pode ser longa; não resumir para caber.
-- Começar com um sumário de 10 linhas: as 10 regras que mais definem o
-  jogo hoje, na opinião dele.
-- Terminar com "Dúvidas que o código não responde": pontos onde a regra
-  é ambígua ou depende de ordem de execução que ele não conseguiu
-  confirmar.
-- Não propor melhoria, não opinar sobre balanceamento, não antecipar as
-  mecânicas novas. Só o que existe.
+## 4. Apuração e candidato pendente (dúvida #3)
 
-## Entregável
+`IsEndDue` ignora candidato no ônibus e candidato pendente
+(`bSchedulePending`). Numa onda ≥ 100 a apuração pode correr antes de
+ele sair. Regra: a apuração espera candidato vivo, no ônibus, pendente
+e retorno em curso; só sem nenhum deles ela resolve.
 
-- A resposta acima. Nenhuma alteração no repositório (`git status`
-  limpo ao final, igual ao início).
+Check: onda 100 com candidato pendente → sem apuração até ele cair ou
+chegar.
+
+## 5. Load com vermelho na frente (dúvida #6)
+
+Como os caídos zeravam no load, o broadcast de votos podia soltar o
+candidato antecipado já na montagem. Com o item 3 restaurando os
+caídos isso deve sumir; conferir e cobrir com check: load de um save
+com vermelho > azul e caídos registrados não solta candidato na
+montagem.
+
+## Regras da leva
+
+- Regressão passando inteira antes de criar os checks novos, e depois
+  com eles. Compilar os dois alvos. Um commit por item (ou dois se
+  fizer sentido), entrada no §12.
+- RAIOX atualizado: linhas de loop (urna), ministro (reset), saves
+  (todas as de §9) e as dúvidas #1, #3, #6, #11 e #32 saem da tabela
+  de dúvidas.
+- Se o item 3 revelar outra causa que não o slot compartilhado,
+  descrever a causa real antes de corrigir.

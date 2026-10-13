@@ -263,6 +263,36 @@ arquibancada 180°) — só entra com indicador visual claro.
 Uma entrada por push, mais recente em cima: data, commit(s) e o que
 mudou desde o push anterior.
 
+- **2026-10-13 (bugs do RAIOX: urna, ministros, save/load, apuração) — 2751f18** (desde a6eb6d0):
+  - **Causa real do save "fixo"** (investigada antes de corrigir): não foi a regressão, mas um
+    teste headless meu de 23/09 (reforma da economia) que rodou `BD.Save.Write` com a defesa
+    automática (seed 101, 80 peças, onda 0). O jogo headless e o atalho do jogador gravam na
+    mesma `Saved/SaveGames`, e o Continue dele carregava esse save desde então (logs de 10/10).
+    O mesmo teste gravou o **progresso** com Easy, Normal e Hard vencidos: as partidas Normal
+    dele ganhavam o bônus em cadeia do Easy (+400, +4 divisórias, +1 plataforma, **+1 save**).
+    Ele só venceu o Normal (3 vezes no PostMatch). Save falso e progresso antigo guardados fora
+    do repositório; progresso do jogador agora = só Normal vencido.
+  - **1. Urna**: a contagem da onda 1 só corre com a urna no chão (fica cheia; HUD "coloque a
+    urna para a contagem começar"); `CallWaveEarly` recusa sem urna; a urna dispara do
+    `FirstWaveDelay` cheio.
+  - **2. Ministros**: endless não mexe neles (já era assim; agora com check). Rebobinar e load
+    tiram todos e enchem o STF 1..11 (`UBDMinisterSubsystem::ResetForNewMatch`).
+  - **3. Save/load**: slots de teste `BDMatch_Test` e `BDProgress_Test` (headless `-unattended`,
+    `-BDTestSlot`, regressão). Save só em Building com urna, sem candidato andando ou no ônibus e
+    sem desfile; guarda `MatchStart`, bocas, candidatos (enviados, caídos, pendente),
+    `LevelDownCount` e o tempo da contagem. Load só após derrota e só da mesma partida
+    (dificuldade + `MatchStart`), ou pelo Continue; reabre a montagem da onda salva como estava;
+    não gasta save; tira os ministros. Slot apagado na vitória e no Play; derrota mantém.
+    `BD.Save.Load` com a mesma trava; `BD.Save.Status` diz o slot e se dá para carregar.
+  - **4. Apuração** espera também candidato no ônibus e candidato pendente.
+  - **5. Load com vermelho à frente** não solta candidato: durante o restore a virada é ignorada.
+  - Regressão 106/106 antes dos checks; com os 15 novos (URNA ×2, SAVE ×10, MINISTRO ×2,
+    APURACAO ×1), 121/121 três vezes. Os dois alvos compilados. `BD.Sim.Run` segue avançando ondas.
+  - RAIOX atualizado (loop, ministro, saves, apuração; dúvidas #1, #3, #6 e #11 resolvidas).
+  - **Onde paramos**: (1) ele decidir saves e presos por dificuldade (3/2/1 do PLANO ou 2/2/2
+    dos DAs); (2) ver na tela o "coloque a urna" e o Continue/Load novos; (3) restante das
+    divergências do RAIOX antes das mecânicas novas.
+
 - **2026-10-13 (RAIOX.md: o que o código faz hoje) — 26b4e44** (desde ae47de3):
   - Briefing 14:00 "Raio-X da mecânica — somente leitura": foto exata das regras do jogo
     lidas no código e nos valores efetivos (DAs e ini), sem alterar nada.

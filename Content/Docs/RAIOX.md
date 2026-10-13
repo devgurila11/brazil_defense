@@ -1,6 +1,6 @@
 # Raio-X da mecânica — Brazil Defense
 
-**Foto de: 2026-10-13, commit ae47de3** (briefing 14:00, rodada só de leitura).
+**Foto de: 2026-10-13, commit ae47de3**; atualizada no mesmo dia pela leva de bugs do briefing 17:30 (urna, ministros, save/load, apuração).
 
 > O que o jogo FAZ hoje, lido no código. O PLANO.md diz o que o jogo deve
 > ser; este arquivo diz o que ele é, e marca onde os dois discordam.
@@ -35,10 +35,10 @@
 | Fase Setup | Dura um frame: sorteia seed, gerador de obstáculos (desligado), vai para Building no mesmo BeginPlay. Em Setup não se coloca nem move nada | `bRandomizeSeed` true; `bGenerateObstacles` False | BDMatchManager.cpp:89-128, 231-254 | Não está no PLANO |
 | Urna na mão | Sem urna no board, ela vai para a mão; as outras peças são recusadas até ela estar no chão (ObjectiveMissing). Qualquer célula livre e alcançável | `bRestrictToZone` False | BDGameMode.cpp:54-70; BDPlacementComponent.cpp:1320-1350 | Sim — §2.1 "zona restrita"; §5 e código: livre |
 | Urna travada | Só se coloca antes da onda 1; nunca é vendida nem movida | IsBuildLocked = onda ≥ 1 | BDMatchManager.h:175; CanPlace/CanRemove | Não (§5) |
-| Primeira contagem | `FirstWaveDelay` do DA; corre mesmo sem urna | Easy 90 / Normal 120 / Hard 45 s | StartBuildingPhase (BDMatchManager.cpp:280-292) | Não (§2.2) |
+| Primeira contagem | Só corre com a **urna no chão**: sem urna fica parada no valor cheio e o HUD mostra "coloque a urna para a contagem começar"; a urna no chão dispara do `FirstWaveDelay` cheio | Easy 90 / Normal 120 / Hard 45 s | Tick / IsAwaitingUrn (BDMatchManager.cpp); HUD.Wave.PlaceUrn | Não (§2.2) |
 | Contagem entre ondas | max(10; 45 × 0,94^onda): ≈42 s após a onda 1, piso de 10 s a partir da 25. Em tempo dilatado (2x/4x acelera, pausa para) | BaseWaveDelay 45, Decay 0,94, Min 10 | GetWaveDelay (BDGameBalanceSettings.cpp:140-144) | Não (§2.4) |
 | Tick em Building | FreezeTimer (debug) → IsEndDue → ResolveEnd → desconta contagem → StartWave em ≤0 | — | BDMatchManager.cpp:294-329 | Não está no PLANO |
-| Chamar a onda antes | Só em Building, só por console/sim (sem botão); acumula `EarlyCallBonus` (2/s pulado) que nada gasta | EarlyCallBonusPerSecond 2 | CallWaveEarly (:352-370) | Não está no PLANO |
+| Chamar a onda antes | Só em Building, só por console/sim (sem botão), **recusado sem urna no chão**; acumula `EarlyCallBonus` (2/s pulado) que nada gasta | EarlyCallBonusPerSecond 2 | CallWaveEarly | Não está no PLANO |
 | Início da onda | ++onda → WaveActive → dia anda → deslize das bocas → sorteio das ativas → total = por boca × bocas → espera do ônibus (máx. de 2,0 e 1,5 s) → OnWaveDealt (candidato agendado) | BusMoveSeconds 2, EngineLeadSeconds 1,5 | StartWave; BDWaveSubsystem.cpp:205-298 | Não está no PLANO (bocas: §5) |
 | Fim da onda | Limpa quando um inimigo sai da lista e não sobra creep de onda (candidato não conta) nem nada a soltar | — | ForgetEnemy (BDWaveSubsystem.cpp:1328-1350) | Não está no PLANO |
 | OnWaveCleared | +divisórias da onda → WaveLog → IsEndDue/ResolveEnd → senão abre Building | DividersPerWave 1 | BDMatchManager.cpp:458-488 | Não está no PLANO |
@@ -157,7 +157,7 @@
 | Nova virada | Depois do empate, o próximo vermelho dispara outro retorno completo | — | — | Não (§4) |
 | Retornante na urna | Derrota | — | :495-514 | Não (§4) |
 | Apuração | Espera também o retorno (inclusive os da fila) | — | IsEndDue (:490-499) | Não (§4/§8) |
-| Save/load | Candidatos não são salvos; no load, enviados e caídos zeram | — | RestoreMatch | Não está no PLANO |
+| Save/load | Enviados, caídos (ordinal, onda, vida), candidato pendente e onda antecipada vão no save e voltam no load. O load não dispara virada nem saída antecipada mesmo com vermelho à frente: só o próximo voto | FBDCandidateSaveState | CaptureState/RestoreState; HandleVotesChanged (IsRestoring) | Não está no PLANO |
 
 ## 6. Palácio e Mito
 
@@ -195,6 +195,7 @@
 | Quando sai | 1 por candidato morto (agendado ou retorno), se houver alguém no STF | bReleaseOnCandidateKilled true | BDMinisterSubsystem.cpp:182-198 | Não está no PLANO |
 | Quantos | Fila de assentos 1..11; fila vazia, não sai ninguém | MaxOnBoard 11 | :154-160, 200-211 | Não está no PLANO |
 | Assento | Do 1º ao último; quem foge volta ao fim da fila e pode sair de novo | — | BDMinister.cpp:148-161 | Não está no PLANO |
+| Saída de campo | Ministro só sai pelo chute do Mito. Vitória e "Continuar (endless)" não mexem neles (posição, estado, assento) nem na fila. Desfazer o tabuleiro (rebobinar para onda 0, load) tira todos e enche o STF de novo, assentos 1..11; partida nova (Play) é mundo novo | — | UBDMinisterSubsystem::ResetForNewMatch, chamado por ABDMatchManager::ResetBoardSystems | Não está no PLANO |
 | De onde | STF = ator com SM_STF; porta = célula pisável mais próxima; vários saem lado a lado | StfMesh | :31-178 | Não está no PLANO |
 | Aparência | Bloco preto 4×4×8; livro vermelho; cúpula esférica; sem colisão | BlockScale (4,4,8) | BDMinister.cpp:45-146 | Não está no PLANO |
 | Entrada | Anda até a porta; aí não protege ninguém, mas já pode ser chutado | — | Tick 475-480 | Não está no PLANO |
@@ -244,17 +245,18 @@
 | Escolha | Pelo menu; sem escolha (PIE/Continue) vale Normal (membro do ator); `DefaultDifficulty` das settings não é lido | — | BDMatchManager.cpp:93-102 | Não (§8) |
 | O que muda | Só divisórias (100/80/60), plataformas (10/8/5) e 1ª contagem (90/120/45). ObstacleCount (30/20/12) sem efeito. Dinheiro, saves, presos e ondas para vencer iguais | — | DA_Difficulty_* | **Sim** — §8 escalada de ondas e obstáculos |
 | WavesToWin | 100 nos três | — | :529-532 | Não (§8) |
-| IsEndDue | !venceu, onda ≥ 100, sem candidato vivo, sem retorno ativo; ignora candidato no ônibus e candidato pendente | — | :490-499 | Parcial (§8) |
+| IsEndDue | !venceu, onda ≥ 100, sem candidato vivo, **no ônibus**, **pendente** nem retorno ativo | — | IsEndDue (BDMatchManager.cpp) | Parcial (§8 cita só o candidato andando) |
 | Quando é avaliado | Na limpeza da onda (depois de divisórias e WaveLog) e em todo tick de Building | — | :308-313, 476-480 | Não (§8) |
 | Apuração | Azul ≥ vermelho = vitória (empate vence), senão derrota | — | ResolveEnd (:501-512) | Não (§8) |
 | Ordem das condições | (1) candidato na urna → derrota imediata; (2) limpeza: divisórias → WaveLog → IsEndDue → ResolveEnd → senão Building; (3) tick de Building: FreezeTimer → IsEndDue → ResolveEnd → contagem. Último retornante morto na onda ≥100 → nivelamento → empate → vitória | — | vários | Não está no PLANO (ordem) |
-| Vitória | `bWon`, grava progresso, zera dinheiro, congela o board | — | :539-562 | Não está no PLANO (dinheiro zerado) |
+| Vitória | `bWon`, grava progresso, **apaga o save**, zera dinheiro, congela o board | — | DeclareVictory | Não está no PLANO (dinheiro zerado, save apagado) |
 | Presos | Só no painel e no log | 2/2/2 | :534-537 | **Sim** — §8 1/2/3 |
 | Derrota | WaveLog + PostMatch, zera dinheiro; não desfaz vitória anterior | — | :751-769 | Não (§8) |
 | Endless | Só após vitória; começa sem dinheiro; só termina com candidato na urna (vermelho à frente não perde) | — | :735-749 | Não (§8) |
-| Saves: quando | Em Building (inclusive antes da onda 1 e no endless), com saves restantes | 2/2/2 (+1 cadeia) | :566-569 | **Sim** — §8 3/2/1 |
-| Saves: o que grava | Slot único "BDMatch": dificuldade, seed, onda, votos, dinheiro, velocidade, cotas, peças. **Não grava** bocas, candidatos, LevelDownCount, tempo da contagem | — | :571-617 | Parcial (§8) |
-| Load | Restaura na montagem da onda seguinte à salva, contagem cheia; não gasta save; o slot nunca é apagado (recarga ilimitada, até entre dificuldades) | — | :624-733 | Parcial (§8) |
+| Saves: quando | Em Building com saves restantes, **urna no chão**, **sem candidato andando ou no ônibus e sem desfile** (inclusive antes da onda 1 e no endless). Cada save desconta 1 | 2/2/2 (+1 cadeia) | GetSaveRefusal | **Sim** — §8 3/2/1 (decisão do usuário) |
+| Saves: o que grava | Um ponto de restauração por partida, sobrescrito a cada save. Slot do jogador "BDMatch"; **testes e regressão usam "BDMatch_Test"** (headless `-unattended`, `-BDTestSlot` ou `SetTestSlot`). Grava dificuldade, seed, `MatchStart`, onda, votos, dinheiro, velocidade, cotas, peças, **bocas**, **candidatos** (enviados, caídos, pendente), **LevelDownCount** e **tempo restante da contagem** | — | SaveMatch; UBDMatchSave | Não (§8) |
+| Load | Na partida, **só depois da derrota** e só o save **da mesma partida** (dificuldade e `MatchStart`); pelo Continue do menu, assume a dificuldade do save. Reabre a montagem da onda salva com o tempo que ela tinha; não gasta save; tira os ministros; não solta candidato. O slot é **apagado na vitória e no Play**; a derrota o mantém. `BD.Save.Load` segue a mesma trava | — | CanLoadSave / LoadMatch / RestoreMatch; UBDUISubsystem::PlayGame | Não (§8) |
+| Progresso | Dificuldades vencidas no slot "BDProgress"; **testes usam "BDProgress_Test"** (mesma regra do save), para uma vitória de teste não dar bônus em cadeia ao jogador | — | UBDProgressSave::GetSlotName | Não está no PLANO |
 | Abandono | Linha "Abandoned" no PostMatch ao sair ou carregar por cima | — | :157-169 | Não está no PLANO |
 
 ## 10. Ambientação que afeta jogo
@@ -445,7 +447,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 
 | # | Regra |
 |---|---|
-| 1 | Setup dura um frame; a contagem da onda 1 corre sem urna |
+| 1 | Setup dura um frame; a contagem da onda 1 só corre com a urna no chão |
 | 2 | Construir, vender, mover e evoluir durante a onda e com o jogo pausado |
 | 3 | Peça na mão atravessa ondas; cai em Setup, Victory e Defeat |
 | 4 | Ordem fixa das recusas na mão |
@@ -476,8 +478,8 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | 29 | Ministro inteiro (§7) |
 | 30 | Apuração espera o desfile do retorno; vale a contagem do momento da resolução (pode ser depois da 100); último retornante morto na onda ≥100 empata e vence |
 | 31 | Endless só termina com candidato na urna |
-| 32 | Slot de save nunca apagado (recarga ilimitada, entre dificuldades); save antes da onda 1 e no endless; load por console sem trava |
-| 33 | Load não restaura bocas, candidatos, LevelDownCount nem tempo da contagem |
+| 32 | Save: um ponto de restauração por partida; só em Building, com urna no chão e sem candidato andando ou desfile; slot apagado na vitória e no Play; load só após derrota (ou Continue); testes em slots próprios (BDMatch_Test, BDProgress_Test) |
+| 33 | O load tira os ministros e não solta candidato mesmo com vermelho à frente: só o próximo voto vira o placar |
 | 34 | Linha "Abandoned" no PostMatch |
 | 35 | Noite comprimida (3 de 16 ondas) |
 | 36 | Poste bloqueia a própria célula |
@@ -513,8 +515,7 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 | §8 | Dificuldades diferem em escalada e obstáculos | Escalada global; obstáculos desligados; só cotas e 1ª contagem mudam |
 | §8 | Presos 1/2/3 | 2/2/2 |
 | §8 | Saves 3/2/1 | 2/2/2 |
-| §8 | Restaura o estado completo (bocas…) no começo da onda salva | Sem bocas e candidatos; reabre na montagem com contagem cheia |
-| §8 | Apuração espera o candidato andando | Também espera o desfile; ignora candidato no ônibus |
+| §8 | Apuração espera o candidato andando | Espera também o candidato no ônibus, o pendente e o desfile do retorno |
 | §9 | Ônibus marcam as bocas ativas | Todos seguem sua boca; só as ativas têm motor e buzina |
 
 ## Comandos de console (gameplay)
@@ -566,17 +567,13 @@ Sem campo de gameplay: UBDAudioSettings, UBDBloodSettings (sem textura, sem manc
 
 | # | Ponto |
 |---|---|
-| 1 | **Onda 1 sem urna**: sem rota, os creeps são descartados e nada chama OnWaveCleared; a urna não pode mais ser posta → a partida parece ficar presa em WaveActive. Não testado. |
 | 2 | **Onda com 0 creeps** (iniciada durante o desfile) só limpa quando algum inimigo sai da lista; não há garantia de que sempre exista esse gatilho. Há outra chamada a `OnWaveCleared` (BDMatchManager.cpp:1283) não lida. |
-| 3 | **`IsEndDue` ignora** candidato no ônibus e candidato pendente: numa onda ≥100 a apuração pode correr antes de ele sair. |
 | 4 | **Venda depois do fim**: `CanRemove`/`SellPiece` não olham a fase; não confirmado se a entrada do jogo segue ativa com o painel de fim. |
 | 5 | **Creep sem rota após reroteamento**: o comentário diz que ele para, mas o código acrescenta a urna como waypoint (andaria reto atravessando barreiras). `WouldFenceInCreeps` deve impedir o caso. |
-| 6 | **Load com vermelho à frente**: os caídos zeram, então o broadcast pode soltar candidato antecipado já na montagem, ordinal reiniciado em 1. |
 | 7 | **Ordinal das divisórias** = ordem de saída, não de morte; com grupos (endless) a escada pode sair fora de ordem. |
 | 8 | **Candidato que morre pela 1ª vez durante um retorno** entra nos caídos mas não no desfile em curso. Intenção não documentada. |
 | 9 | **Onda pendente que coincide com onda devida**: sai um grupo só; o candidato devido parece se perder. |
 | 10 | **Candidato numa boca não ativa**: pode sair de boca sem ônibus estacionado. Não verificado visualmente. |
-| 11 | **Ministros não são limpos** no fim da partida nem ao rebobinar (sem reset no subsistema); sem palácio, o ministro fica no board para sempre. |
 | 12 | **Ministro na entrada** (Entering) não protege ninguém: deliberado? |
 | 13 | **Espera do motor** só ocorre com áudio ativo: headless e jogo têm cadência inicial diferente. |
 | 14 | **Tempo do desfile**: presume-se tempo de jogo (acelera em 2x/4x); não confirmado. |
