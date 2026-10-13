@@ -105,12 +105,35 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
 	bool IsSheltered() const;
 
+	/** Whether a rally makes it untouchable now: only a candidate making his speech (ABDCandidate). */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	virtual bool IsRallyImmune() const { return false; }
+
+	/**
+	 * Whether no defender may aim at it and no hit lands on it: covered by a minister, or a
+	 * candidate in the middle of his speech. What lands anyway is lost, as null votes.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Enemy")
+	bool IsUntouchable() const { return IsSheltered() || IsRallyImmune(); }
+
+	/**
+	 * Rises out of the ground in place over this many seconds before it walks (the crowd of
+	 * a rally): its body grows up from the floor, and it can be shot all the while.
+	 */
+	void BeginRise(float Seconds);
+
+	/** Whether it is still rising out of the ground. */
+	bool IsRising() const { return RiseRemaining > 0.0f; }
+
 	/**
 	 * Replaces the route. The new path is expected to start at the cell the creep is
 	 * heading to, so the crossing already under way is finished and then the new route
 	 * is followed. Used when the board changes under a creep already walking.
 	 */
 	void SetPath(const TArray<FBDCellCoord>& InPath);
+
+	/** Debug: reaches the urn now, wherever it is, as if it had walked there. For BD.Test.Regression. */
+	void DebugArrive() { Arrive(); }
 
 	/** Ends this creep as a kill: its VotesOnDeath go to the blue counter and it is removed. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Enemy")
@@ -200,6 +223,9 @@ protected:
 
 	/** Walking speed before the per creep variance, in cells per second. The data's, unless a child answers otherwise. */
 	virtual float GetBaseMoveSpeed() const;
+
+	/** Whether it stands where it is this frame instead of walking: rising, or a candidate's rally. */
+	virtual bool IsHeldInPlace() const { return IsRising(); }
 
 private:
 	UBDGridSubsystem* GetGrid() const;
@@ -346,4 +372,11 @@ private:
 
 	/** Blinks the body while covered and shows it again once not. */
 	void UpdateShelterBlink();
+
+	/** Seconds of the rise left, and how long the whole of it was. */
+	float RiseRemaining = 0.0f;
+	float RiseSeconds = 0.0f;
+
+	/** The body grows up out of the floor while it rises. */
+	void UpdateRise(float DeltaSeconds);
 };

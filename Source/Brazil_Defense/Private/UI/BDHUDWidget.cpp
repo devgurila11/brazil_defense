@@ -788,7 +788,7 @@ void UBDHUDWidget::ApplyResponsiveSizes()
 void UBDHUDWidget::RefreshTexts()
 {
 	SpeedLabel->SetText(Loc(TEXT("HUD.Speed")));
-	CandidateNotice->SetText(Loc(TEXT("HUD.Candidate.Notice")));
+	CandidateNotice->SetText(Loc(bRallyNotice ? TEXT("HUD.Candidate.Rally") : TEXT("HUD.Candidate.Notice")));
 	CancelLabel->SetText(Loc(TEXT("HUD.Placement.Cancel")));
 	MenuLabel->SetText(Loc(TEXT("HUD.Menu")));
 	EndlessLabel->SetText(Loc(TEXT("HUD.End.Endless")));
@@ -1456,8 +1456,20 @@ void UBDHUDWidget::UpdateCandidate(const float RealDeltaSeconds)
 	if (Candidate != nullptr && Candidate != LastCandidate.Get())
 	{
 		NoticeRemaining = UBDUISettings::Get().CandidateNoticeSeconds;
+		bRallyNotice = false;
+		CandidateNotice->SetText(Loc(TEXT("HUD.Candidate.Notice")));
 	}
 	LastCandidate = Candidate;
+
+	// A rally starting puts its own word on the same line, for a moment.
+	const int32 Rallies = Candidates != nullptr ? Candidates->GetRalliesStarted() : 0;
+	if (Rallies > LastRalliesSeen)
+	{
+		NoticeRemaining = UBDUISettings::Get().RallyNoticeSeconds;
+		bRallyNotice = true;
+		CandidateNotice->SetText(Loc(TEXT("HUD.Candidate.Rally")));
+	}
+	LastRalliesSeen = Rallies;
 
 	NoticeRemaining = FMath::Max(0.0f, NoticeRemaining - RealDeltaSeconds);
 	CandidateNotice->SetVisibility(NoticeRemaining > 0.0f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);

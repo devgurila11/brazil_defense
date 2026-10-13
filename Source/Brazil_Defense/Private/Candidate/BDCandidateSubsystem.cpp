@@ -4,6 +4,7 @@
 
 #include "BDLog.h"
 #include "Bribe/BDBribeSubsystem.h"
+#include "Candidate/BDRallyComponent.h"
 #include "Enemy/BDCandidate.h"
 #include "Enemy/BDEnemyData.h"
 #include "Engine/Engine.h"
@@ -301,6 +302,31 @@ void UBDCandidateSubsystem::ResetForNewMatch()
 	ReturnAlive = 0;
 	ReturnsStarted = 0;
 	ArrivedOrdinal = 0;
+	RallyHolder.Reset();
+}
+
+bool UBDCandidateSubsystem::TryClaimRally(ABDCandidate& Candidate)
+{
+	const ABDCandidate* Holder = RallyHolder.Get();
+	if (Holder != nullptr && Holder != &Candidate)
+	{
+		return false;
+	}
+	RallyHolder = &Candidate;
+	return true;
+}
+
+void UBDCandidateSubsystem::ReleaseRally(const ABDCandidate& Candidate)
+{
+	if (RallyHolder.Get() == &Candidate)
+	{
+		RallyHolder.Reset();
+	}
+}
+
+void UBDCandidateSubsystem::NotifyRallyStarted(const ABDCandidate& Candidate)
+{
+	++RalliesStarted;
 }
 
 FBDCandidateSaveState UBDCandidateSubsystem::CaptureState() const
@@ -414,6 +440,15 @@ ABDCandidate* UBDCandidateSubsystem::SpawnFromRecord(const FBDCandidateRecord& R
 	}
 	Spawned->Ordinal = Record.Ordinal;
 	Spawned->bReturning = bReturning;
+
+	// His rallies, by his record: the master switch, his own numbers, and the fallen come
+	// back only when the settings say so. Seeded like his mouth.
+	const UBDGameBalanceSettings& Balance = UBDGameBalanceSettings::Get();
+	const FBDRallyParams Rally = Record.Rally.IsSet() ? Record.Rally : UBDCandidateData::RallyForOrdinal(Record.Ordinal);
+	if (UBDRallyComponent* Rallies = Spawned->GetRally())
+	{
+		Rallies->Setup(Rally, Balance.bRallies && Rally.bRallies && (!bReturning || Balance.bRallyOnReturn), Stream.RandHelper(MAX_int32));
+	}
 	Spawned->SetDebugTint(BDCandidatePrivate::TintForOrdinal(Record.Ordinal));
 	// "Candidate N" until the twenty have names of their own.
 	FFormatNamedArguments NameArgs;
@@ -449,6 +484,7 @@ ABDCandidate* UBDCandidateSubsystem::SpawnCandidate(const TCHAR* Why, TArray<int
 	Record.Ordinal = Sent.Num() + 1;
 	Record.Wave = Match->GetCurrentWave();
 	Record.MaxHealth = Health;
+	Record.Rally = UBDCandidateData::RallyForOrdinal(Record.Ordinal);
 
 	ABDCandidate* Spawned = SpawnFromRecord(Record, /*bReturning*/ false, Why, MouthUses);
 	if (Spawned != nullptr)

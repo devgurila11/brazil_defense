@@ -4,6 +4,9 @@
 
 #include "Audio/BDSpeechMarks.h"
 #include "BDLog.h"
+#include "Candidate/BDCandidateSubsystem.h"
+#include "Candidate/BDRallyComponent.h"
+#include "Enemy/BDCandidate.h"
 #include "Camera/PlayerCameraManager.h"
 #include "CanvasItem.h"
 #include "CanvasTypes.h"
@@ -41,6 +44,85 @@ void ABDMatchHUD::DrawHUD()
 	DrawCandidateBars();
 	// Last, over the bars: who is talking reads over everything else.
 	DrawSpeechMarks();
+	DrawRallyMegaphones();
+}
+
+void ABDMatchHUD::DrawRallyMegaphones()
+{
+	const UBDCandidateSubsystem* Candidates = UBDCandidateSubsystem::Get(this);
+	if (Canvas == nullptr || Candidates == nullptr || PlayerOwner == nullptr || PlayerOwner->PlayerCameraManager == nullptr)
+	{
+		return;
+	}
+	TArray<ABDCandidate*> Walking;
+	Candidates->GetLivingCandidates(Walking);
+
+	const UBDUISettings& Settings = UBDUISettings::Get();
+	const FVector CameraUp = FRotationMatrix(PlayerOwner->PlayerCameraManager->GetCameraRotation()).GetUnitAxis(EAxis::Z);
+	for (const ABDCandidate* Candidate : Walking)
+	{
+		const UBDRallyComponent* Rally = Candidate != nullptr ? Candidate->GetRally() : nullptr;
+		if (Rally == nullptr || Rally->GetState() != EBDRallyState::Speaking || Candidate->IsHidden())
+		{
+			continue;
+		}
+		// Where his exclamation goes: over his head and his bar, sized by the zoom.
+		const FVector Location = Candidate->GetActorLocation();
+		const FBox Box = Candidate->GetComponentsBoundingBox(/*bNonColliding*/ true);
+		const float HeadZ = FMath::Max(Box.IsValid ? Box.Max.Z : Location.Z, Location.Z + Settings.CreepBarWorldHeight);
+		const FVector Foot(Location.X, Location.Y, HeadZ + Settings.SpeechMarkLift);
+		const FVector FootOnScreen = Canvas->Project(Foot);
+		const FVector TopOnScreen = Canvas->Project(Foot + CameraUp * Settings.SpeechMarkWorldHeight);
+		if (FootOnScreen.Z <= 0.0f || TopOnScreen.Z <= 0.0f)
+		{
+			continue;
+		}
+		const FVector2D FootPoint(FootOnScreen.X, FootOnScreen.Y);
+		const FVector2D TopPoint(TopOnScreen.X, TopOnScreen.Y);
+		const float Height = FVector2D::Distance(FootPoint, TopPoint);
+		if (Height >= Settings.SpeechMarkMinPixels)
+		{
+			DrawMegaphone((FootPoint + TopPoint) * 0.5f, Height, Settings.RallyMegaphoneColor);
+		}
+	}
+}
+
+void ABDMatchHUD::DrawMegaphone(const FVector2D& Center, const float Height, const FLinearColor& Color)
+{
+	TArray<FCanvasUVTri> Triangles;
+	const auto AddTriangle = [&Triangles](const FVector2D& A, const FVector2D& B, const FVector2D& C, const FLinearColor& TriangleColor)
+	{
+		FCanvasUVTri& Triangle = Triangles.AddDefaulted_GetRef();
+		Triangle.V0_Pos = A;
+		Triangle.V1_Pos = B;
+		Triangle.V2_Pos = C;
+		Triangle.V0_Color = TriangleColor;
+		Triangle.V1_Color = TriangleColor;
+		Triangle.V2_Color = TriangleColor;
+	};
+	const auto AddQuad = [&AddTriangle](const FVector2D& A, const FVector2D& B, const FVector2D& C, const FVector2D& D, const FLinearColor& QuadColor)
+	{
+		AddTriangle(A, B, C, QuadColor);
+		AddTriangle(A, C, D, QuadColor);
+	};
+	// The mouthpiece on the left, the horn widening to the right, the grip under it.
+	const auto AddShape = [&](const float Grow, const FLinearColor& ShapeColor)
+	{
+		const float H = Height;
+		const FVector2D C = Center;
+		AddQuad(C + FVector2D(-0.50f * H - Grow, -0.10f * H - Grow), C + FVector2D(-0.25f * H + Grow, -0.10f * H - Grow),
+			C + FVector2D(-0.25f * H + Grow, 0.10f * H + Grow), C + FVector2D(-0.50f * H - Grow, 0.10f * H + Grow), ShapeColor);
+		AddQuad(C + FVector2D(-0.27f * H - Grow, -0.14f * H - Grow), C + FVector2D(0.45f * H + Grow, -0.42f * H - Grow),
+			C + FVector2D(0.45f * H + Grow, 0.42f * H + Grow), C + FVector2D(-0.27f * H - Grow, 0.14f * H + Grow), ShapeColor);
+		AddQuad(C + FVector2D(-0.20f * H - Grow, 0.10f * H), C + FVector2D(-0.08f * H + Grow, 0.10f * H),
+			C + FVector2D(-0.10f * H + Grow, 0.42f * H + Grow), C + FVector2D(-0.22f * H - Grow, 0.42f * H + Grow), ShapeColor);
+	};
+	AddShape(FMath::Clamp(Height * 0.035f, 1.0f, 3.0f), FLinearColor(0.0f, 0.0f, 0.0f, 0.75f));
+	AddShape(0.0f, Color);
+
+	FCanvasTriangleItem Item(Triangles, GWhiteTexture);
+	Item.BlendMode = SE_BLEND_Translucent;
+	Canvas->DrawItem(Item);
 }
 
 void ABDMatchHUD::DrawSpeechMarks()

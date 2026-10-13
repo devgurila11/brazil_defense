@@ -161,6 +161,10 @@ public:
 	/** Wakes him on a full bar wherever he is. */
 	void DebugWake();
 
+	/** Whether he could aim at the creep at all, reach aside, and the candidate he would run after now. For BD.Test.Regression. */
+	bool DebugCouldTarget(const ABDEnemyBase* Enemy) const { return IsValidTarget(Enemy, MAX_flt); }
+	ABDEnemyBase* DebugFindCandidate() const { return FindCandidate(); }
+
 	/** His celebration as a kill would ask it, the chance taken as won. @return whether he said it. */
 	bool DebugCelebrate();
 

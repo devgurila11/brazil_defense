@@ -203,6 +203,9 @@ public:
 	/** Shots per second at the current level. */
 	float GetFireRate() const;
 
+	/** Debug: whether this defender could aim at the creep at all, range aside. For BD.Test.Regression. */
+	bool DebugCouldTarget(const ABDEnemyBase* Enemy) const { return IsValidTarget(Enemy, MAX_flt); }
+
 protected:
 	/** Spawns and launches one projectile at the current target. Virtual so a child can add a muzzle effect. */
 	virtual void Fire(ABDEnemyBase* Target, const FBDTowerLevel& LevelStats);

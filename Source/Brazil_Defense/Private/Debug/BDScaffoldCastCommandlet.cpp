@@ -5,6 +5,7 @@
 #include "Algo/Find.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "BDLog.h"
+#include "Candidate/BDCandidateData.h"
 #include "Cast/BDCast.h"
 #include "Enemy/BDEnemyData.h"
 #include "HAL/FileManager.h"
@@ -20,6 +21,7 @@
 #if WITH_EDITOR
 #include "Animation/Skeleton.h"
 #include "AssetToolsModule.h"
+#include "Engine/Engine.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Engine/SkeletalMesh.h"
 #include "IAssetTools.h"
@@ -277,6 +279,10 @@ namespace BDScaffoldCastPrivate
 			Enemy->FootstepSound.Reset();
 			Enemy->DeathSound.Reset();
 			Enemy->BodyFallSound.Reset();
+			if (UBDCandidateData* Candidate = Cast<UBDCandidateData>(Enemy))
+			{
+				Candidate->Rally.RallySpeech.Reset();
+			}
 		}
 		else if (UBDShooterData* Shooter = Cast<UBDShooterData>(&Data))
 		{
@@ -493,6 +499,36 @@ int32 UBDScaffoldCastCommandlet::Main(const FString& Params)
 		SaveDirtyPackages();
 	}
 
+	// 1b. The candidates already made become candidate data in place - same package, same name,
+	// so nothing pointing at them notices - with the rallies of their own number.
+	for (int32 Number = 1; Number <= Wanted[static_cast<int32>(EBDCastKind::Candidate)]; ++Number)
+	{
+		const FString PackageName = BDCast::GetPackageName(EBDCastKind::Candidate, Number);
+		const FString ObjectPath = PackageName + TEXT(".") + FPackageName::GetShortName(PackageName);
+		UBDEnemyData* Old = LoadObject<UBDEnemyData>(nullptr, *ObjectPath, nullptr, LOAD_NoWarn | LOAD_Quiet);
+		if (Old == nullptr || Old->IsA<UBDCandidateData>())
+		{
+			continue;
+		}
+		UE_LOG(LogBDDebug, Display, TEXT("BDScaffoldCast: %s turn %s into candidate data, with the rallies of candidate %d."), Verb, *PackageName, Number);
+		if (bDryRun)
+		{
+			continue;
+		}
+		UPackage* Package = Old->GetPackage();
+		const FName Name = Old->GetFName();
+		Old->Rename(nullptr, GetTransientPackage(), REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty);
+		UBDCandidateData* Candidate = NewObject<UBDCandidateData>(Package, Name, RF_Public | RF_Standalone);
+		UEngine::CopyPropertiesForUnrelatedObjects(Old, Candidate);
+		Candidate->Rally = FBDRallyParams::DefaultsFor(Number);
+		Old->ClearFlags(RF_Public | RF_Standalone);
+		Old->MarkAsGarbage();
+		if (!SavePackageOf(Candidate))
+		{
+			return 1;
+		}
+	}
+
 	// 2. Every data asset up to the count, created when missing, with the numbers of the first of its kind.
 	int32 Created = 0;
 	for (int32 KindIndex = 0; KindIndex < static_cast<int32>(EBDCastKind::Count); ++KindIndex)
@@ -520,6 +556,10 @@ int32 UBDScaffoldCastCommandlet::Main(const FString& Params)
 				: NewObject<UObject>(Package, BDCast::GetDataClass(Kind), Name);
 			Data->SetFlags(RF_Public | RF_Standalone);
 			ClearArt(*Data, Kind);
+			if (UBDCandidateData* Candidate = Cast<UBDCandidateData>(Data))
+			{
+				Candidate->Rally = FBDRallyParams::DefaultsFor(Number);
+			}
 			SetDisplayName(*Data, FText::FromString(ProvisionalName(Kind, Number, /*bPortuguese*/ true)));
 			FAssetRegistryModule::AssetCreated(Data);
 			if (!SavePackageOf(Data))

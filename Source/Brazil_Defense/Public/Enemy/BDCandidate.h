@@ -7,6 +7,7 @@
 #include "BDCandidate.generated.h"
 
 class UBDCandidateSubsystem;
+class UBDRallyComponent;
 
 /**
  * The red candidate. Walks the board like any creep, on a route of its own out of a
@@ -34,7 +35,11 @@ public:
 	//~ Begin ABDEnemyBase interface
 	virtual bool IsCandidate() const override { return true; }
 	virtual float GetBaseMoveSpeed() const override;
+	virtual bool IsRallyImmune() const override;
 	//~ End ABDEnemyBase interface
+
+	/** His rallies: when he stops, speaks and raises a crowd. Armed by the candidate subsystem as he walks out. */
+	UBDRallyComponent* GetRally() const { return Rally; }
 
 	/** Seconds since it came out of its mouth. Dilated like everything else. */
 	UFUNCTION(BlueprintPure, Category = "Brazil Defense|Candidate")
@@ -65,16 +70,17 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Brazil Defense|Candidate")
 	FText DisplayName;
 
-	/** Debug: reaches the urn now, wherever he is, as if he had walked there. For BD.Test.Regression. */
-	void DebugArrive() { Arrive(); }
-
 protected:
 	//~ Begin ABDEnemyBase interface
 	virtual void Arrive() override;
 	virtual void Die() override;
+	virtual bool IsHeldInPlace() const override;
 	//~ End ABDEnemyBase interface
 
 private:
+	UPROPERTY(VisibleAnywhere, Category = "Brazil Defense|Candidate")
+	TObjectPtr<UBDRallyComponent> Rally;
+
 	UBDCandidateSubsystem* GetCandidates() const;
 
 	/** World time it was sent out at. */

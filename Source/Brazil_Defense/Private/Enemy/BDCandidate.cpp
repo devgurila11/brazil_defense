@@ -3,6 +3,7 @@
 #include "Enemy/BDCandidate.h"
 
 #include "Candidate/BDCandidateSubsystem.h"
+#include "Candidate/BDRallyComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/World.h"
@@ -12,6 +13,18 @@ ABDCandidate::ABDCandidate()
 {
 	// Not a class default the wave subsystem could not override; a reminder of what this is.
 	SetCanBeDamaged(true);
+
+	Rally = CreateDefaultSubobject<UBDRallyComponent>(TEXT("Rally"));
+}
+
+bool ABDCandidate::IsRallyImmune() const
+{
+	return Rally != nullptr && Rally->IsImmune();
+}
+
+bool ABDCandidate::IsHeldInPlace() const
+{
+	return Super::IsHeldInPlace() || (Rally != nullptr && Rally->IsStopped());
 }
 
 void ABDCandidate::BeginPlay()

@@ -88,6 +88,33 @@ public:
 	 */
 	bool SayAlways(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank);
 
+	//~ The floor given to one speaker: a candidate's rally ----------------------
+	// While someone holds the floor, his are the only words: every other sentence already
+	// sounding stops, and none starts - the militants', the Mito's, Nicole's, a minister's
+	// cry - until he gives it back. Effects (shots, death cries, the urn) are not words and
+	// go on. The budget of sentences is 1, his.
+
+	/** Gives the floor to Speaker and silences every sentence of anyone else. */
+	void TakeFloor(AActor& Speaker);
+
+	/** Gives the floor back, when Speaker holds it. The budget is the settings' again. */
+	void GiveBackFloor(const AActor& Speaker);
+
+	/** Who holds the floor, or null. */
+	AActor* GetFloorHolder() const { return FloorHolder.Get(); }
+
+	/** How many sentences may sound together now: 1 while someone holds the floor, SpeechMaxConcurrent otherwise. */
+	int32 GetSpeechBudget() const;
+
+	/**
+	 * The floor holder says Words, at him, with his exclamation over him. Not a line any rule
+	 * can refuse: the floor is his. @return the sound, or null (no words, no audio, out of earshot).
+	 */
+	UAudioComponent* SayOnFloor(AActor& Speaker, USoundBase* Words);
+
+	/** Sentences refused since the world began because someone else held the floor. */
+	int32 GetFloorRefusals() const { return FloorRefusals; }
+
 	int32 GetAlwaysAsked() const { return AlwaysAsked; }
 	int32 GetAlwaysSaid() const { return AlwaysSaid; }
 
@@ -186,6 +213,12 @@ private:
 	 * in OutReplace to be stopped.
 	 */
 	bool CanSpeak(const FVector& Where, TWeakObjectPtr<UAudioComponent>& OutReplace);
+
+	/** Whether the floor belongs to someone other than Speaker: then Speaker keeps quiet. Counts the refusal. */
+	bool IsFloorTaken(const AActor& Speaker);
+
+	TWeakObjectPtr<AActor> FloorHolder;
+	int32 FloorRefusals = 0;
 
 	/** Sentences started and possibly still sounding. Also counted among Voices. */
 	TArray<TWeakObjectPtr<UAudioComponent>> Sentences;

@@ -4,6 +4,7 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "BDLog.h"
+#include "Candidate/BDCandidateData.h"
 #include "Misc/PackageName.h"
 #include "Enemy/BDEnemyData.h"
 #include "HAL/IConsoleManager.h"
@@ -66,6 +67,7 @@ UClass* BDCast::GetDataClass(const EBDCastKind Kind)
 	{
 	case EBDCastKind::Minister: return UBDMinisterData::StaticClass();
 	case EBDCastKind::Shooter: return UBDShooterData::StaticClass();
+	case EBDCastKind::Candidate: return UBDCandidateData::StaticClass();
 	default: return UBDEnemyData::StaticClass();
 	}
 }
@@ -145,6 +147,8 @@ void BDCast::GetSlots(const UObject& Data, const EBDCastKind Kind, TArray<FSlot>
 			Add(OutSlots, TEXT("Anim.Death"), Enemy->DeathAnimations.ContainsByPredicate([](const TSoftObjectPtr<UAnimSequenceBase>& Each) { return !Each.IsNull(); }));
 			Add(OutSlots, TEXT("Sound.Speech"), !Enemy->SpeechSound.IsNull());
 			Add(OutSlots, TEXT("Sound.Death"), !Enemy->DeathSound.IsNull());
+			const UBDCandidateData* Candidate = Cast<UBDCandidateData>(Enemy);
+			Add(OutSlots, TEXT("Sound.Rally"), Candidate != nullptr && !Candidate->Rally.RallySpeech.IsNull());
 		}
 		else
 		{

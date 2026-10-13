@@ -74,6 +74,7 @@
 "Day.Dusk","Fim de tarde"
 "Day.Night","Noite"
 "HUD.Candidate.Notice","O CANDIDATO SAIU"
+"HUD.Candidate.Rally","COMÍCIO"
 "HUD.Candidate.Health","{Name}  HP {Health}/{MaxHealth}"
 "HUD.Candidate.Frozen","APURAÇÃO CONGELADA  {Seconds}s"
 "HUD.Candidate.Return","OS CAÍDOS VOLTAM · faltam {Count}"

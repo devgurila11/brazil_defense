@@ -74,6 +74,7 @@
 "Day.Dusk","Dusk"
 "Day.Night","Night"
 "HUD.Candidate.Notice","THE CANDIDATE IS OUT"
+"HUD.Candidate.Rally","RALLY"
 "HUD.Candidate.Health","{Name}  HP {Health}/{MaxHealth}"
 "HUD.Candidate.Frozen","COUNT FROZEN  {Seconds}s"
 "HUD.Candidate.Return","THE FALLEN RETURN · {Count} left"

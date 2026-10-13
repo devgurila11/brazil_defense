@@ -633,4 +633,8 @@ private:
 	/** The candidate seen last tick, to notice the one that just came out. */
 	TWeakObjectPtr<ABDCandidate> LastCandidate;
 	float NoticeRemaining = 0.0f;
+
+	/** Rallies counted when last looked: one more puts the "rally" notice up on the candidate's line. */
+	int32 LastRalliesSeen = 0;
+	bool bRallyNotice = false;
 };

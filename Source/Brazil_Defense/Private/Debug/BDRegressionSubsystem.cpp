@@ -10,6 +10,8 @@
 #include "BDLog.h"
 #include "Bribe/BDBribeSubsystem.h"
 #include "Candidate/BDCandidateSubsystem.h"
+#include "Candidate/BDCandidateData.h"
+#include "Candidate/BDRallyComponent.h"
 #include "Enemy/BDCandidate.h"
 #include "Enemy/BDCreepSoundSettings.h"
 #include "Enemy/BDCreepSoundSubsystem.h"
@@ -87,6 +89,7 @@
 #include "Platform/BDPlatformComponent.h"
 #include "Stats/Stats.h"
 #include "Tower/BDTowerBase.h"
+#include "Tower/BDShooter.h"
 #include "UObject/UObjectIterator.h"
 #include "Wave/BDBusSubsystem.h"
 #include "Wave/BDWaveSettings.h"
@@ -644,6 +647,53 @@ ABDTowerBase* UBDRegressionSubsystem::FindNewTower(const TArray<ABDTowerBase*>& 
 		}
 	}
 	return nullptr;
+}
+
+void UBDRegressionSubsystem::TrackRally(const UBDRallyComponent& Rally)
+{
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (Rally.GetState() == TrackedState)
+	{
+		return;
+	}
+	const float Lasted = static_cast<float>(Now - TrackedSince);
+	switch (TrackedState)
+	{
+	case EBDRallyState::Tell: MeasuredTell = Lasted; break;
+	case EBDRallyState::Speaking: MeasuredSpeech = Lasted; break;
+	case EBDRallyState::Spawning: MeasuredRise = Lasted; break;
+	default: break;
+	}
+	TrackedState = Rally.GetState();
+	TrackedSince = Now;
+}
+
+bool UBDRegressionSubsystem::IsCrowdSound(const TArray<TWeakObjectPtr<ABDEnemyBase>>& Crowd, FString& Measured) const
+{
+	const UBDGridSubsystem* Grid = UBDGridSubsystem::Get(GetWorld());
+	TSet<FBDCellCoord> Cells;
+	int32 Alive = 0, Overlaps = 0, OffGround = 0, Unrouted = 0;
+	for (const TWeakObjectPtr<ABDEnemyBase>& Each : Crowd)
+	{
+		const ABDEnemyBase* Militant = Each.Get();
+		if (Militant == nullptr || Grid == nullptr || Militant->GetPath().Num() == 0)
+		{
+			++Unrouted;
+			continue;
+		}
+		++Alive;
+		// Where it rose is where its route starts.
+		const FBDCellCoord Cell = Militant->GetPath()[0];
+		bool bAlreadyThere = false;
+		Cells.Add(Cell, &bAlreadyThere);
+		Overlaps += bAlreadyThere ? 1 : 0;
+		const EBDCellState State = Grid->GetCellState(Cell);
+		OffGround += State == EBDCellState::Free || State == EBDCellState::Tower || State == EBDCellState::Spawn ? 0 : 1;
+		Unrouted += Grid->GetCellState(Militant->GetPath().Last()) == EBDCellState::Goal ? 0 : 1;
+	}
+	Measured = FString::Printf(TEXT("%d alive on %d cell(s), %d overlap(s), %d off free ground, %d without a way to the urn"),
+		Alive, Cells.Num(), Overlaps, OffGround, Unrouted);
+	return Alive == Crowd.Num() && Overlaps == 0 && OffGround == 0 && Unrouted == 0;
 }
 
 bool UBDRegressionSubsystem::RunStep(const int32 Index)
@@ -2715,6 +2765,406 @@ bool UBDRegressionSubsystem::RunStep(const int32 Index)
 			Match->IsEndless() && bKept && ReleasedSeat == NextSeat && NextSeat > 0,
 			FString::Printf(TEXT("%d of %d kept, seats %s, next seat out %d (expected %d)"), After.Num(), Standing.Num(), bKept ? TEXT("same") : TEXT("CHANGED"),
 				ReleasedSeat, NextSeat));
+
+		break;
+	}
+
+	case 11:
+	{
+		// The rally, on the endless board the win left: nothing else on it, the count far in
+		// the blue so no arrival turns it, the Mito awake on a long bar.
+		Waves->DespawnAll();
+		Match->AddVotesBlue(5000);
+
+		// The numbers of the cast: the first and the twentieth, as the scaffold wrote them.
+		const UBDCandidateData* First = UBDCandidateData::LoadForOrdinal(1);
+		const UBDCandidateData* Last = UBDCandidateData::LoadForOrdinal(FBDRallyParams::MaxOrdinal);
+		const auto Reads = [](const UBDCandidateData* Data, const float Every, const int32 Count)
+		{
+			return Data != nullptr && Data->Rally.bRallies && FMath::IsNearlyEqual(Data->Rally.RallyEvery, Every)
+				&& Data->Rally.RallyCount == Count && FMath::IsNearlyEqual(Data->Rally.RallyFirstDelay, 6.0f)
+				&& FMath::IsNearlyEqual(Data->Rally.RallyTellSeconds, 1.5f) && FMath::IsNearlyEqual(Data->Rally.RallyDuration, 4.0f)
+				&& Data->Rally.RallyComposition.Num() == 1 && Data->Rally.RallyComposition[0].Enemy.GetAssetName() == TEXT("DA_Horda_01");
+		};
+		Check(TEXT("COMICIO"), TEXT("every candidate's DA carries his rallies: the first every 20 s raising 2, the twentieth every 10 s raising 40, 6 s off the bus, tell 1.5 s, speech 4 s, DA_Horda_01"),
+			Reads(First, 20.0f, 2) && Reads(Last, 10.0f, 40),
+			FString::Printf(TEXT("01: %s every %.1fs x%d; 20: %s every %.1fs x%d"),
+				First != nullptr ? TEXT("candidate data") : TEXT("NOT candidate data"), First != nullptr ? First->Rally.RallyEvery : 0.0f, First != nullptr ? First->Rally.RallyCount : 0,
+				Last != nullptr ? TEXT("candidate data") : TEXT("NOT candidate data"), Last != nullptr ? Last->Rally.RallyEvery : 0.0f, Last != nullptr ? Last->Rally.RallyCount : 0));
+
+		ABDCandidate* Candidate = Candidates->SpawnCandidate(TEXT("BD.Test.Regression"));
+		UBDRallyComponent* Rally = Candidate != nullptr ? Candidate->GetRally() : nullptr;
+		if (Rally == nullptr)
+		{
+			Check(TEXT("COMICIO"), TEXT("a candidate walks out with his rallies"), false, TEXT("no candidate could be sent"));
+			return false;
+		}
+		const FBDRallyParams Expected = UBDCandidateData::RallyForOrdinal(Candidate->Ordinal);
+		Check(TEXT("COMICIO"), TEXT("he walks out with the rallies of his own number, armed, the first one RallyFirstDelay after the bus"),
+			Rally->IsEnabled() && Rally->GetState() == EBDRallyState::Walking && Rally->GetParams().RallyCount == Expected.RallyCount
+				&& FMath::IsNearlyEqual(Rally->GetParams().RallyEvery, Expected.RallyEvery) && FMath::IsNearlyEqual(Rally->GetNextRallyIn(), Expected.RallyFirstDelay, 0.05f),
+			FString::Printf(TEXT("candidate %d: %s, %d a crowd every %.1fs, first in %.1fs"), Candidate->Ordinal, Rally->IsEnabled() ? TEXT("armed") : TEXT("OFF"),
+				Rally->GetParams().RallyCount, Rally->GetParams().RallyEvery, Rally->GetNextRallyIn()));
+
+		// Then sooner and smaller, with the warning and the speech as the DA has them.
+		FBDRallyParams Quick = Rally->GetParams();
+		Quick.RallyFirstDelay = 0.5f;
+		Quick.RallyCount = 6;
+		Rally->Setup(Quick, /*bInEnabled*/ true, 7);
+
+		// The console: BD.Candidate.Rally makes him due at once, BD.Candidate.Status tells it.
+		GEngine->Exec(World, TEXT("BD.Candidate.Rally"));
+		GEngine->Exec(World, TEXT("BD.Candidate.Status"));
+		Check(TEXT("COMICIO"), TEXT("BD.Candidate.Rally makes the candidate on the board due for his rally now"),
+			Rally->GetState() == EBDRallyState::Walking && Rally->GetNextRallyIn() <= 0.0f,
+			FString::Printf(TEXT("%s, next in %.1fs"), UBDRallyComponent::StateName(Rally->GetState()), Rally->GetNextRallyIn()));
+
+		RallyAgent.Reset();
+		for (TActorIterator<ABDPalace> It(World); It; ++It)
+		{
+			if (ABDAgent* Agent = It->GetAgent())
+			{
+				RallyAgent = Agent;
+			}
+		}
+		if (!RallyAgent.IsValid())
+		{
+			// The palace went with the sale earlier on: one more, for the Mito it brings.
+			Match->AddPublicMoney(UBDGameBalanceSettings::Get().PalaceCost * 2, TEXT("BD.Test.Regression"));
+			FBDCellCoord PalaceCell;
+			PlaceNear(FindPiece(EBDPieceKind::Palace), UrnCell, 12, PalaceCell);
+			Placement->CancelSelection();
+			for (TActorIterator<ABDPalace> It(World); It; ++It)
+			{
+				if (ABDAgent* Agent = It->GetAgent())
+				{
+					RallyAgent = Agent;
+				}
+			}
+		}
+		if (ABDAgent* Agent = RallyAgent.Get())
+		{
+			Agent->DebugWake();
+			Agent->DebugSetPatrolRemaining(100000.0f);
+		}
+		RallyA = Candidate;
+		TrackedState = EBDRallyState::Walking;
+		TrackedSince = RallyStepStart = World->GetTimeSeconds();
+		MeasuredTell = MeasuredSpeech = MeasuredRise = -1.0f;
+		bChasedBeforeSpeech = bChasedDuringSpeech = bSpeechChecked = bCrowdChecked = false;
+		SpeechTicks = 0;
+		RaisedBefore = Waves->GetMatchTotals().CreepsRaised;
+		SpawnsLeftBefore = Waves->GetWaveSpawnsRemaining();
+		StepTicks = 0;
+		break;
+	}
+
+	case 12:
+	{
+		// His rally watched frame by frame: Tell -> Speaking -> Spawning -> Walking.
+		ABDCandidate* Candidate = RallyA.Get();
+		UBDRallyComponent* Rally = Candidate != nullptr ? Candidate->GetRally() : nullptr;
+		if (Rally == nullptr)
+		{
+			Check(TEXT("COMICIO"), TEXT("a rally goes Tell -> Speaking -> crowd -> Walking in the DA's times"), false, TEXT("he was gone before his rally was over"));
+			return false;
+		}
+		TrackRally(*Rally);
+		ABDAgent* Agent = RallyAgent.Get();
+		UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(World);
+		const bool bAfterHim = Agent != nullptr && Agent->DebugFindCandidate() == Candidate
+			&& (Agent->GetState() == EBDAgentState::Chasing || Agent->GetState() == EBDAgentState::Shooting);
+		const FBDRallyParams& Params = Rally->GetParams();
+
+		switch (Rally->GetState())
+		{
+		case EBDRallyState::Walking:
+		case EBDRallyState::Tell:
+			bChasedBeforeSpeech |= bAfterHim && !bCrowdChecked;
+			break;
+		case EBDRallyState::Speaking:
+			// The Mito drops him from his second frame of the speech on.
+			if (++SpeechTicks > 2)
+			{
+				bChasedDuringSpeech |= Agent != nullptr && (Agent->GetState() == EBDAgentState::Chasing || Agent->DebugFindCandidate() == Candidate);
+			}
+			if (!bSpeechChecked)
+			{
+				bSpeechChecked = true;
+				const float HealthBefore = Candidate->GetCurrentHealth();
+				const float WastedBefore = Waves->GetMatchTotals().DamageWasted;
+				Candidate->ApplyDamage(1000.0f, nullptr);
+				const bool bNull = FMath::IsNearlyEqual(Candidate->GetCurrentHealth(), HealthBefore) && Waves->GetMatchTotals().DamageWasted > WastedBefore;
+				int32 Defenders = 0, Shooters = 0, Aimers = 0;
+				for (TActorIterator<ABDTowerBase> It(World); It; ++It)
+				{
+					++Defenders;
+					Shooters += It->IsA<ABDShooter>() ? 1 : 0;
+					Aimers += It->DebugCouldTarget(Candidate) ? 1 : 0;
+				}
+				const bool bMito = Agent != nullptr && (Agent->DebugCouldTarget(Candidate) || Agent->DebugFindCandidate() == Candidate);
+				Check(TEXT("COMICIO"), TEXT("while he speaks nothing lands - the hit is lost as null votes - and no tower, no Nicole and no Mito can aim at him"),
+					bNull && Candidate->IsUntouchable() && Aimers == 0 && !bMito && Defenders > 0,
+					FString::Printf(TEXT("health %.0f -> %.0f, wasted +%.0f; %d of %d defender(s) (%d shooter(s)) could aim, Mito %s"),
+						HealthBefore, Candidate->GetCurrentHealth(), Waves->GetMatchTotals().DamageWasted - WastedBefore, Aimers, Defenders, Shooters,
+						Agent == nullptr ? TEXT("not on the board") : (bMito ? TEXT("SEES HIM") : TEXT("does not see him"))));
+
+				const UBDPalaceData* PalaceData = LoadObject<UBDPalaceData>(nullptr, TEXT("/Game/BD/Data/DA_PalaceData.DA_PalaceData"));
+				const int32 RefusalsBefore = Sounds != nullptr ? Sounds->GetFloorRefusals() : 0;
+				const bool bKickSaid = Sounds != nullptr && Agent != nullptr && PalaceData != nullptr && Sounds->SayAlways(*Agent, PalaceData->AgentKickSound);
+				Check(TEXT("FALA"), TEXT("while he speaks the floor is his: one sentence at most, and a line always said (the Mito's kick) is refused"),
+					Sounds != nullptr && Sounds->GetFloorHolder() == Candidate && Sounds->GetSpeechBudget() == 1 && !bKickSaid && Sounds->GetFloorRefusals() > RefusalsBefore,
+					FString::Printf(TEXT("floor %s, budget %d, kick line %s, %d refusal(s)"), Sounds != nullptr ? *GetNameSafe(Sounds->GetFloorHolder()) : TEXT("-"),
+						Sounds != nullptr ? Sounds->GetSpeechBudget() : 0, bKickSaid ? TEXT("SAID") : TEXT("refused"),
+						Sounds != nullptr ? Sounds->GetFloorRefusals() - RefusalsBefore : 0));
+			}
+			break;
+		case EBDRallyState::Spawning:
+			if (!bCrowdChecked)
+			{
+				bCrowdChecked = true;
+				const TArray<TWeakObjectPtr<ABDEnemyBase>> Crowd = Rally->GetLastCrowd();
+				FString CrowdMeasured;
+				const bool bSound = IsCrowdSound(Crowd, CrowdMeasured);
+				const bool bRising = !Crowd.ContainsByPredicate([](const TWeakObjectPtr<ABDEnemyBase>& Each) { return !Each.IsValid() || !Each->IsRising(); });
+				Check(TEXT("COMICIO"), TEXT("at the end of the speech RallyCount militants rise around him: one a cell, on free ground leading to the urn, routed, out of the ground"),
+					Rally->GetLastRaised() == Params.RallyCount && Crowd.Num() == Params.RallyCount && bSound && bRising,
+					FString::Printf(TEXT("%d of %d raised, %s, %s"), Rally->GetLastRaised(), Params.RallyCount, *CrowdMeasured, bRising ? TEXT("rising") : TEXT("NOT RISING")));
+				const int32 Raised = Waves->GetMatchTotals().CreepsRaised - RaisedBefore;
+				Check(TEXT("COMICIO"), TEXT("the crowd is not the wave's count: what the wave still had to send is untouched, the match counts them as raised"),
+					Waves->GetWaveSpawnsRemaining() == SpawnsLeftBefore && Raised == Params.RallyCount,
+					FString::Printf(TEXT("wave still to send %d -> %d, %d raised"), SpawnsLeftBefore, Waves->GetWaveSpawnsRemaining(), Raised));
+
+				// They vote like anyone: blue when one falls, red when one reaches the urn.
+				ABDEnemyBase* Felled = Crowd.Num() > 1 ? Crowd[0].Get() : nullptr;
+				ABDEnemyBase* Leaker = Crowd.Num() > 1 ? Crowd[1].Get() : nullptr;
+				const int32 BlueBefore = Match->GetVotesBlue();
+				const int32 RedBefore = Match->GetVotesRed();
+				if (Felled != nullptr) { Felled->ApplyDamage(Felled->GetMaxHealth() * 10.0f, nullptr); }
+				if (Leaker != nullptr) { Leaker->DebugArrive(); }
+				Check(TEXT("COMICIO"), TEXT("a militant of the crowd votes like any other: blue when it falls, red at the urn"),
+					Felled != nullptr && Leaker != nullptr && Match->GetVotesBlue() > BlueBefore && Match->GetVotesRed() > RedBefore,
+					FString::Printf(TEXT("blue %d -> %d, red %d -> %d"), BlueBefore, Match->GetVotesBlue(), RedBefore, Match->GetVotesRed()));
+			}
+			break;
+		}
+
+		if (bCrowdChecked && Rally->GetState() == EBDRallyState::Walking)
+		{
+			const float Rise = UBDGameBalanceSettings::Get().RallyRiseSeconds;
+			const float Jitter = Params.RallyEvery * Params.RallyEveryJitter;
+			Check(TEXT("COMICIO"), TEXT("Tell -> Speaking -> crowd -> Walking in the DA's times, the next rally RallyEvery away within its draw"),
+				FMath::IsNearlyEqual(MeasuredTell, Params.RallyTellSeconds, 0.1f) && FMath::IsNearlyEqual(MeasuredSpeech, Rally->GetSpeechSeconds(), 0.1f)
+					&& Rally->GetSpeechSeconds() >= Params.RallyMinDuration && FMath::IsNearlyEqual(MeasuredRise, Rise, 0.1f)
+					&& Rally->GetNextRallyIn() >= Params.RallyEvery - Jitter - 0.1f && Rally->GetNextRallyIn() <= Params.RallyEvery + Jitter + 0.1f,
+				FString::Printf(TEXT("tell %.2f/%.2fs, speech %.2f/%.2fs, rise %.2f/%.2fs, next in %.1fs (%.1f +- %.1f)"),
+					MeasuredTell, Params.RallyTellSeconds, MeasuredSpeech, Rally->GetSpeechSeconds(), MeasuredRise, Rise,
+					Rally->GetNextRallyIn(), Params.RallyEvery, Jitter));
+			const int32 Budget = Sounds != nullptr ? Sounds->GetSpeechBudget() : 0;
+			Check(TEXT("FALA"), TEXT("once he is done the floor is free and the budget back to 2"),
+				Sounds != nullptr && Sounds->GetFloorHolder() == nullptr && Budget == 2 && Budget == UBDCreepSoundSettings::Get().SpeechMaxConcurrent,
+				FString::Printf(TEXT("floor %s, budget %d (settings %d)"), Sounds != nullptr ? *GetNameSafe(Sounds->GetFloorHolder()) : TEXT("-"),
+					Budget, UBDCreepSoundSettings::Get().SpeechMaxConcurrent));
+			StepTicks = 0;
+			break;
+		}
+		if (World->GetTimeSeconds() - RallyStepStart > 30.0)
+		{
+			Check(TEXT("COMICIO"), TEXT("a rally goes Tell -> Speaking -> crowd -> Walking in the DA's times"), false,
+				FString::Printf(TEXT("stuck in %s after %.0fs"), UBDRallyComponent::StateName(Rally->GetState()), World->GetTimeSeconds() - RallyStepStart));
+			return false;
+		}
+		return true;
+	}
+
+	case 13:
+	{
+		// The Mito, once the speech is over: after him again, whatever the distance.
+		ABDCandidate* Candidate = RallyA.Get();
+		ABDAgent* Agent = RallyAgent.Get();
+		const bool bAfterHim = Agent != nullptr && Candidate != nullptr && Agent->DebugFindCandidate() == Candidate
+			&& (Agent->GetState() == EBDAgentState::Chasing || Agent->GetState() == EBDAgentState::Shooting);
+		if (!bAfterHim && Agent != nullptr && ++StepTicks <= MaxWaitTicks)
+		{
+			return true;
+		}
+		Check(TEXT("COMICIO"), TEXT("the Mito runs after him, leaves him for the patrol while he speaks, and runs after him again once he is done"),
+			Agent != nullptr && bChasedBeforeSpeech && !bChasedDuringSpeech && bAfterHim,
+			FString::Printf(TEXT("before the speech %s, during %s, after %s; %s"), bChasedBeforeSpeech ? TEXT("after him") : TEXT("NOT after him"),
+				bChasedDuringSpeech ? TEXT("STILL AFTER HIM") : TEXT("patrolling"), bAfterHim ? TEXT("after him") : TEXT("NOT after him"),
+				Agent != nullptr ? *Agent->Describe() : TEXT("no Agent on the board")));
+		break;
+	}
+
+	case 14:
+	{
+		// Two candidates due at the same moment: one rally at a time.
+		ABDCandidate* A = RallyA.Get();
+		ABDCandidate* B = Candidates->SpawnCandidate(TEXT("BD.Test.Regression"));
+		if (A == nullptr || B == nullptr || A->GetRally() == nullptr || B->GetRally() == nullptr)
+		{
+			Check(TEXT("COMICIO"), TEXT("two candidates due together rally one after the other"), false, TEXT("two candidates could not be had"));
+			return false;
+		}
+		FBDRallyParams Short = A->GetRally()->GetParams();
+		Short.RallyFirstDelay = 0.0f;
+		Short.RallyTellSeconds = 0.2f;
+		Short.RallyDuration = 0.3f;
+		Short.RallyMinDuration = 0.3f;
+		Short.RallyCount = 0;
+		A->GetRally()->Setup(Short, /*bInEnabled*/ true, 1);
+		B->GetRally()->Setup(Short, /*bInEnabled*/ true, 2);
+		RallyB = B;
+		RallyStartsA = A->GetRally()->GetRalliesStarted();
+		bBothRallying = false;
+		RallyStepStart = World->GetTimeSeconds();
+		break;
+	}
+
+	case 15:
+	{
+		const UBDRallyComponent* RA = RallyA.IsValid() ? RallyA->GetRally() : nullptr;
+		const UBDRallyComponent* RB = RallyB.IsValid() ? RallyB->GetRally() : nullptr;
+		if (RA == nullptr || RB == nullptr)
+		{
+			Check(TEXT("COMICIO"), TEXT("two candidates due together rally one after the other"), false, TEXT("one of them was gone"));
+			return false;
+		}
+		const bool bAIn = RA->GetState() != EBDRallyState::Walking;
+		const bool bBIn = RB->GetState() != EBDRallyState::Walking;
+		bBothRallying |= bAIn && bBIn;
+		if (RA->GetRalliesStarted() > RallyStartsA && RB->GetRalliesStarted() >= 1 && !bAIn && !bBIn)
+		{
+			Check(TEXT("COMICIO"), TEXT("two candidates due at the same moment rally one after the other: the second waits for the first to finish before his warning"),
+				!bBothRallying, FString::Printf(TEXT("%d and %d rally(ies) each, %s"), RA->GetRalliesStarted() - RallyStartsA, RB->GetRalliesStarted(),
+					bBothRallying ? TEXT("BOTH AT ONCE at some point") : TEXT("never both at once")));
+			break;
+		}
+		if (World->GetTimeSeconds() - RallyStepStart > 20.0)
+		{
+			Check(TEXT("COMICIO"), TEXT("two candidates due together rally one after the other"), false,
+				FString::Printf(TEXT("A %s (%d), B %s (%d) after 20 s"), UBDRallyComponent::StateName(RA->GetState()), RA->GetRalliesStarted() - RallyStartsA,
+					UBDRallyComponent::StateName(RB->GetState()), RB->GetRalliesStarted()));
+			return false;
+		}
+		return true;
+	}
+
+	case 16:
+	{
+		// One of the fallen come back does not rally, with the settings as they ship.
+		Waves->DespawnAll();
+		if (Candidates->GetFallenCount() == 0)
+		{
+			if (ABDCandidate* Felled = Candidates->SpawnCandidate(TEXT("BD.Test.Regression")))
+			{
+				Felled->ApplyDamage(Felled->GetMaxHealth() * 10.0f, nullptr);
+			}
+		}
+		Candidates->BeginReturn(TEXT("BD.Test.Regression"));
+		StepTicks = 0;
+		break;
+	}
+
+	case 17:
+	{
+		TArray<ABDCandidate*> Living;
+		Candidates->GetLivingCandidates(Living);
+		ABDCandidate* Returning = nullptr;
+		for (ABDCandidate* Each : Living)
+		{
+			if (Each != nullptr && Each->bReturning) { Returning = Each; }
+		}
+		if (Returning == nullptr)
+		{
+			if (++StepTicks > MaxWaitTicks)
+			{
+				Check(TEXT("COMICIO"), TEXT("a fallen candidate come back does not rally (bRallyOnReturn off)"), false, TEXT("no candidate came back"));
+				return false;
+			}
+			return true;
+		}
+		FString Why;
+		const bool bForced = Returning->GetRally() != nullptr && Returning->GetRally()->ForceRally(Why);
+		Check(TEXT("COMICIO"), TEXT("a fallen candidate come back does not rally (bRallyOnReturn off), not even when forced"),
+			!UBDGameBalanceSettings::Get().bRallyOnReturn && Returning->GetRally() != nullptr && !Returning->GetRally()->IsEnabled() && !bForced,
+			FString::Printf(TEXT("candidate %d returning: rallies %s, forced %s"), Returning->Ordinal,
+				Returning->GetRally() != nullptr && Returning->GetRally()->IsEnabled() ? TEXT("ON") : TEXT("off"),
+				bForced ? TEXT("ACCEPTED") : *FString::Printf(TEXT("refused (%s)"), *Why)));
+		break;
+	}
+
+	case 18:
+	{
+		// Forty in a narrow corridor: his own route, a cell either side, every other free cell
+		// turned to scenery, and a crowd of forty at once.
+		Waves->DespawnAll();
+		Candidates->ResetForNewMatch();
+		ABDCandidate* Candidate = Candidates->SpawnCandidate(TEXT("BD.Test.Regression"));
+		if (Candidate == nullptr || Candidate->GetRally() == nullptr)
+		{
+			Check(TEXT("COMICIO"), TEXT("40 militants rise in a narrow corridor without two on one cell"), false, TEXT("no candidate could be sent"));
+			return false;
+		}
+		Corridor.Reset();
+		for (const FBDCellCoord& Cell : Candidate->GetPath())
+		{
+			for (int32 DY = -1; DY <= 1; ++DY)
+			{
+				for (int32 DX = -1; DX <= 1; ++DX)
+				{
+					Corridor.Add(FBDCellCoord(Cell.X + DX, Cell.Y + DY));
+				}
+			}
+		}
+		int32 Walled = 0;
+		for (int32 Y = 0; Y < Grid->GetSizeY(); ++Y)
+		{
+			for (int32 X = 0; X < Grid->GetSizeX(); ++X)
+			{
+				const FBDCellCoord Cell(X, Y);
+				if (!Corridor.Contains(Cell) && Grid->GetCellState(Cell) == EBDCellState::Free)
+				{
+					Walled += Grid->SetCellState(Cell, EBDCellState::Blocked) ? 1 : 0;
+				}
+			}
+		}
+		FBDRallyParams Forty = Candidate->GetRally()->GetParams();
+		Forty.RallyFirstDelay = 0.0f;
+		Forty.RallyTellSeconds = 0.1f;
+		Forty.RallyDuration = 0.1f;
+		Forty.RallyMinDuration = 0.1f;
+		Forty.RallyCount = 40;
+		Candidate->GetRally()->Setup(Forty, /*bInEnabled*/ true, 40);
+		UE_LOG(LogBDDebug, Log, TEXT("REGRESSION rally corridor: route of %d cell(s), %d cell(s) kept around it, %d walled off."),
+			Candidate->GetPath().Num(), Corridor.Num(), Walled);
+		RallyA = Candidate;
+		RallyStepStart = World->GetTimeSeconds();
+		break;
+	}
+
+	case 19:
+	{
+		const UBDRallyComponent* Rally = RallyA.IsValid() ? RallyA->GetRally() : nullptr;
+		if (Rally != nullptr && Rally->GetLastAsked() == 0 && World->GetTimeSeconds() - RallyStepStart <= 20.0)
+		{
+			return true;
+		}
+		FString CrowdMeasured;
+		const bool bSound = Rally != nullptr && IsCrowdSound(Rally->GetLastCrowd(), CrowdMeasured);
+		int32 Outside = 0;
+		if (Rally != nullptr)
+		{
+			for (const TWeakObjectPtr<ABDEnemyBase>& Each : Rally->GetLastCrowd())
+			{
+				Outside += Each.IsValid() && Each->GetPath().Num() > 0 && !Corridor.Contains(Each->GetPath()[0])
+					&& Grid->GetCellState(Each->GetPath()[0]) != EBDCellState::Spawn ? 1 : 0;
+			}
+		}
+		Check(TEXT("COMICIO"), TEXT("40 militants rise in a narrow corridor (his route, a cell either side) without two on one cell"),
+			Rally != nullptr && Rally->GetLastRaised() == 40 && bSound && Outside == 0,
+			Rally != nullptr ? FString::Printf(TEXT("%d of %d raised, %s, %d outside the corridor"), Rally->GetLastRaised(), Rally->GetLastAsked(), *CrowdMeasured, Outside)
+				: FString(TEXT("the candidate was gone")));
 
 		FString SlotMeasured;
 		Check(TEXT("SAVE"), TEXT("the whole run wrote only the test slots: the player's match save and progress are untouched"), UBDMatchSave::IsTestSlot() && IsPlayerSlotUntouched(SlotMeasured),

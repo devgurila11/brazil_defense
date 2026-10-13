@@ -10,6 +10,9 @@
 
 class UBDDifficultyData;
 class UCurveFloat;
+class UMaterialInterface;
+class USoundBase;
+class UStaticMesh;
 
 /**
  * Everything about how a match paces itself, kept out of the code so it can be tuned
@@ -132,6 +135,46 @@ public:
 	/** Seconds the return of the fallen is spread over when the count turns red: the parade's length. */
 	UPROPERTY(config, EditAnywhere, Category = "Candidate", meta = (ClampMin = "1.0", UIMin = "1.0", ForceUnits = "s"))
 	float ReturnParadeSeconds = 30.0f;
+
+	//~ The rally -------------------------------------------------------------
+	// Every candidate stops now and then on his way: a warning, a speech nobody can touch
+	// him through, and a crowd rising out of the ground around him (UBDRallyComponent). How
+	// often, how long and how many is his own, on his data (FBDRallyParams); what is the
+	// same for all of them is here.
+
+	/** Master switch of the rallies, for measuring the game without them. Off, no candidate stops. */
+	UPROPERTY(config, EditAnywhere, Category = "Rally")
+	bool bRallies = true;
+
+	/** Whether the fallen coming back rally too. Off: the return is already the punishment, and a crowd on top of it would be a certain defeat. */
+	UPROPERTY(config, EditAnywhere, Category = "Rally")
+	bool bRallyOnReturn = false;
+
+	/** Seconds a militant of the crowd takes to rise out of the ground, in place. The candidate waits for them. */
+	UPROPERTY(config, EditAnywhere, Category = "Rally", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float RallyRiseSeconds = 0.6f;
+
+	/** How far from him, in steps over walkable cells, the crowd may still find room. What finds none is not raised. */
+	UPROPERTY(config, EditAnywhere, Category = "Rally", meta = (ClampMin = "1", UIMin = "1"))
+	int32 RallyMaxSteps = 20;
+
+	/** The short sound of the warning, at him. Empty: the exclamation alone. */
+	UPROPERTY(config, EditAnywhere, Category = "Rally", meta = (AllowedClasses = "/Script/Engine.SoundBase"))
+	TSoftObjectPtr<USoundBase> RallyTellSound;
+
+	/** The red disc on the floor around him while he speaks: radius in cells and pulses a second. */
+	UPROPERTY(config, EditAnywhere, Category = "Rally", meta = (ClampMin = "0.0", UIMin = "0.0"))
+	float RallyAuraRadiusCells = 1.5f;
+
+	UPROPERTY(config, EditAnywhere, Category = "Rally", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "Hz"))
+	float RallyAuraPulseHz = 1.0f;
+
+	/** The disc: a flat shape 100 units across (the engine cylinder) and the material it wears ("Pulse" 0..1 drives it). */
+	UPROPERTY(config, EditAnywhere, Category = "Rally")
+	TSoftObjectPtr<UStaticMesh> RallyAuraMesh;
+
+	UPROPERTY(config, EditAnywhere, Category = "Rally", meta = (AllowedClasses = "/Script/Engine.MaterialInterface"))
+	TSoftObjectPtr<UMaterialInterface> RallyAuraMaterial;
 
 	//~ Wave scaling -----------------------------------------------------------
 

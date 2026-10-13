@@ -277,6 +277,14 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
 	float CandidateNoticeSeconds = 4.0f;
 
+	/** Seconds the "rally" notice stays on the candidate's line when one of them starts a rally. */
+	UPROPERTY(config, EditAnywhere, Category = "HUD", meta = (ClampMin = "0.0", UIMin = "0.0", ForceUnits = "s"))
+	float RallyNoticeSeconds = 2.0f;
+
+	/** The megaphone over a candidate making his speech, as tall as the speech marks. */
+	UPROPERTY(config, EditAnywhere, Category = "Speech Marks")
+	FLinearColor RallyMegaphoneColor = FLinearColor(0.95f, 0.12f, 0.10f, 1.0f);
+
 	//~ Audio -----------------------------------------------------------------
 	// Four classes side by side under the master, each with its own slider and mute in the
 	// options, driven through a sound mix override: any sound put on one of them follows

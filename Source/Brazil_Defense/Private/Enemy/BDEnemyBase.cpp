@@ -599,13 +599,46 @@ void ABDEnemyBase::UpdateShelterBlink()
 	}
 }
 
+void ABDEnemyBase::BeginRise(const float Seconds)
+{
+	RiseSeconds = FMath::Max(0.0f, Seconds);
+	RiseRemaining = RiseSeconds;
+	UpdateRise(0.0f);
+}
+
+void ABDEnemyBase::UpdateRise(const float DeltaSeconds)
+{
+	if (RiseSeconds <= 0.0f || RootComponent == nullptr)
+	{
+		return;
+	}
+	RiseRemaining = FMath::Max(0.0f, RiseRemaining - DeltaSeconds);
+	// The root is the floor contact, so squashing it grows the body up out of the ground.
+	const float Height = FMath::Clamp(1.0f - RiseRemaining / RiseSeconds, 0.01f, 1.0f);
+	RootComponent->SetRelativeScale3D(FVector(1.0f, 1.0f, Height));
+	if (RiseRemaining <= 0.0f)
+	{
+		RiseSeconds = 0.0f;
+		RootComponent->SetRelativeScale3D(FVector::OneVector);
+	}
+}
+
 void ABDEnemyBase::Tick(const float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	UpdateShelterBlink();
+	UpdateRise(DeltaSeconds);
 
 	if (bFinished || Data == nullptr || !Waypoints.IsValidIndex(CurrentWaypoint))
 	{
+		return;
+	}
+
+	// Rising out of the ground, or a candidate stopped for his rally: on the spot, feet still.
+	if (IsHeldInPlace())
+	{
+		CurrentSpeed = 0.0f;
+		UpdateAnimationRate();
 		return;
 	}
 
@@ -756,14 +789,16 @@ void ABDEnemyBase::ApplyDamage(const float Damage, AActor* Source)
 		return;
 	}
 
-	// Under a minister's cover nothing lands: a shot or a blast already on its way is lost.
-	if (IsSheltered())
+	// Under a minister's cover, or through a candidate's speech, nothing lands: a shot or a
+	// blast already on its way is lost, and counts as null votes like any waste.
+	if (IsUntouchable())
 	{
 		if (UBDWaveSubsystem* Waves = GetWaves())
 		{
 			Waves->ReportWastedDamage(Damage, /*bLostShot*/ false);
 		}
-		UE_LOG(LogBDWave, Verbose, TEXT("%s covered by a minister: %.0f from %s lost."), *GetName(), Damage, *GetNameSafe(Source));
+		UE_LOG(LogBDWave, Verbose, TEXT("%s %s: %.0f from %s lost."), *GetName(),
+			IsRallyImmune() ? TEXT("in the middle of his speech") : TEXT("covered by a minister"), Damage, *GetNameSafe(Source));
 		return;
 	}
 

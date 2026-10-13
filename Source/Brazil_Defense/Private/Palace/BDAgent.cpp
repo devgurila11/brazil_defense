@@ -508,7 +508,7 @@ bool ABDAgent::TurnTowards(const float WantedYaw, const float DeltaSeconds, cons
 bool ABDAgent::IsValidTarget(const ABDEnemyBase* Enemy, const float RadiusSquared) const
 {
 	return Enemy != nullptr && IsValid(Enemy) && !Enemy->HasArrived() && !Enemy->IsDoomed()
-		&& Enemy->GetCurrentHealth() > 0.0f && !Enemy->IsSheltered()
+		&& Enemy->GetCurrentHealth() > 0.0f && !Enemy->IsUntouchable()
 		&& FVector::DistSquared2D(Enemy->GetActorLocation(), GetActorLocation()) <= RadiusSquared;
 }
 
@@ -596,7 +596,9 @@ ABDEnemyBase* ABDAgent::FindCandidate() const
 	float NearestDistance = MAX_flt;
 	for (ABDEnemyBase* Enemy : Waves->GetLivingEnemiesRef())
 	{
-		if (Enemy == nullptr || !IsValid(Enemy) || !Enemy->IsCandidate() || Enemy->HasArrived() || Enemy->GetCurrentHealth() <= 0.0f)
+		// A candidate making his speech is not there for him: he patrols on as if he were not.
+		if (Enemy == nullptr || !IsValid(Enemy) || !Enemy->IsCandidate() || Enemy->HasArrived() || Enemy->GetCurrentHealth() <= 0.0f
+			|| Enemy->IsRallyImmune())
 		{
 			continue;
 		}

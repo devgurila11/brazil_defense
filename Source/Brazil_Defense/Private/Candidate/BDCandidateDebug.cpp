@@ -2,6 +2,8 @@
 
 #include "BDLog.h"
 #include "Candidate/BDCandidateSubsystem.h"
+#include "Candidate/BDRallyComponent.h"
+#include "Enemy/BDCreepSoundSubsystem.h"
 #include "Enemy/BDCandidate.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
@@ -60,6 +62,34 @@ namespace BDCandidateDebug
 			State = TEXT("none out");
 		}
 
+		// The rallies, one line per candidate walking.
+		TArray<ABDCandidate*> Walking;
+		Candidates->GetLivingCandidates(Walking);
+		const UBDCreepSoundSubsystem* Sounds = UBDCreepSoundSubsystem::Get(World);
+		for (const ABDCandidate* Walker : Walking)
+		{
+			const UBDRallyComponent* Rally = Walker->GetRally();
+			if (Rally == nullptr)
+			{
+				continue;
+			}
+			const FBDRallyParams& Params = Rally->GetParams();
+			const FString When = !Rally->IsEnabled() ? FString(TEXT("no rallies"))
+				: Rally->GetState() == EBDRallyState::Walking
+					? FString::Printf(TEXT("next rally in %.1fs%s"), Rally->GetNextRallyIn(),
+						Rally->GetNextRallyIn() <= 0.0f && Candidates->GetRallyHolder() != nullptr && Candidates->GetRallyHolder() != Walker ? TEXT(" (waiting for the other candidate's rally)") : TEXT(""))
+					: FString::Printf(TEXT("%.1fs left of it"), Rally->GetStateRemaining());
+			UE_LOG(LogBDCandidate, Log, TEXT("BD.Candidate.Status: RALLY candidate %d: %s, %s | %d started, last crowd %d of %d | every %.1fs (first %.1fs), tell %.1fs, speech %.1fs, %d a crowd%s | %s."),
+				Walker->Ordinal, UBDRallyComponent::StateName(Rally->GetState()), *When, Rally->GetRalliesStarted(),
+				Rally->GetLastRaised(), Rally->GetLastAsked(), Params.RallyEvery, Params.RallyFirstDelay, Params.RallyTellSeconds,
+				Params.RallyDuration, Params.RallyCount, Walker->bReturning ? TEXT(", returning") : TEXT(""),
+				Walker->IsRallyImmune() ? TEXT("UNTOUCHABLE") : TEXT("can be hit"));
+		}
+		UE_LOG(LogBDCandidate, Log, TEXT("BD.Candidate.Status: rallies %s (on return %s), %d started this match; the floor is %s (sentences up to %d)."),
+			Balance.bRallies ? TEXT("on") : TEXT("OFF"), Balance.bRallyOnReturn ? TEXT("on") : TEXT("off"), Candidates->GetRalliesStarted(),
+			Sounds != nullptr && Sounds->GetFloorHolder() != nullptr ? *Sounds->GetFloorHolder()->GetName() : TEXT("free"),
+			Sounds != nullptr ? Sounds->GetSpeechBudget() : 0);
+
 		UE_LOG(LogBDCandidate, Log, TEXT("BD.Candidate.Status: %s | scoreboard %d blue / %d red (%s) | %d sent, %d fallen, return %s (%d left) | every %d waves, health x%.0f, %.2f cells/s."),
 			*State,
 			Match != nullptr ? Match->GetVotesBlue() : 0, Match != nullptr ? Match->GetVotesRed() : 0,
@@ -67,6 +97,37 @@ namespace BDCandidateDebug
 			Candidates->GetCandidatesSent(), Candidates->GetFallenCount(),
 			Candidates->IsReturnActive() ? TEXT("active") : TEXT("off"), Candidates->GetReturnRemaining(),
 			Balance.CandidateInterval, Balance.CandidateHealthMultiplier, Balance.CandidateSpeed);
+	}
+
+	static void ExecRally(const TArray<FString>& Args, UWorld* World)
+	{
+		const UBDCandidateSubsystem* Candidates = FindCandidates(World);
+		if (Candidates == nullptr)
+		{
+			return;
+		}
+		TArray<ABDCandidate*> Walking;
+		Candidates->GetLivingCandidates(Walking);
+		const int32 Wanted = Args.Num() > 0 ? FCString::Atoi(*Args[0]) : 0;
+		bool bAny = false;
+		for (ABDCandidate* Walker : Walking)
+		{
+			if (Wanted > 0 && Walker->Ordinal != Wanted)
+			{
+				continue;
+			}
+			FString Why;
+			UBDRallyComponent* Rally = Walker->GetRally();
+			if (Rally != nullptr && Rally->ForceRally(Why))
+			{
+				UE_LOG(LogBDCandidate, Log, TEXT("BD.Candidate.Rally: candidate %d rallies now%s."), Walker->Ordinal,
+					Candidates->GetRallyHolder() != nullptr && Candidates->GetRallyHolder() != Walker ? TEXT(", once the rally under way is over") : TEXT(""));
+				bAny = true;
+				break;
+			}
+			UE_LOG(LogBDCandidate, Warning, TEXT("BD.Candidate.Rally: candidate %d cannot: %s."), Walker->Ordinal, *Why);
+		}
+		UE_CLOG(!bAny && Walking.Num() == 0, LogBDCandidate, Warning, TEXT("BD.Candidate.Rally: no candidate on the board (BD.Candidate.Spawn sends one)."));
 	}
 
 	static void ExecReturn(const TArray<FString>& Args, UWorld* World)
@@ -82,6 +143,11 @@ namespace BDCandidateDebug
 		TEXT("BD.Candidate.Spawn: sends the next scheduled candidate out now, whatever the wave."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecSpawn));
 
+	static FAutoConsoleCommandWithWorldAndArgs CmdRally(
+		TEXT("BD.Candidate.Rally"),
+		TEXT("BD.Candidate.Rally [ordinal]: the first candidate on the board (or that one) starts his rally now - warning, speech, crowd - waiting his turn if another is rallying."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecRally));
+
 	static FAutoConsoleCommandWithWorldAndArgs CmdReturn(
 		TEXT("BD.Candidate.Return"),
 		TEXT("BD.Candidate.Return: brings every fallen candidate back now, as the count turning red would."),
@@ -89,6 +155,6 @@ namespace BDCandidateDebug
 
 	static FAutoConsoleCommandWithWorldAndArgs CmdStatus(
 		TEXT("BD.Candidate.Status"),
-		TEXT("BD.Candidate.Status: logs the candidate on the board, the pause and whether the scoreboard calls for one."),
+		TEXT("BD.Candidate.Status: logs the candidate on the board, his rally (state, next one in N s), and whether the scoreboard calls for one."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ExecStatus));
 }

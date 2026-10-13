@@ -71,6 +71,12 @@ private:
 	/** One exclamation centered on a screen point, Height tall, in a colour, with its rim and halo. */
 	void DrawExclamation(const FVector2D& Center, float Height, const FLinearColor& Color);
 
+	/** A megaphone over every candidate making his rally speech, where his exclamation would be. */
+	void DrawRallyMegaphones();
+
+	/** One megaphone, Height tall around Center, the horn opening to the right. */
+	void DrawMegaphone(const FVector2D& Center, float Height, const FLinearColor& Color);
+
 	/** One five-pointed star centered on a screen point, Radius from the center to a tip: filled, or only its outline. */
 	void DrawStar(const FVector2D& Center, float Radius, bool bFilled, const FLinearColor& Color);
 };

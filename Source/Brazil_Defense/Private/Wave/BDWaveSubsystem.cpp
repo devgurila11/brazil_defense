@@ -1151,6 +1151,58 @@ ABDEnemyBase* UBDWaveSubsystem::SpawnEnemyAs(const TSubclassOf<ABDEnemyBase> Ene
 	return Enemy;
 }
 
+ABDEnemyBase* UBDWaveSubsystem::SpawnEnemyAtCell(const UBDEnemyData* Data, const FBDCellCoord& Cell, const TCHAR* Why)
+{
+	UWorld* World = GetWorld();
+	const UBDGridSubsystem* Grid = GetGrid();
+	if (World == nullptr || !World->IsGameWorld() || Grid == nullptr || Data == nullptr || !Grid->IsValidCoord(Cell))
+	{
+		return nullptr;
+	}
+
+	// Its own way to the urn from where it stands, over a cost map of its own like any creep.
+	GetSpawnPoints();
+	const FBDRouteCost Cost = DrawRouteCost(INDEX_NONE);
+	TArray<FBDCellCoord> Route;
+	if (!FindRouteToGoal(Cell, Route, &Cost) && !FindRouteToGoal(Cell, Route))
+	{
+		UE_LOG(LogBDWave, Verbose, TEXT("No %s at %s for %s: no way to the urn from there."), *Data->GetName(), *Cell.ToString(), Why);
+		return nullptr;
+	}
+
+	UClass* EnemyClass = Data->EnemyClass.IsNull() ? ABDEnemyBase::StaticClass() : Data->EnemyClass.LoadSynchronous();
+	if (EnemyClass == nullptr)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Enemy class %s of %s failed to load."), *Data->EnemyClass.ToString(), *Data->GetName());
+		return nullptr;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ABDEnemyBase* Enemy = World->SpawnActor<ABDEnemyBase>(EnemyClass, Grid->CellToWorld(Cell), FRotator::ZeroRotator, SpawnParams);
+	if (Enemy == nullptr)
+	{
+		UE_LOG(LogBDWave, Error, TEXT("Failed to spawn %s at %s for %s."), *EnemyClass->GetName(), *Cell.ToString(), Why);
+		return nullptr;
+	}
+
+	const ABDMatchManager* Match = GetMatch();
+	Enemy->RouteCost = Cost;
+	Enemy->InitializeEnemy(Data, Route, Match != nullptr ? Match->GetHealthScale() : 1.0f);
+	LivingEnemies.Add(Enemy);
+
+	// On the board and in the match's tally like any creep; outside the wave's own count.
+	WavePeakAlive = FMath::Max(WavePeakAlive, LivingEnemies.Num());
+	MatchTotals.PeakAlive = FMath::Max(MatchTotals.PeakAlive, LivingEnemies.Num());
+	++MatchTotals.CreepsSpawned;
+	++MatchTotals.CreepsRaised;
+	WaveTotalHealth += Enemy->GetMaxHealth();
+
+	UE_LOG(LogBDWave, Verbose, TEXT("%s (%s) raised at %s by %s, %d cells to the urn. %d creep(s) on the board."),
+		*Enemy->GetName(), *Data->GetName(), *Cell.ToString(), Why, Route.Num(), LivingEnemies.Num());
+	return Enemy;
+}
+
 int32 UBDWaveSubsystem::SpawnEnemyAtEveryPoint(const UBDEnemyData* Data)
 {
 	const int32 PointCount = GetSpawnPointCount();

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Candidate/BDCandidateData.h"
 #include "Match/BDMatchTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "BDCandidateSubsystem.generated.h"
@@ -28,6 +29,10 @@ struct FBDCandidateRecord
 	/** The health he came out with, and comes back with. */
 	UPROPERTY()
 	float MaxHealth = 0.0f;
+
+	/** His rallies, read off his data when he first came out, like the health. */
+	UPROPERTY()
+	FBDRallyParams Rally;
 };
 
 /** What a save keeps of the candidates: who went out, who fell, and the one owed. */
@@ -139,6 +144,22 @@ public:
 	/** Forgets every candidate: the match was rewound or rebuilt. */
 	void ResetForNewMatch();
 
+	//~ The rallies (UBDRallyComponent) -----------------------------------------
+
+	/**
+	 * Asks for the board's one rally: true when nobody else holds it, and from then on it is
+	 * his until ReleaseRally. A second candidate due meanwhile waits for it before his warning.
+	 */
+	bool TryClaimRally(ABDCandidate& Candidate);
+	void ReleaseRally(const ABDCandidate& Candidate);
+
+	/** The candidate holding the rally now, or null. */
+	ABDCandidate* GetRallyHolder() const { return RallyHolder.Get(); }
+
+	/** A rally began (his warning): counted, for the HUD's notice. */
+	void NotifyRallyStarted(const ABDCandidate& Candidate);
+	int32 GetRalliesStarted() const { return RalliesStarted; }
+
 	/** Kept for the callers of the old pause: nothing freezes any more. */
 	bool IsCountFrozen() const { return false; }
 	float GetPauseRemaining() const { return 0.0f; }
@@ -208,6 +229,10 @@ private:
 	float ReturnInterval = 0.0f;
 	int32 ReturnAlive = 0;
 	int32 ReturnsStarted = 0;
+
+	/** Who holds the rally, and how many have started since the world began. */
+	TWeakObjectPtr<ABDCandidate> RallyHolder;
+	int32 RalliesStarted = 0;
 
 	/** So a board with no route is reported once, not on every vote. */
 	bool bWarnedNoMouth = false;

@@ -228,8 +228,12 @@ bool UBDCreepSoundSubsystem::PlayVocal(ABDEnemyBase& Creep)
 	EnsureObjects();
 	++VoicesInRange;
 
-	// Words obey the speech rule; the calls only the voice budget.
+	// Words obey the speech rule, and the floor; the calls only the voice budget.
 	TWeakObjectPtr<UAudioComponent> Replace;
+	if (bSpeak && IsFloorTaken(Creep))
+	{
+		return false;
+	}
 	if (bSpeak && !CanSpeak(Creep.GetActorLocation(), Replace))
 	{
 		++SpeechHeldBack;
@@ -401,6 +405,10 @@ UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::TryCelebrateCounted
 	{
 		return Gate;
 	}
+	if (IsFloorTaken(Speaker))
+	{
+		return ECelebration::HeldBack;
+	}
 
 	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
 	USoundBase* Words = BDCreepSoundPrivate::Resolve(Bank);
@@ -448,6 +456,11 @@ UBDCreepSoundSubsystem::ECelebration UBDCreepSoundSubsystem::TryCelebrateCounted
 bool UBDCreepSoundSubsystem::SayAlways(AActor& Speaker, const TSoftObjectPtr<USoundBase>& Bank)
 {
 	++AlwaysAsked;
+	if (IsFloorTaken(Speaker))
+	{
+		UE_LOG(LogBDWave, Verbose, TEXT("%s keeps a line to himself: %s holds the floor."), *Speaker.GetName(), *GetNameSafe(FloorHolder.Get()));
+		return false;
+	}
 	UWorld* World = GetWorld();
 	USoundBase* Words = BDCreepSoundPrivate::Resolve(Bank);
 	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
@@ -462,7 +475,7 @@ bool UBDCreepSoundSubsystem::SayAlways(AActor& Speaker, const TSoftObjectPtr<USo
 
 	// Room made, never waited for: the oldest sentence still sounding gives way.
 	Sentences.RemoveAll([](const TWeakObjectPtr<UAudioComponent>& Sentence) { return !Sentence.IsValid() || !Sentence->IsPlaying(); });
-	if (Sentences.Num() >= FMath::Clamp(Settings.SpeechMaxConcurrent, 1, 4))
+	if (Sentences.Num() >= GetSpeechBudget())
 	{
 		if (UAudioComponent* Oldest = Sentences[0].Get())
 		{
@@ -596,7 +609,7 @@ bool UBDCreepSoundSubsystem::CanSpeak(const FVector& Where, TWeakObjectPtr<UAudi
 	};
 
 	const float New = Azimuth(Where);
-	const int32 Budget = FMath::Clamp(Settings.SpeechMaxConcurrent, 1, 4);
+	const int32 Budget = GetSpeechBudget();
 	if (Sentences.Num() < Budget)
 	{
 		// Room left: every sentence already sounding must be on the other side.
@@ -637,6 +650,71 @@ bool UBDCreepSoundSubsystem::CanSpeak(const FVector& Where, TWeakObjectPtr<UAudi
 	OutReplace = Sentences[Farthest];
 	Sentences.RemoveAt(Farthest);
 	return true;
+}
+
+int32 UBDCreepSoundSubsystem::GetSpeechBudget() const
+{
+	return FloorHolder.IsValid() ? 1 : FMath::Clamp(UBDCreepSoundSettings::Get().SpeechMaxConcurrent, 1, 4);
+}
+
+bool UBDCreepSoundSubsystem::IsFloorTaken(const AActor& Speaker)
+{
+	const AActor* Holder = FloorHolder.Get();
+	if (Holder == nullptr || Holder == &Speaker)
+	{
+		return false;
+	}
+	++FloorRefusals;
+	return true;
+}
+
+void UBDCreepSoundSubsystem::TakeFloor(AActor& Speaker)
+{
+	FloorHolder = &Speaker;
+	int32 Silenced = 0;
+	for (const TWeakObjectPtr<UAudioComponent>& Sentence : Sentences)
+	{
+		UAudioComponent* Audio = Sentence.Get();
+		if (Audio != nullptr && Audio->IsPlaying() && Audio->GetOwner() != &Speaker)
+		{
+			Audio->Stop();
+			++Silenced;
+		}
+	}
+	Sentences.RemoveAll([](const TWeakObjectPtr<UAudioComponent>& Sentence) { return !Sentence.IsValid() || !Sentence->IsPlaying(); });
+	UE_LOG(LogBDWave, Log, TEXT("%s takes the floor: %d sentence(s) silenced, no other words until he is done."), *Speaker.GetName(), Silenced);
+}
+
+void UBDCreepSoundSubsystem::GiveBackFloor(const AActor& Speaker)
+{
+	if (FloorHolder.Get() != &Speaker)
+	{
+		return;
+	}
+	FloorHolder.Reset();
+	UE_LOG(LogBDWave, Log, TEXT("%s gives the floor back: up to %d sentence(s) again."), *Speaker.GetName(), GetSpeechBudget());
+}
+
+UAudioComponent* UBDCreepSoundSubsystem::SayOnFloor(AActor& Speaker, USoundBase* Words)
+{
+	UWorld* World = GetWorld();
+	const UBDCreepSoundSettings& Settings = UBDCreepSoundSettings::Get();
+	if (World == nullptr || Words == nullptr || !BDCreepSoundPrivate::InRange(*World, Speaker.GetActorLocation(), Settings.GetSpeechReach()))
+	{
+		return nullptr;
+	}
+	EnsureObjects();
+	UAudioComponent* Audio = UGameplayStatics::SpawnSoundAttached(Words, Speaker.GetRootComponent(), NAME_None,
+		FVector::ZeroVector, EAttachLocation::KeepRelativeOffset, /*bStopWhenAttachedToDestroyed*/ true,
+		Settings.SpeechVolume, 1.0f, 0.0f, SpeechAttenuation.Get(), nullptr, /*bAutoDestroy*/ true);
+	if (Audio == nullptr)
+	{
+		return nullptr;
+	}
+	Voices.Add(Audio);
+	Sentences.Add(Audio);
+	PeakSentences = FMath::Max(PeakSentences, Sentences.Num());
+	return Audio;
 }
 
 int32 UBDCreepSoundSubsystem::CountActiveVoices()

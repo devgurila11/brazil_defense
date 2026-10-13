@@ -3,10 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Candidate/BDRallyComponent.h"
 #include "Grid/BDGridTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "BDRegressionSubsystem.generated.h"
 
+class ABDAgent;
+class ABDCandidate;
 class ABDMatchManager;
 class ABDEnemyBase;
 class ABDTowerBase;
@@ -145,4 +148,35 @@ private:
 
 	/** Whether the player's slot is as it was when the run began. Fills Measured. */
 	bool IsPlayerSlotUntouched(FString& Measured) const;
+
+	//~ The rally (COMICIO), watched frame by frame.
+
+	/**
+	 * Whether a crowd stands right: one militant a cell, every cell walkable ground (not the
+	 * urn) with a way to the urn, every one routed. Fills Measured with what was found.
+	 */
+	bool IsCrowdSound(const TArray<TWeakObjectPtr<ABDEnemyBase>>& Crowd, FString& Measured) const;
+
+	/** Notes the time a rally changes state, from one frame to the next. */
+	void TrackRally(const UBDRallyComponent& Rally);
+
+	TWeakObjectPtr<ABDCandidate> RallyA;
+	TWeakObjectPtr<ABDCandidate> RallyB;
+	TWeakObjectPtr<ABDAgent> RallyAgent;
+	EBDRallyState TrackedState = EBDRallyState::Walking;
+	double TrackedSince = 0.0;
+	double RallyStepStart = 0.0;
+	float MeasuredTell = -1.0f;
+	float MeasuredSpeech = -1.0f;
+	float MeasuredRise = -1.0f;
+	bool bChasedBeforeSpeech = false;
+	bool bChasedDuringSpeech = false;
+	bool bSpeechChecked = false;
+	bool bCrowdChecked = false;
+	bool bBothRallying = false;
+	int32 SpeechTicks = 0;
+	int32 RaisedBefore = 0;
+	int32 SpawnsLeftBefore = 0;
+	int32 RallyStartsA = 0;
+	TSet<FBDCellCoord> Corridor;
 };

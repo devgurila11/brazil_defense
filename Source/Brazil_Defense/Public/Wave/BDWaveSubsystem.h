@@ -38,6 +38,8 @@ struct FBDMatchCombatTotals
 	int32 CreepsKilled = 0;
 	int32 CreepsArrived = 0;
 	int32 CreepsSpawned = 0;
+	/** Of CreepsSpawned, those raised by a candidate's rally rather than sent by a wave. */
+	int32 CreepsRaised = 0;
 	int32 PeakAlive = 0;
 	int32 ShotsFired = 0;
 	int32 LostShots = 0;
@@ -171,6 +173,16 @@ public:
 	 * @param MaxHealthOverride above zero replaces the data health and the wave scale.
 	 */
 	ABDEnemyBase* SpawnEnemyAs(TSubclassOf<ABDEnemyBase> EnemyClassOverride, const UBDEnemyData* Data, int32 SpawnPointIndex, float MaxHealthOverride);
+
+	/**
+	 * Spawns one creep of Data on a cell of the board, as tough as the creeps of the wave,
+	 * sent down a route of its own to the urn. It joins the creeps on the board - kills and
+	 * arrivals vote, the wave waits for it to clear - but is not one of the wave's count
+	 * (W x mouths): nothing the wave still has to send changes. A candidate's rally raises
+	 * its crowd this way; the mixed kinds of the buses will too.
+	 * @return the creep, or null when the cell leads nowhere near the urn or the data cannot be spawned.
+	 */
+	ABDEnemyBase* SpawnEnemyAtCell(const UBDEnemyData* Data, const FBDCellCoord& Cell, const TCHAR* Why);
 
 	/** Spawns one creep at every spawn point. @return how many were spawned. */
 	UFUNCTION(BlueprintCallable, Category = "Brazil Defense|Wave")
